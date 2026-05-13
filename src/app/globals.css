@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  background: #f8f4f6;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.btn-primary {
+  @apply bg-[#E91E8C] text-white rounded-2xl py-4 px-6 font-semibold text-base w-full flex items-center justify-center gap-2 active:scale-95 transition-all;
+}
+
+.btn-secondary {
+  @apply border-2 border-[#E91E8C] text-[#E91E8C] rounded-2xl py-4 px-6 font-semibold text-base w-full flex items-center justify-center gap-2 active:scale-95 transition-all;
+}
+
+.card {
+  @apply bg-white rounded-2xl p-4 shadow-sm;
+}
+
+.input-field {
+  @apply w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-[#E91E8C] transition-colors;
+}
