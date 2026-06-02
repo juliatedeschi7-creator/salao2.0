@@ -1,20 +1,24 @@
-import { createClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient()
 
 export type UserRole = 'admin_geral' | 'dono_salao' | 'funcionario' | 'cliente'
 
-export interface UserProfile {
+export interface Profile {
   id: string
   email: string
   nome: string
   role: UserRole
   salao_id?: string
-  avatar_url?: string
   aprovado: boolean
+  ativo: boolean
   created_at: string
 }
 
@@ -22,11 +26,18 @@ export interface Salao {
   id: string
   nome: string
   slug: string
-  descricao?: string
   telefone?: string
-  endereco?: string
-  logo_url?: string
+  instagram?: string
+  cidade?: string
   dono_id: string
+  cor_primaria: string
+  cor_secundaria: string
   ativo: boolean
+  pausado: boolean
+  aprovado: boolean
+  motivo_pausa?: string
+  horario_abertura: string
+  horario_fechamento: string
+  dias_funcionamento: string[]
   created_at: string
 }
