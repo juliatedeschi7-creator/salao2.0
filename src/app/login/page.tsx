@@ -30,25 +30,34 @@ export default function LoginPage() {
     if (!prof) { setErro('Perfil nao encontrado.'); setLoading(false); return }
     if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
 
-    if (prof.role === 'admin_geral') { window.location.href = '/admin'; return }
+    let destino = '/login'
 
-    if (!prof.aprovado) {
+    if (prof.role === 'admin_geral') {
+      destino = '/admin'
+    } else if (!prof.aprovado) {
       if (prof.role === 'dono_salao' || prof.role === 'funcionario') {
-        window.location.href = '/aguardando'; return
+        destino = '/aguardando'
+      } else {
+        await supabase.auth.signOut(); setErro('Conta aguarda aprovacao.'); setLoading(false); return
       }
-      await supabase.auth.signOut(); setErro('Conta aguarda aprovacao.'); setLoading(false); return
+    } else if (prof.role === 'dono_salao') {
+      if (!prof.salao_id) {
+        destino = '/criar-salao'
+      } else {
+        const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
+        if (salao?.pausado) { await supabase.auth.signOut(); setErro('Salao pausado.'); setLoading(false); return }
+        if (!salao?.aprovado) { destino = '/aguardando' }
+        else { destino = '/salao' }
+      }
+    } else if (prof.role === 'funcionario') {
+      destino = '/funcionario'
+    } else {
+      destino = '/cliente'
     }
 
-    if (prof.role === 'dono_salao') {
-      if (!prof.salao_id) { window.location.href = '/criar-salao'; return }
-      const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
-      if (salao?.pausado) { await supabase.auth.signOut(); setErro('Salao pausado.'); setLoading(false); return }
-      if (!salao?.aprovado) { window.location.href = '/aguardando'; return }
-      window.location.href = '/salao'; return
-    }
-
-    if (prof.role === 'funcionario') { window.location.href = '/funcionario'; return }
-    window.location.href = '/cliente'
+    // Aguarda o cookie ser salvo antes de redirecionar
+    await new Promise(resolve => setTimeout(resolve, 500))
+    window.location.href = destino
   }
 
   return (
