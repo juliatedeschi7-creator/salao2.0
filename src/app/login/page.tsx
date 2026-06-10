@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Eye, EyeOff, Scissors } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -41,7 +41,7 @@ export default function LoginPage() {
         destino = '/criar-salao'
       } else {
         const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
-        if (salao?.pausado) { await supabase.auth.signOut(); setErro('Salao pausado.'); setLoading(false); return }
+        if (salao?.pausado) { await supabase.auth.signOut(); setErro('Salão pausado.'); setLoading(false); return }
         destino = !salao?.aprovado ? '/aguardando' : '/salao'
       }
     } else if (prof.role === 'funcionario') {
@@ -56,16 +56,14 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      {/* Topo preto */}
-      <div className="bg-gray-900 px-6 pt-16 pb-12 flex flex-col items-center">
-        <div className="w-20 h-20 rounded-3xl bg-white flex items-center justify-center mb-5 shadow-lg">
-          <Scissors size={36} className="text-gray-900" />
+      <div className="bg-gray-900 px-6 pt-14 pb-10 flex flex-col items-center">
+        <div className="w-28 h-28 rounded-3xl bg-white flex items-center justify-center mb-5 shadow-lg p-2">
+          <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-white text-3xl font-bold tracking-tight">Organiza Salao</h1>
-        <p className="text-gray-400 text-sm mt-2">Gerencie seu negocio com facilidade</p>
+        <h1 className="text-white text-3xl font-bold tracking-tight">Organiza</h1>
+        <p className="text-gray-400 text-sm mt-1">Gerencie seu negócio com facilidade</p>
       </div>
 
-      {/* Formulario */}
       <div className="flex-1 px-6 py-8 flex flex-col gap-5 max-w-sm mx-auto w-full">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Email</label>
@@ -120,13 +118,13 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-gray-600 text-sm">
-          Nao tem conta?{' '}
+          Não tem conta?{' '}
           <a href="/cadastro" className="text-gray-900 font-bold underline">Criar conta</a>
         </p>
 
         <a href="/cadastro?tipo=salao"
           className="w-full border-2 border-gray-900 text-gray-900 rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all">
-          Cadastrar meu salao
+          Cadastrar meu salão
         </a>
       </div>
     </div>
