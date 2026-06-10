@@ -58,7 +58,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-white flex flex-col">
       <div className="bg-gray-900 px-6 pt-14 pb-10 flex flex-col items-center">
         <div className="w-28 h-28 rounded-3xl bg-white flex items-center justify-center mb-5 shadow-lg p-2">
-          <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
+          <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
         </div>
         <h1 className="text-white text-3xl font-bold tracking-tight">Organiza</h1>
         <p className="text-gray-400 text-sm mt-1">Gerencie seu negócio com facilidade</p>
