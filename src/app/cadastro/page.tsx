@@ -1,7 +1,7 @@
 'use client'
 import { useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Scissors, Eye, EyeOff, Mail, Lock, User } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
 function CadastroForm() {
@@ -31,17 +31,17 @@ function CadastroForm() {
         options: { data: { nome: nome.trim(), role } }
       })
       if (error) {
-        setErro(error.message.includes('already') ? 'Email ja cadastrado.' : 'Erro: ' + error.message)
+        setErro(error.message.includes('already') ? 'Email já cadastrado.' : 'Erro: ' + error.message)
         setLoading(false); return
       }
-      if (!data.user) { setErro('Erro ao criar usuario.'); setLoading(false); return }
+      if (!data.user) { setErro('Erro ao criar usuário.'); setLoading(false); return }
       await supabase.from('profiles').upsert({
         id: data.user.id, email: email.trim().toLowerCase(),
         nome: nome.trim(), role, aprovado: isCliente, ativo: true
       }, { onConflict: 'id' })
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes').select('id').eq('slug', salaoSlug).single()
-        if (!salao) { setErro('Salao nao encontrado.'); setLoading(false); return }
+        if (!salao) { setErro('Salão não encontrado.'); setLoading(false); return }
         await supabase.from('clientes').insert({
           salao_id: salao.id, profile_id: data.user.id,
           nome: nome.trim(), email: email.trim().toLowerCase(),
@@ -65,67 +65,79 @@ function CadastroForm() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-gray-900 px-6 pt-16 pb-12 flex flex-col items-center">
-        <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center mb-4">
-          <Scissors size={30} className="text-gray-900" />
+      <div className="bg-gray-900 px-6 pt-14 pb-10 flex flex-col items-center">
+        <div className="w-28 h-28 rounded-3xl bg-white flex items-center justify-center mb-5 shadow-lg p-2">
+          <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-white text-2xl font-bold">
-          {isCliente ? 'Criar sua conta' : 'Cadastrar Salao'}
-        </h1>
+        <h1 className="text-white text-3xl font-bold tracking-tight">Organiza</h1>
         <p className="text-gray-400 text-sm mt-1">
-          {isCliente ? 'Acesse os servicos do salao' : 'Comece a organizar seu espaco'}
+          {isCliente ? 'Crie sua conta de cliente' : isSalao ? 'Cadastre seu negócio' : 'Crie sua conta'}
         </p>
       </div>
-      <div className="flex-1 px-6 py-8 flex flex-col gap-4 max-w-sm mx-auto w-full">
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1 block">Nome completo</label>
-          <div className="relative">
-            <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input-field pl-11" placeholder="Seu nome completo"
-              value={nome} onChange={e => setNome(e.target.value)} />
-          </div>
+
+      <div className="flex-1 px-6 py-8 flex flex-col gap-5 max-w-sm mx-auto w-full">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">Nome completo</label>
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
+            placeholder="Seu nome completo"
+            value={nome} onChange={e => setNome(e.target.value)}
+          />
         </div>
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1 block">Email</label>
-          <div className="relative">
-            <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input-field pl-11" type="email" placeholder="seuemail@exemplo.com"
-              value={email} onChange={e => setEmail(e.target.value)} />
-          </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">Email</label>
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
+            type="email"
+            placeholder="seuemail@exemplo.com"
+            value={email} onChange={e => setEmail(e.target.value)}
+          />
         </div>
+
         {isCliente && (
-          <div>
-            <label className="text-sm font-medium text-gray-700 mb-1 block">Data de nascimento</label>
-            <input className="input-field" type="date"
-              value={dataNascimento} onChange={e => setDataNascimento(e.target.value)} />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-gray-700">Data de nascimento</label>
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
+              type="date"
+              value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
+            />
           </div>
         )}
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1 block">Senha</label>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">Senha</label>
           <div className="relative">
-            <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input-field pl-11 pr-12"
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none focus:border-gray-900 transition-colors"
               type={mostrarSenha ? 'text' : 'password'}
-              placeholder="Minimo 6 caracteres"
-              value={senha} onChange={e => setSenha(e.target.value)} />
+              placeholder="Mínimo 6 caracteres"
+              value={senha} onChange={e => setSenha(e.target.value)}
+            />
             <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
               onClick={() => setMostrarSenha(!mostrarSenha)}>
-              {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+              {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
           </div>
         </div>
+
         {erro && (
           <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
             <p className="text-red-600 text-sm text-center">{erro}</p>
           </div>
         )}
-        <button className="btn-primary mt-2" onClick={handleCadastro} disabled={loading}>
+
+        <button
+          className="w-full bg-gray-900 text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+          onClick={handleCadastro} disabled={loading}>
           {loading
             ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             : 'Criar conta'}
         </button>
+
         <p className="text-center text-gray-600 text-sm">
-          Ja tem conta?{' '}
+          Já tem conta?{' '}
           <a href="/login" className="text-gray-900 font-bold underline">Entrar</a>
         </p>
       </div>
