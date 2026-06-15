@@ -54,5 +54,93 @@ export default function SalaoPage() {
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
+  const hora = new Date().getHours()
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
 
-  if (loading || carregando) return
+  if (loading || carregando) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+        style={{ borderColor: cor }} />
+    </div>
+  )
+  return (
+    <div className="min-h-screen pb-20" style={{ backgroundColor: '#f8f9fa' }}>
+      <Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} corSecundaria={salao?.cor_secundaria} />
+
+      <div className="px-4 py-5 flex flex-col gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {saudacao}, {profile?.nome?.split(' ')[0]}! ✨
+        </h1>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="card">
+            <p className="text-xs text-gray-500">Atendimentos hoje</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{agendamentos.length}</p>
+          </div>
+          <div className="card">
+            <p className="text-xs text-gray-500">Confirmados</p>
+            <p className="text-3xl font-bold mt-1" style={{ color: cor }}>
+              {agendamentos.filter(a => a.status === 'confirmado').length}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Agenda de Hoje</h2>
+          <button onClick={() => router.push('/salao/agenda')}
+            className="text-sm font-medium" style={{ color: cor }}>
+            Ver completa
+          </button>
+        </div>
+
+        {agendamentos.length === 0 ? (
+          <div className="card text-center py-10 flex flex-col items-center gap-3">
+            <Calendar size={36} className="text-gray-300" />
+            <p className="text-gray-400">Nenhum agendamento hoje</p>
+            <button onClick={() => router.push('/salao/agenda/novo')}
+              className="px-4 py-2 rounded-full text-sm font-medium text-white"
+              style={{ backgroundColor: cor }}>
+              + Novo Agendamento
+            </button>
+          </div>
+        ) : (
+          agendamentos.map(ag => {
+            const st = statusConfig[ag.status] || statusConfig.pendente
+            const StatusIcon = st.icon
+            const horaAg = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            const horaFim = new Date(new Date(ag.data_hora).getTime() + ag.duracao_minutos * 60000)
+              .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            return (
+              <button key={ag.id} onClick={() => router.push('/salao/agenda')}
+                className="card text-left flex items-start gap-3 active:scale-95 transition-all">
+                <div className="flex flex-col items-center gap-1 shrink-0">
+                  <span className="text-sm font-bold text-gray-900">{horaAg}</span>
+                  <div className="w-0.5 h-4 bg-gray-200" />
+                  <span className="text-xs text-gray-400">{horaFim}</span>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-start justify-between">
+                    <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
+                    <span className={'text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ' + st.cor}>
+                      <StatusIcon size={10} />{st.label}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-0.5">{ag.servicos?.nome}</p>
+                  <p className="text-xs text-gray-400">Prof: {ag.profiles?.nome}</p>
+                </div>
+              </button>
+            )
+          })
+        )}
+      </div>
+
+      <button onClick={() => router.push('/salao/agenda/novo')}
+        className="fixed bottom-20 right-4 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white z-20"
+        style={{ backgroundColor: cor }}>
+        <Plus size={24} />
+      </button>
+
+      <BottomNav items={navItems} corPrimaria={cor} />
+    </div>
+  )
+}
