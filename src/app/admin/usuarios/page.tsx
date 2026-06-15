@@ -38,7 +38,6 @@ async function carregarUsuarios() {
   setCarregando(false)
 }
 
-
   async function aprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
     await supabase.from('notificacoes').insert({
