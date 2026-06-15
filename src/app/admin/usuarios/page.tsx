@@ -21,22 +21,23 @@ export default function AdminUsuariosPage() {
     carregarUsuarios()
   }, [loading, profile])
 
-  async function carregarUsuarios() {
-    setCarregando(true)
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*, saloes(nome)')
-      .order('created_at', { ascending: false })
+async function carregarUsuarios() {
+  setCarregando(true)
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*, saloes!profiles_salao_id_fkey(nome)')
+    .order('created_at', { ascending: false })
 
-    if (error) {
-      setDebug('ERRO: ' + JSON.stringify(error))
-    } else {
-      setDebug('Total: ' + (data?.length || 0) + ' | Sem admin: ' + (data?.filter((u: any) => u.role !== 'admin_geral').length || 0))
-    }
-
-    setUsuarios((data || []).filter((u: any) => u.role !== 'admin_geral'))
-    setCarregando(false)
+  if (error) {
+    setDebug('ERRO: ' + JSON.stringify(error))
+  } else {
+    setDebug('Total: ' + (data?.length || 0) + ' | Sem admin: ' + (data?.filter((u: any) => u.role !== 'admin_geral').length || 0))
   }
+
+  setUsuarios((data || []).filter((u: any) => u.role !== 'admin_geral'))
+  setCarregando(false)
+}
+
 
   async function aprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
