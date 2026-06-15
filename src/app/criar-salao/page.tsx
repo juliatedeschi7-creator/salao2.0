@@ -1,11 +1,10 @@
 'use client'
-
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { Scissors, Instagram, Phone, MapPin, Palette } from 'lucide-react'
+import { Palette, MapPin, Instagram } from 'lucide-react'
 
-const CORES_PRESET = [
+const CORES = [
   { primaria: '#E91E8C', secundaria: '#FCE4F3', nome: 'Rosa' },
   { primaria: '#9C27B0', secundaria: '#F3E5F5', nome: 'Roxo' },
   { primaria: '#E91E63', secundaria: '#FCE4EC', nome: 'Pink' },
@@ -27,149 +26,147 @@ export default function CriarSalaoPage() {
   const [corSecundaria, setCorSecundaria] = useState('#FCE4F3')
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
+  const [enviado, setEnviado] = useState(false)
 
-  function selecionarCor(cor: typeof CORES_PRESET[0]) {
-    setCorPrimaria(cor.primaria)
-    setCorSecundaria(cor.secundaria)
-  }
-
-  function gerarSlug(nome: string) {
-    return nome.toLowerCase()
+  function gerarSlug(n: string) {
+    return n.toLowerCase()
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') +
-      '-' + Math.random().toString(36).substr(2, 5)
+      .replace(/^-+|-+$/g, '') + '-' + Math.random().toString(36).substr(2, 5)
   }
 
   async function handleCriar() {
     if (!nome || !nomeDono || !telefone || !cidade) {
-      setErro('Preencha todos os campos obrigatórios.')
+      setErro('Preencha todos os campos obrigatorios.')
       return
     }
-    setSalvando(true)
-    setErro('')
+    setSalvando(true); setErro('')
+    const { data: salao, error } = await supabase.from('saloes').insert({
+      nome, slug: gerarSlug(nome), telefone,
+      instagram: instagram || null, cidade,
+      dono_id: profile?.id, cor_primaria: corPrimaria,
+      cor_secundaria: corSecundaria, ativo: true, pausado: false, aprovado: false
+    }).select().single()
 
-    const slug = gerarSlug(nome)
-
-    const { data: salao, error } = await supabase
-      .from('saloes')
-      .insert({
-        nome,
-        slug,
-        telefone,
-        instagram: instagram || null,
-        cidade,
-        dono_id: profile?.id,
-        cor_primaria: corPrimaria,
-        cor_secundaria: corSecundaria,
-        ativo: true,
-        pausado: false,
-      })
-      .select()
-      .single()
-
-    if (error) {
-      setErro('Erro ao criar salão. Tente novamente.')
-      setSalvando(false)
-      return
-    }
-
-    await supabase.from('profiles').update({
-      nome: nomeDono,
-      salao_id: salao.id,
-      aprovado: true,
-    }).eq('id', profile?.id)
-
-    window.location.href = '/salao'
+    if (error) { setErro('Erro ao criar salao.'); setSalvando(false); return }
+    await supabase.from('profiles').update({ nome: nomeDono, salao_id: salao.id }).eq('id', profile?.id)
+    setSalvando(false); setEnviado(true)
   }
+
+  if (enviado) return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 gap-6 text-center">
+      <div className="w-28 h-28 rounded-3xl bg-white flex items-center justify-center shadow-lg p-2">
+        <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900">Salao cadastrado!</h2>
+      <p className="text-gray-500 text-sm leading-relaxed">
+        Seu salao foi enviado para analise. Voce sera notificado quando for aprovado.
+      </p>
+      <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 w-full max-w-sm">
+        <p className="text-blue-700 text-sm font-medium">Aguardando aprovacao do administrador</p>
+        <p className="text-blue-500 text-xs mt-1">Normalmente aprovamos em ate 24 horas.</p>
+      </div>
+      <button onClick={() => window.location.href = '/aguardando'}
+        className="w-full max-w-sm bg-gray-900 text-white rounded-2xl py-4 font-semibold">
+        Ver status
+      </button>
+    </div>
+  )
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="px-6 py-8 flex flex-col items-center">
-        <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-          style={{ backgroundColor: corSecundaria }}>
-          <Scissors size={28} style={{ color: corPrimaria }} />
+      <div className="bg-gray-900 px-6 pt-14 pb-10 flex flex-col items-center">
+        <div className="w-24 h-24 rounded-3xl bg-white flex items-center justify-center mb-4 shadow-lg p-2">
+          <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900">Crie seu Salão</h1>
-        <p className="text-gray-500 text-sm mt-1 text-center">
-          Configure as informações do seu espaço
-        </p>
+        <h1 className="text-white text-2xl font-bold">Crie seu Salao</h1>
+        <p className="text-gray-400 text-sm mt-1">Configure as informacoes do seu espaco</p>
       </div>
 
-      <div className="flex-1 px-6 flex flex-col gap-4 pb-8">
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-            Nome do Salão <span className="text-red-400">*</span>
+      <div className="flex-1 px-6 py-6 flex flex-col gap-5 pb-10">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">
+            Nome do Salao <span className="text-red-400">*</span>
           </label>
-          <input className="input-field" placeholder="Ex: Studio Beleza"
-            value={nome} onChange={e => setNome(e.target.value)} />
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
+            placeholder="Ex: Studio Beleza"
+            value={nome} onChange={e => setNome(e.target.value)}
+          />
         </div>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-            Seu nome (dono) <span className="text-red-400">*</span>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">
+            Seu nome <span className="text-red-400">*</span>
           </label>
-          <input className="input-field" placeholder="Seu nome completo"
-            value={nomeDono} onChange={e => setNomeDono(e.target.value)} />
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
+            placeholder="Nome completo do dono"
+            value={nomeDono} onChange={e => setNomeDono(e.target.value)}
+          />
         </div>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1.5 block">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">
             Telefone / WhatsApp <span className="text-red-400">*</span>
           </label>
-          <div className="relative">
-            <Phone size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input-field pl-11" placeholder="(11) 99999-9999"
-              type="tel" value={telefone} onChange={e => setTelefone(e.target.value)} />
-          </div>
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
+            type="tel"
+            placeholder="(11) 99999-9999"
+            value={telefone} onChange={e => setTelefone(e.target.value)}
+          />
         </div>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-            Instagram <span className="text-gray-400 text-xs">(recomendado)</span>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">
+            Instagram <span className="text-gray-400 text-xs font-normal">(recomendado)</span>
           </label>
           <div className="relative">
             <Instagram size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input-field pl-11" placeholder="@seusalao"
-              value={instagram} onChange={e => setInstagram(e.target.value)} />
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 pl-11 pr-4 text-base outline-none focus:border-gray-900 transition-colors"
+              placeholder="@seusalao"
+              value={instagram} onChange={e => setInstagram(e.target.value)}
+            />
           </div>
         </div>
 
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1.5 block">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">
             Cidade <span className="text-red-400">*</span>
           </label>
           <div className="relative">
             <MapPin size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input-field pl-11" placeholder="Sua cidade"
-              value={cidade} onChange={e => setCidade(e.target.value)} />
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 pl-11 pr-4 text-base outline-none focus:border-gray-900 transition-colors"
+              placeholder="Sua cidade"
+              value={cidade} onChange={e => setCidade(e.target.value)}
+            />
           </div>
         </div>
 
-        {/* Paleta de cores */}
-        <div>
-          <label className="text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-2">
-            <Palette size={16} />
-            Paleta de Cores do Salão
+        <div className="flex flex-col gap-3">
+          <label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Palette size={16} />Paleta de Cores do Salao
           </label>
-          <div className="grid grid-cols-4 gap-3 mt-2">
-            {CORES_PRESET.map(cor => (
-              <button key={cor.primaria} onClick={() => selecionarCor(cor)}
+          <div className="grid grid-cols-4 gap-3">
+            {CORES.map(c => (
+              <button key={c.primaria}
+                onClick={() => { setCorPrimaria(c.primaria); setCorSecundaria(c.secundaria) }}
                 className="flex flex-col items-center gap-1">
                 <div
-                  className={`w-12 h-12 rounded-full border-4 transition-all ${corPrimaria === cor.primaria ? 'border-gray-800 scale-110' : 'border-transparent'}`}
-                  style={{ backgroundColor: cor.primaria }}
+                  className={'w-14 h-14 rounded-full border-4 transition-all ' +
+                    (corPrimaria === c.primaria ? 'border-gray-900 scale-110' : 'border-transparent')}
+                  style={{ backgroundColor: c.primaria }}
                 />
-                <span className="text-xs text-gray-500">{cor.nome}</span>
+                <span className="text-xs text-gray-500">{c.nome}</span>
               </button>
             ))}
           </div>
-          <div className="mt-3 p-3 rounded-xl flex items-center gap-3"
-            style={{ backgroundColor: corSecundaria }}>
-            <div className="w-8 h-8 rounded-full" style={{ backgroundColor: corPrimaria }} />
-            <p className="text-sm font-medium" style={{ color: corPrimaria }}>
-              Prévia das cores do seu salão
-            </p>
+          <div className="p-3 rounded-2xl flex items-center gap-3" style={{ backgroundColor: corSecundaria }}>
+            <div className="w-8 h-8 rounded-full shrink-0" style={{ backgroundColor: corPrimaria }} />
+            <p className="text-sm font-medium" style={{ color: corPrimaria }}>Previa das cores do seu salao</p>
           </div>
         </div>
 
@@ -179,11 +176,12 @@ export default function CriarSalaoPage() {
           </div>
         )}
 
-        <button className="btn-primary mt-2" onClick={handleCriar} disabled={salvando}
+        <button onClick={handleCriar} disabled={salvando}
+          className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
           style={{ backgroundColor: corPrimaria }}>
           {salvando
             ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            : '✨ Criar meu Salão'}
+            : 'Enviar para aprovacao'}
         </button>
       </div>
     </div>
