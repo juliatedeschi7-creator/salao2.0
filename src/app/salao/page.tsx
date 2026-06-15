@@ -65,7 +65,8 @@ export default function SalaoPage() {
   )
   return (
     <div className="min-h-screen pb-20" style={{ backgroundColor: '#f8f9fa' }}>
-      <Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} corSecundaria={salao?.cor_secundaria} />
+<Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} />
+
 
       <div className="px-4 py-5 flex flex-col gap-4">
         <h1 className="text-2xl font-bold text-gray-900">
