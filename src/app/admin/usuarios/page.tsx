@@ -12,6 +12,7 @@ export default function AdminUsuariosPage() {
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<'todos' | 'pendentes' | 'aprovados'>('pendentes')
   const [carregando, setCarregando] = useState(false)
+  const [debug, setDebug] = useState('')
 
   useEffect(() => {
     if (loading) return
@@ -22,43 +23,37 @@ export default function AdminUsuariosPage() {
 
   async function carregarUsuarios() {
     setCarregando(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('*, saloes(nome)')
-      .neq('role', 'admin_geral')
       .order('created_at', { ascending: false })
-    setUsuarios(data || [])
+
+    if (error) {
+      setDebug('ERRO: ' + JSON.stringify(error))
+    } else {
+      setDebug('Total: ' + (data?.length || 0) + ' | Sem admin: ' + (data?.filter((u: any) => u.role !== 'admin_geral').length || 0))
+    }
+
+    setUsuarios((data || []).filter((u: any) => u.role !== 'admin_geral'))
     setCarregando(false)
   }
 
   async function aprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
     await supabase.from('notificacoes').insert({
-      remetente_id: profile?.id,
-      destinatario_id: u.id,
-      titulo: 'Conta aprovada!',
-      mensagem: 'Sua conta foi aprovada! Bem-vindo ao Organiza.',
-      tipo: 'admin'
+      remetente_id: profile?.id, destinatario_id: u.id,
+      titulo: 'Conta aprovada!', mensagem: 'Sua conta foi aprovada!', tipo: 'admin'
     })
     carregarUsuarios()
   }
 
   async function reprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', u.id)
-    await supabase.from('notificacoes').insert({
-      remetente_id: profile?.id,
-      destinatario_id: u.id,
-      titulo: 'Cadastro nao aprovado',
-      mensagem: 'Seu cadastro nao foi aprovado. Entre em contato com o suporte.',
-      tipo: 'admin'
-    })
     carregarUsuarios()
   }
 
   const roleLabel: Record<string, string> = {
-    dono_salao: 'Dono de Salao',
-    funcionario: 'Funcionario',
-    cliente: 'Cliente'
+    dono_salao: 'Dono de Salao', funcionario: 'Funcionario', cliente: 'Cliente'
   }
 
   const filtrados = usuarios.filter(u => {
@@ -92,6 +87,12 @@ export default function AdminUsuariosPage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
+        {debug !== '' && (
+          <div className="bg-gray-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-gray-600 break-all">{debug}</p>
+          </div>
+        )}
+
         <div className="relative">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="input-field pl-11" placeholder="Buscar por nome ou email..."
