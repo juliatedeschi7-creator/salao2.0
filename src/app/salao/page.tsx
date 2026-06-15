@@ -109,11 +109,6 @@ export default function SalaoPage() {
           <h1 className="text-2xl font-bold text-gray-900">
             {hoje.getHours() < 12 ? 'Bom dia' : hoje.getHours() < 18 ? 'Boa tarde' : 'Boa noite'}, {profile?.nome?.split(' ')[0]}! ✨
           </h1>
-          <p className="text-gray-500 text-sm mt-0.5">
-            <span className="text-2xl font-bold text-gray-900 mr-2">{hoje.getDate()}</span>
-            {hoje.toLocaleDateString('pt-BR', { weekday: 'long', month: 'long' })}
-          </p>
-        </div>
 
         {/* Resumo do dia */}
         <div className="grid grid-cols-2 gap-3">
