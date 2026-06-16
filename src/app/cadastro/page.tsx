@@ -6,9 +6,12 @@ import { useSearchParams } from 'next/navigation'
 
 function CadastroForm() {
   const searchParams = useSearchParams()
-  const tipo = searchParams.get('tipo')
   const token = searchParams.get('token')
   const salaoSlug = searchParams.get('salao')
+  const tipo = searchParams.get('tipo')
+
+  const [salaoInfo, setSalaoInfo] = useState<any>(null)
+  const [carregandoSalao, setCarregandoSalao] = useState(!!salaoSlug)
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
@@ -16,8 +19,17 @@ function CadastroForm() {
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
+
   const isCliente = !!salaoSlug
   const isSalao = tipo === 'salao' || !!token
+
+  useState(() => {
+    if (salaoSlug) {
+      supabase.from('saloes').select('nome, cor_primaria, cor_secundaria, logo_url')
+        .eq('slug', salaoSlug).single()
+        .then(({ data }) => { setSalaoInfo(data); setCarregandoSalao(false) })
+    }
+  })
 
   async function handleCadastro() {
     if (!nome || !email || !senha) { setErro('Preencha todos os campos.'); return }
@@ -30,18 +42,15 @@ function CadastroForm() {
         email: email.trim().toLowerCase(), password: senha,
         options: { data: { nome: nome.trim(), role } }
       })
-      if (error) {
-        setErro(error.message.includes('already') ? 'Email já cadastrado.' : 'Erro: ' + error.message)
-        setLoading(false); return
-      }
-      if (!data.user) { setErro('Erro ao criar usuário.'); setLoading(false); return }
+      if (error) { setErro(error.message.includes('already') ? 'Email ja cadastrado.' : 'Erro: ' + error.message); setLoading(false); return }
+      if (!data.user) { setErro('Erro ao criar usuario.'); setLoading(false); return }
       await supabase.from('profiles').upsert({
         id: data.user.id, email: email.trim().toLowerCase(),
         nome: nome.trim(), role, aprovado: isCliente, ativo: true
       }, { onConflict: 'id' })
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes').select('id').eq('slug', salaoSlug).single()
-        if (!salao) { setErro('Salão não encontrado.'); setLoading(false); return }
+        if (!salao) { setErro('Salao nao encontrado.'); setLoading(false); return }
         await supabase.from('clientes').insert({
           salao_id: salao.id, profile_id: data.user.id,
           nome: nome.trim(), email: email.trim().toLowerCase(),
@@ -63,58 +72,55 @@ function CadastroForm() {
     setLoading(false)
   }
 
+  const cor = salaoInfo?.cor_primaria || '#111827'
+  const corSec = salaoInfo?.cor_secundaria || '#f3f4f6'
+
+  if (carregandoSalao) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-gray-900 px-6 pt-14 pb-10 flex flex-col items-center">
-        <div className="w-28 h-28 rounded-3xl bg-white flex items-center justify-center mb-5 shadow-lg p-2">
+      <div className="px-6 pt-14 pb-10 flex flex-col items-center" style={{ backgroundColor: isCliente ? cor : '#111827' }}>
+        <div className="w-24 h-24 rounded-3xl bg-white flex items-center justify-center mb-4 shadow-lg p-2">
           <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-white text-3xl font-bold tracking-tight">Organiza</h1>
-        <p className="text-gray-400 text-sm mt-1">
-          {isCliente ? 'Crie sua conta de cliente' : isSalao ? 'Cadastre seu negócio' : 'Crie sua conta'}
+        <h1 className="text-white text-2xl font-bold">
+          {isCliente && salaoInfo ? salaoInfo.nome : 'Organiza'}
+        </h1>
+        <p className="text-white/70 text-sm mt-1">
+          {isCliente ? 'Crie sua conta de cliente' : isSalao ? 'Cadastre seu negocio' : 'Criar conta'}
         </p>
       </div>
 
       <div className="flex-1 px-6 py-8 flex flex-col gap-5 max-w-sm mx-auto w-full">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Nome completo</label>
-          <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
-            placeholder="Seu nome completo"
-            value={nome} onChange={e => setNome(e.target.value)}
-          />
+          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+            style={{ '--tw-ring-color': cor } as any}
+            placeholder="Seu nome completo" value={nome} onChange={e => setNome(e.target.value)} />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Email</label>
-          <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
-            type="email"
-            placeholder="seuemail@exemplo.com"
-            value={email} onChange={e => setEmail(e.target.value)}
-          />
+          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+            type="email" placeholder="seuemail@exemplo.com" value={email} onChange={e => setEmail(e.target.value)} />
         </div>
 
-        {isCliente && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-semibold text-gray-700">Data de nascimento</label>
-            <input
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
-              type="date"
-              value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
-            />
-          </div>
-        )}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-semibold text-gray-700">Data de nascimento</label>
+          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+            type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)} />
+        </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Senha</label>
           <div className="relative">
-            <input
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none focus:border-gray-900 transition-colors"
-              type={mostrarSenha ? 'text' : 'password'}
-              placeholder="Mínimo 6 caracteres"
-              value={senha} onChange={e => setSenha(e.target.value)}
-            />
+            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors"
+              type={mostrarSenha ? 'text' : 'password'} placeholder="Minimo 6 caracteres"
+              value={senha} onChange={e => setSenha(e.target.value)} />
             <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
               onClick={() => setMostrarSenha(!mostrarSenha)}>
               {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -122,23 +128,15 @@ function CadastroForm() {
           </div>
         </div>
 
-        {erro && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-            <p className="text-red-600 text-sm text-center">{erro}</p>
-          </div>
-        )}
+        {erro && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3"><p className="text-red-600 text-sm text-center">{erro}</p></div>}
 
-        <button
-          className="w-full bg-gray-900 text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
-          onClick={handleCadastro} disabled={loading}>
-          {loading
-            ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            : 'Criar conta'}
+        <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
+          style={{ backgroundColor: cor }} onClick={handleCadastro} disabled={loading}>
+          {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Criar conta'}
         </button>
 
         <p className="text-center text-gray-600 text-sm">
-          Já tem conta?{' '}
-          <a href="/login" className="text-gray-900 font-bold underline">Entrar</a>
+          Ja tem conta? <a href="/login" className="font-bold underline" style={{ color: cor }}>Entrar</a>
         </p>
       </div>
     </div>
@@ -147,11 +145,7 @@ function CadastroForm() {
 
 export default function CadastroPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" /></div>}>
       <CadastroForm />
     </Suspense>
   )
