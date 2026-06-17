@@ -1,5 +1,5 @@
 'use client'
-import { useState, Suspense } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
@@ -11,7 +11,7 @@ function CadastroForm() {
   const tipo = searchParams.get('tipo')
 
   const [salaoInfo, setSalaoInfo] = useState<any>(null)
-  const [carregandoSalao, setCarregandoSalao] = useState(!!salaoSlug)
+  const [carregandoSalao, setCarregandoSalao] = useState(false)
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
@@ -23,13 +23,19 @@ function CadastroForm() {
   const isCliente = !!salaoSlug
   const isSalao = tipo === 'salao' || !!token
 
-  useState(() => {
+  useEffect(() => {
     if (salaoSlug) {
-      supabase.from('saloes').select('nome, cor_primaria, cor_secundaria, logo_url')
-        .eq('slug', salaoSlug).single()
-        .then(({ data }) => { setSalaoInfo(data); setCarregandoSalao(false) })
+      setCarregandoSalao(true)
+      supabase.from('saloes')
+        .select('nome, cor_primaria, cor_secundaria')
+        .eq('slug', salaoSlug)
+        .single()
+        .then(({ data }) => {
+          setSalaoInfo(data)
+          setCarregandoSalao(false)
+        })
     }
-  })
+  }, [salaoSlug])
 
   async function handleCadastro() {
     if (!nome || !email || !senha) { setErro('Preencha todos os campos.'); return }
@@ -42,7 +48,10 @@ function CadastroForm() {
         email: email.trim().toLowerCase(), password: senha,
         options: { data: { nome: nome.trim(), role } }
       })
-      if (error) { setErro(error.message.includes('already') ? 'Email ja cadastrado.' : 'Erro: ' + error.message); setLoading(false); return }
+      if (error) {
+        setErro(error.message.includes('already') ? 'Email ja cadastrado.' : 'Erro: ' + error.message)
+        setLoading(false); return
+      }
       if (!data.user) { setErro('Erro ao criar usuario.'); setLoading(false); return }
       await supabase.from('profiles').upsert({
         id: data.user.id, email: email.trim().toLowerCase(),
@@ -72,55 +81,82 @@ function CadastroForm() {
     setLoading(false)
   }
 
-  const cor = salaoInfo?.cor_primaria || '#111827'
-  const corSec = salaoInfo?.cor_secundaria || '#f3f4f6'
+  const cor = isCliente && salaoInfo ? salaoInfo.cor_primaria : '#111827'
+  const corSec = isCliente && salaoInfo ? salaoInfo.cor_secundaria : '#f3f4f6'
 
   if (carregandoSalao) return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+        style={{ borderColor: cor }} />
     </div>
   )
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="px-6 pt-14 pb-10 flex flex-col items-center" style={{ backgroundColor: isCliente ? cor : '#111827' }}>
+      {/* Topo personalizado com cor do salao */}
+      <div className="px-6 pt-14 pb-10 flex flex-col items-center"
+        style={{ backgroundColor: cor }}>
         <div className="w-24 h-24 rounded-3xl bg-white flex items-center justify-center mb-4 shadow-lg p-2">
           <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-white text-2xl font-bold">
-          {isCliente && salaoInfo ? salaoInfo.nome : 'Organiza'}
-        </h1>
-        <p className="text-white/70 text-sm mt-1">
-          {isCliente ? 'Crie sua conta de cliente' : isSalao ? 'Cadastre seu negocio' : 'Criar conta'}
-        </p>
+        {isCliente && salaoInfo ? (
+          <>
+            <h1 className="text-white text-2xl font-bold text-center">{salaoInfo.nome}</h1>
+            <p className="text-white/70 text-sm mt-1">Crie sua conta para acessar nossos servicos</p>
+          </>
+        ) : (
+          <>
+            <h1 className="text-white text-2xl font-bold">Organiza</h1>
+            <p className="text-white/70 text-sm mt-1">
+              {isSalao ? 'Cadastre seu negocio' : 'Crie sua conta'}
+            </p>
+          </>
+        )}
       </div>
 
+      {/* Formulario */}
       <div className="flex-1 px-6 py-8 flex flex-col gap-5 max-w-sm mx-auto w-full">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Nome completo</label>
-          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
-            style={{ '--tw-ring-color': cor } as any}
-            placeholder="Seu nome completo" value={nome} onChange={e => setNome(e.target.value)} />
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+            placeholder="Seu nome completo"
+            value={nome} onChange={e => setNome(e.target.value)}
+          />
         </div>
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Email</label>
-          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
-            type="email" placeholder="seuemail@exemplo.com" value={email} onChange={e => setEmail(e.target.value)} />
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+            type="email" placeholder="seuemail@exemplo.com"
+            value={email} onChange={e => setEmail(e.target.value)}
+          />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-semibold text-gray-700">Data de nascimento</label>
-          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
-            type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)} />
-        </div>
+        {/* Data nascimento sempre visivel para clientes */}
+        {isCliente && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-gray-700">
+              Data de nascimento <span className="text-red-400">*</span>
+            </label>
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+              type="date"
+              value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Senha</label>
           <div className="relative">
-            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors"
-              type={mostrarSenha ? 'text' : 'password'} placeholder="Minimo 6 caracteres"
-              value={senha} onChange={e => setSenha(e.target.value)} />
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors"
+              type={mostrarSenha ? 'text' : 'password'}
+              placeholder="Minimo 6 caracteres"
+              value={senha} onChange={e => setSenha(e.target.value)}
+            />
             <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
               onClick={() => setMostrarSenha(!mostrarSenha)}>
               {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -128,16 +164,32 @@ function CadastroForm() {
           </div>
         </div>
 
-        {erro && <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3"><p className="text-red-600 text-sm text-center">{erro}</p></div>}
+        {erro && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <p className="text-red-600 text-sm text-center">{erro}</p>
+          </div>
+        )}
 
-        <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
-          style={{ backgroundColor: cor }} onClick={handleCadastro} disabled={loading}>
-          {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Criar conta'}
+        <button
+          className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
+          style={{ backgroundColor: cor }}
+          onClick={handleCadastro} disabled={loading}>
+          {loading
+            ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : 'Criar conta'}
         </button>
 
         <p className="text-center text-gray-600 text-sm">
-          Ja tem conta? <a href="/login" className="font-bold underline" style={{ color: cor }}>Entrar</a>
+          Ja tem conta?{' '}
+          <a href="/login" className="font-bold underline" style={{ color: cor }}>Entrar</a>
         </p>
+
+        {/* Mostra so para cadastro de salao */}
+        {!isCliente && (
+          <p className="text-center text-xs text-gray-400 mt-2">
+            Ao criar sua conta voce concorda com nossos termos de uso.
+          </p>
+        )}
       </div>
     </div>
   )
@@ -145,7 +197,11 @@ function CadastroForm() {
 
 export default function CadastroPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" /></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
       <CadastroForm />
     </Suspense>
   )
