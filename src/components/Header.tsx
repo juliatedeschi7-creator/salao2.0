@@ -57,7 +57,7 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
     window.location.href = '/login'
   }
 
-  const grupos = [...new Set(menuItems.map(i => i.grupo))]
+const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
 
   return (
     <>
