@@ -108,32 +108,48 @@ function CadastroForm() {
   }
 
   return (
-<h1 className="text-white text-2xl font-bold text-center leading-tight">
-  {isCliente && salaoInfo?.nome ? (
-    salaoInfo.nome.includes(' - ') ? (
-      <>
-        {salaoInfo.nome.split(' - ')[0]}
-        <br />
-        <span className="text-lg font-semibold text-white/80">
-          {salaoInfo.nome.split(' - ')[1]}
-        </span>
-      </>
-    ) : salaoInfo.nome
-  ) : 'Organiza'}
-</h1>
+    <div className="min-h-screen bg-white flex flex-col">
+      <div className="px-6 pt-14 pb-10 flex flex-col items-center" style={{ backgroundColor: cor }}>
+        <div className="w-24 h-24 rounded-3xl bg-white flex items-center justify-center mb-4 shadow-lg p-2">
+          <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
+        </div>
 
-         <p className="text-white/70 text-sm mt-1 text-center">Crie sua conta para acessar nossos servicos, consultar pacotes e agendar horarios.</p>
-          </>
-        ) : (
-          <>
-            <h1 className="text-white text-2xl font-bold">Organiza</h1>
-            <p className="text-white/70 text-sm mt-1">
-              {isSalao ? 'Cadastre seu negocio' : 'Crie sua conta'}
-            </p>
-          </>
-        )}
-      </div>
+     {isCliente ? (
+        <>
+          <h1 className="text-white text-2xl font-bold text-center leading-tight">
+            {salaoInfo?.nome ? (
+              salaoInfo.nome.includes(' - ') ? (
+                <>
+                  {salaoInfo.nome.split(' - ')[0]}
+                  <br />
+                  <span className="text-lg font-semibold text-white/80">
+                    {salaoInfo.nome.split(' - ')[1]}
+                  </span>
+                </>
+              ) : (
+                salaoInfo.nome
+              )
+            ) : (
+              'Carregando...'
+            )}
+          </h1>
 
+          <p className="text-white/70 text-sm mt-1 text-center">
+            Crie sua conta para acessar nossos servicos, consultar pacotes e
+            agendar horarios.
+          </p>
+        </>
+      ) : (
+        <>
+          <h1 className="text-white text-2xl font-bold">Organiza</h1>
+          <p className="text-white/70 text-sm mt-1">
+            {isSalao ? 'Cadastre seu negocio' : 'Crie sua conta'}
+          </p>
+        </>
+      )}
+    </div>
+
+    <div className="flex-1 px-6 py-8 flex flex-col gap-5 max-w-sm mx-auto w-full">
       <div className="flex-1 px-6 py-8 flex flex-col gap-5 max-w-sm mx-auto w-full">
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-semibold text-gray-700">Nome completo</label>
