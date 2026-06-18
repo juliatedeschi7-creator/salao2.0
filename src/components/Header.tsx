@@ -35,7 +35,7 @@ const MENU_DONO = [
   { icon: Bell, label: 'Notificacoes', href: '/salao/notificacoes', grupo: 'Outros' },
   { icon: Sparkles, label: 'Sugestoes IA', href: '/salao/ia', grupo: 'Outros' },
   { icon: Settings, label: 'Configuracoes', href: '/salao/configuracoes', grupo: 'Outros' },
-  { icon: Package2, label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento' },
+{ icon: Package, label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento' },
 { icon: DollarSign, label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestao' },
 ]
 
