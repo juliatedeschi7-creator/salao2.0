@@ -30,12 +30,12 @@ export default function ClientesPage() {
     setClientes(cli || [])
   }
 
-  function copiarLink() {
-    const link = `https://salao-flame.vercel.app/cadastro?salao=${salao?.slug}`
-    navigator.clipboard.writeText(link)
-    setCopiado(true)
-    setTimeout(() => setCopiado(false), 2000)
-  }
+ function copiarLink() {
+  const link = `${window.location.origin}/cadastro?salao=${salao?.slug}`
+  navigator.clipboard.writeText(link)
+  setCopiado(true)
+  setTimeout(() => setCopiado(false), 2000)
+}
 
   const cor = salao?.cor_primaria || '#E91E8C'
   const clientesFiltrados = clientes.filter(c =>
