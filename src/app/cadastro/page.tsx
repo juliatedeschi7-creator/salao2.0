@@ -119,7 +119,7 @@ function CadastroForm() {
             <h1 className="text-white text-2xl font-bold text-center">
               {salaoInfo?.nome || 'Carregando...'}
             </h1>
-            <p className="text-white/70 text-sm mt-1">Crie sua conta para acessar nossos servicos, consultar pacotes e agendar horários.</p>
+            <p className="text-white/70 text-sm mt-1">           Crie sua conta para acessar nossos servicos, consultar pacotes e agendar horários.</p>
           </>
         ) : (
           <>
