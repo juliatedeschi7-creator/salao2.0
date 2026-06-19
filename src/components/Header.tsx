@@ -23,7 +23,6 @@ const MENU_DONO = [
   { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
   { icon: Scissors, label: 'Catalogo de Servicos', href: '/salao/servicos', grupo: 'Atendimento' },
-  { icon: Camera, label: 'Fotos dos Servicos', href: '/salao/servicos/fotos', grupo: 'Atendimento' },
   { icon: Package, label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento' },
   { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento' },
   { icon: FileText, label: 'Fichas de Anamnese', href: '/salao/anamnese', grupo: 'Atendimento' },
