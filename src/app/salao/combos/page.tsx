@@ -101,16 +101,27 @@ export default function CombosPage() {
             <div><label className="text-sm font-medium text-gray-700 mb-1 block">Descricao</label><textarea className="input-field resize-none" rows={2} value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} /></div>
             <div><label className="text-sm font-medium text-gray-700 mb-1 block">Preco (R$)</label><input className="input-field" type="number" value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} /></div>
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Servicos incluidos</label>
-              {servicos.map(s => (
-                <button key={s.id} onClick={() => toggleServico(s.id)}
-                  className={'w-full text-left px-4 py-3 rounded-xl mb-2 text-sm font-medium border-2 transition-all ' +
-                    (form.servicosIds.includes(s.id) ? 'text-white border-transparent' : 'border-gray-200 text-gray-600')}
-                  style={form.servicosIds.includes(s.id) ? { backgroundColor: cor, borderColor: cor } : {}}>
-                  {s.nome}
-                </button>
-              ))}
-            </div>
+<div>
+  <label className="text-sm font-medium text-gray-700 mb-2 block">Servicos incluidos no combo</label>
+  <p className="text-xs text-gray-400 mb-2">Selecione todos os procedimentos que fazem parte deste combo</p>
+  {servicos.map(s => (
+    <button key={s.id} onClick={() => toggleServico(s.id)}
+      className={'w-full text-left px-4 py-3 rounded-xl mb-2 text-sm font-medium border-2 transition-all flex items-center justify-between ' +
+        (form.servicosIds.includes(s.id) ? 'text-white border-transparent' : 'border-gray-200 text-gray-600')}
+      style={form.servicosIds.includes(s.id) ? { backgroundColor: cor, borderColor: cor } : {}}>
+      <span>{s.nome}</span>
+      {form.servicosIds.includes(s.id) && <span className="text-xs">✓ incluso</span>}
+    </button>
+  ))}
+  {form.servicosIds.length > 0 && (
+    <div className="bg-gray-50 rounded-xl p-3 mt-2">
+      <p className="text-xs font-medium text-gray-500 mb-1">Este combo vai incluir:</p>
+      <p className="text-sm text-gray-700">
+        {servicos.filter(s => form.servicosIds.includes(s.id)).map(s => s.nome).join(' + ')}
+      </p>
+    </div>
+  )}
+</div>
             <div className="flex gap-3">
               <button onClick={() => setModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
               <button onClick={salvar} disabled={salvando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>{salvando ? '...' : 'Salvar'}</button>
