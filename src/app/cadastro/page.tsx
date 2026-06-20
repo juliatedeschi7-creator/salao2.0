@@ -106,18 +106,20 @@ function CadastroForm() {
   )
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10">
-      <div className="w-full max-w-sm flex flex-col items-center gap-2 mb-6">
-        <div className="w-24 h-24 flex items-center justify-center mb-2">
-          <img
-            src="/logo.png"
-            alt="Organiza"
-            className="w-full h-full object-contain"
-            style={isCliente && salaoInfo ? {
-              filter: 'brightness(0) saturate(100%)',
-            } : {}}
-          />
-        </div>
+<div
+  className="w-24 h-24 mb-2 relative"
+  style={{ backgroundColor: cor, borderRadius: '12px' }}
+>
+  <img
+    src="/logo.png"
+    alt="Organiza"
+    className="w-full h-full object-contain"
+    style={{
+      filter: 'brightness(0) invert(1)',
+      mixBlendMode: 'destination-in' as any,
+    }}
+  />
+</div>
 
         {isCliente ? (
           <div className="text-center">
