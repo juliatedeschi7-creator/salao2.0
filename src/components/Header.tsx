@@ -36,6 +36,7 @@ const MENU_DONO = [
   { icon: Settings, label: 'Configuracoes', href: '/salao/configuracoes', grupo: 'Outros' },
 { icon: Package, label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento' },
 { icon: DollarSign, label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestao' },
+{ icon: FileText, label: 'Contratos', href: '/salao/contratos', grupo: 'Atendimento' },
 ]
 
 const MENU_ADMIN = [
