@@ -55,45 +55,39 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-gray-900 px-6 pt-14 pb-10 flex flex-col items-center">
-        <div className="w-28 h-28 rounded-3xl bg-white flex items-center justify-center mb-5 shadow-lg p-2">
-          <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10">
+      <div className="w-full max-w-sm flex flex-col items-center gap-2 mb-8">
+        <div className="w-24 h-24 mb-2">
+          <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-white text-3xl font-bold tracking-tight">Organiza Salão</h1>
-        <p className="text-gray-400 text-sm mt-1">Toda a gestão do seu espaço na palma da mão.</p>
+        <h1 className="text-2xl font-bold text-gray-900">Organiza</h1>
+        <p className="text-gray-400 text-sm text-center">Toda a gestao do seu espaco na palma da mao.</p>
       </div>
 
-      <div className="flex-1 px-6 py-8 flex flex-col gap-5 max-w-sm mx-auto w-full">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-semibold text-gray-700">Email</label>
+      <div className="w-full max-w-sm flex flex-col gap-4">
+        <input
+          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors placeholder-gray-400"
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleLogin()}
+        />
+
+        <div className="relative">
           <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors"
-            type="email"
-            placeholder="seuemail@exemplo.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none focus:border-gray-900 transition-colors placeholder-gray-400"
+            type={mostrarSenha ? 'text' : 'password'}
+            placeholder="Senha"
+            value={senha}
+            onChange={e => setSenha(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleLogin()}
           />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-semibold text-gray-700">Senha</label>
-          <div className="relative">
-            <input
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none focus:border-gray-900 transition-colors"
-              type={mostrarSenha ? 'text' : 'password'}
-              placeholder="Digite sua senha"
-              value={senha}
-              onChange={e => setSenha(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            />
-            <button
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
-              onClick={() => setMostrarSenha(!mostrarSenha)}>
-              {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
-            </button>
-          </div>
+          <button
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+            onClick={() => setMostrarSenha(!mostrarSenha)}>
+            {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+          </button>
         </div>
 
         {erro && (
@@ -103,7 +97,7 @@ export default function LoginPage() {
         )}
 
         <button
-          className="w-full bg-gray-900 text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+          className="w-full bg-gray-900 text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
           onClick={handleLogin}
           disabled={loading}>
           {loading
@@ -117,14 +111,14 @@ export default function LoginPage() {
           <div className="flex-1 h-px bg-gray-200" />
         </div>
 
-        <p className="text-center text-gray-600 text-sm">
-          Não tem conta?{' '}
-          <a href="/cadastro" className="text-gray-900 font-bold underline">Criar conta</a>
+        <p className="text-center text-gray-500 text-sm">
+          Nao tem conta?{' '}
+          <a href="/cadastro" className="text-gray-900 font-bold">Criar conta</a>
         </p>
 
         <a href="/cadastro?tipo=salao"
           className="w-full border-2 border-gray-900 text-gray-900 rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all">
-          Cadastrar meu salão
+          Cadastrar meu salao
         </a>
       </div>
     </div>
