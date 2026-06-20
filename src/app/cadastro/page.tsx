@@ -106,20 +106,22 @@ function CadastroForm() {
   )
 
   return (
-<div
-  className="w-24 h-24 mb-2 relative"
-  style={{ backgroundColor: cor, borderRadius: '12px' }}
->
-  <img
-    src="/logo.png"
-    alt="Organiza"
-    className="w-full h-full object-contain"
-    style={{
-      filter: 'brightness(0) invert(1)',
-      mixBlendMode: 'destination-in' as any,
-    }}
-  />
-</div>
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10">
+      <div className="w-full max-w-sm flex flex-col items-center gap-2 mb-6">
+        <div
+          className="w-24 h-24 mb-2 relative"
+          style={{ backgroundColor: cor, borderRadius: '12px' }}
+        >
+          <img
+            src="/logo.png"
+            alt="Organiza"
+            className="w-full h-full object-contain"
+            style={{
+              filter: 'brightness(0) invert(1)',
+              mixBlendMode: 'destination-in' as any,
+            }}
+          />
+        </div>
 
         {isCliente ? (
           <div className="text-center">
@@ -147,33 +149,30 @@ function CadastroForm() {
 
       <div className="w-full max-w-sm flex flex-col gap-4">
         <input
-          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
           placeholder="Seu nome"
           value={nome} onChange={e => setNome(e.target.value)}
         />
 
         <input
-          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
+          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
           type="email" placeholder="Email"
           value={email} onChange={e => setEmail(e.target.value)}
         />
 
         {isCliente && (
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-semibold text-gray-700">
-              Data de nascimento <span className="text-red-400">*</span>
-            </label>
-            <input
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors"
-              type="date"
-              value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
-            />
-          </div>
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors text-gray-400"
+            type="date"
+            placeholder="Data de nascimento"
+            value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
+            style={{ colorScheme: 'light' }}
+          />
         )}
 
         <div className="relative">
           <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
             type={mostrarSenha ? 'text' : 'password'}
             placeholder="Senha"
             value={senha} onChange={e => setSenha(e.target.value)}
