@@ -148,36 +148,36 @@ function CadastroForm() {
       }}
     >
       <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
-        <div
-          className="w-20 h-20 mb-5"
-          style={{
-            backgroundColor: cor,
-            WebkitMaskImage: 'url(/logo.png)',
-            maskImage: 'url(/logo.png)',
-            WebkitMaskSize: 'contain',
-            maskSize: 'contain',
-            WebkitMaskRepeat: 'no-repeat',
-            maskRepeat: 'no-repeat',
-            WebkitMaskPosition: 'center',
-            maskPosition: 'center'
-          }}
-        />
+       <div
+  className="w-20 h-20 mb-2"
+  style={{
+    backgroundColor: cor,
+    WebkitMaskImage: 'url(/logo.png)',
+    maskImage: 'url(/logo.png)',
+    WebkitMaskSize: 'contain',
+    maskSize: 'contain',
+    WebkitMaskRepeat: 'no-repeat',
+    maskRepeat: 'no-repeat',
+    WebkitMaskPosition: 'center',
+    maskPosition: 'center'
+  }}
+/>
 
-        {isCliente ? (
-          <div className="text-center">
-            <h1 className="text-2xl font-bold leading-tight text-gray-900">
-              {getNomeParte1()}
-            </h1>
-            {getNomeParte2() && (
-              <p className="text-sm font-semibold mt-1" style={{ color: cor }}>
-                {getNomeParte2()}
-              </p>
-            )}
-            <p className="text-gray-400 text-sm mt-3 text-center leading-relaxed">
-              Crie sua conta para agendar serviços<br />e acompanhar seus pacotes
-            </p>
-          </div>
-        ) : (
+{isCliente ? (
+  <div className="text-center">
+    <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
+      {getNomeParte1()}
+    </h1>
+    {getNomeParte2() && (
+      <p className="text-sm font-semibold mt-1 text-gray-900">
+        {getNomeParte2()}
+      </p>
+    )}
+    <p className="text-gray-400 text-sm mt-3 text-center leading-relaxed">
+      Crie sua conta para agendar serviços<br />e acompanhar seus pacotes
+    </p>
+  </div>
+) : (
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900">Criar conta</h1>
             <p className="text-gray-400 text-sm mt-1 text-center">
