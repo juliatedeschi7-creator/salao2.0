@@ -25,8 +25,12 @@ function CadastroForm() {
 
   useEffect(() => {
     async function buscarSalao() {
-      if (!salaoSlug) { setCarregandoSalao(false); return }
-      const { data } = await supabase.from('saloes')
+      if (!salaoSlug) {
+        setCarregandoSalao(false)
+        return
+      }
+      const { data } = await supabase
+        .from('saloes')
         .select('nome, cor_primaria, cor_secundaria')
         .eq('slug', salaoSlug)
         .maybeSingle()
@@ -37,33 +41,59 @@ function CadastroForm() {
   }, [salaoSlug])
 
   async function handleCadastro() {
-    if (!nome || !email || !senha) { setErro('Preencha todos os campos.'); return }
-    if (senha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres.'); return }
-    if (isCliente && !dataNascimento) { setErro('Informe sua data de nascimento.'); return }
-    setLoading(true); setErro('')
+    if (!nome || !email || !senha) {
+      setErro('Preencha todos os campos.')
+      return
+    }
+    if (senha.length < 6) {
+      setErro('Senha deve ter pelo menos 6 caracteres.')
+      return
+    }
+    if (isCliente && !dataNascimento) {
+      setErro('Informe sua data de nascimento.')
+      return
+    }
+    setLoading(true)
+    setErro('')
     const role = isCliente ? 'cliente' : 'dono_salao'
     try {
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(), password: senha,
+        email: email.trim().toLowerCase(),
+        password: senha,
         options: { data: { nome: nome.trim(), role } }
       })
       if (error) {
         setErro(error.message.includes('already') ? 'Email ja cadastrado.' : 'Erro: ' + error.message)
-        setLoading(false); return
+        setLoading(false)
+        return
       }
-      if (!data.user) { setErro('Erro ao criar usuario.'); setLoading(false); return }
+      if (!data.user) {
+        setErro('Erro ao criar usuario.')
+        setLoading(false)
+        return
+      }
 
       await supabase.from('profiles').upsert({
-        id: data.user.id, email: email.trim().toLowerCase(),
-        nome: nome.trim(), role, aprovado: isCliente, ativo: true
+        id: data.user.id,
+        email: email.trim().toLowerCase(),
+        nome: nome.trim(),
+        role,
+        aprovado: isCliente,
+        ativo: true
       }, { onConflict: 'id' })
 
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes').select('id').eq('slug', salaoSlug).single()
-        if (!salao) { setErro('Salao nao encontrado.'); setLoading(false); return }
+        if (!salao) {
+          setErro('Salao nao encontrado.')
+          setLoading(false)
+          return
+        }
         await supabase.from('clientes').insert({
-          salao_id: salao.id, profile_id: data.user.id,
-          nome: nome.trim(), email: email.trim().toLowerCase(),
+          salao_id: salao.id,
+          profile_id: data.user.id,
+          nome: nome.trim(),
+          email: email.trim().toLowerCase(),
           data_nascimento: dataNascimento || null
         })
         await supabase.from('profiles').update({ salao_id: salao.id, aprovado: true }).eq('id', data.user.id)
@@ -99,28 +129,31 @@ function CadastroForm() {
     return salaoInfo.nome.includes(' - ') ? salaoInfo.nome.split(' - ')[1] : null
   }
 
-  if (carregandoSalao) return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  if (carregandoSalao) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   return (
-    <div
-  className="w-24 h-24 mb-2"
-  style={{
-    backgroundColor: cor,
-    WebkitMaskImage: 'url(/logo.png)',
-    maskImage: 'url(/logo.png)',
-    WebkitMaskSize: 'contain',
-    maskSize: 'contain',
-    WebkitMaskRepeat: 'no-repeat',
-    maskRepeat: 'no-repeat',
-    WebkitMaskPosition: 'center',
-    maskPosition: 'center',
-  }}
-/>
-        </div>
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10">
+      <div className="w-full max-w-sm flex flex-col items-center gap-2 mb-6">
+        <div
+          className="w-24 h-24 mb-2"
+          style={{
+            backgroundColor: cor,
+            WebkitMaskImage: 'url(/logo.png)',
+            maskImage: 'url(/logo.png)',
+            WebkitMaskSize: 'contain',
+            maskSize: 'contain',
+            WebkitMaskRepeat: 'no-repeat',
+            maskRepeat: 'no-repeat',
+            WebkitMaskPosition: 'center',
+            maskPosition: 'center'
+          }}
+        />
 
         {isCliente ? (
           <div className="text-center">
@@ -150,13 +183,16 @@ function CadastroForm() {
         <input
           className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
           placeholder="Seu nome"
-          value={nome} onChange={e => setNome(e.target.value)}
+          value={nome}
+          onChange={e => setNome(e.target.value)}
         />
 
         <input
           className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
-          type="email" placeholder="Email"
-          value={email} onChange={e => setEmail(e.target.value)}
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
         />
 
         {isCliente && (
@@ -164,7 +200,8 @@ function CadastroForm() {
             className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors text-gray-400"
             type="date"
             placeholder="Data de nascimento"
-            value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
+            value={dataNascimento}
+            onChange={e => setDataNascimento(e.target.value)}
             style={{ colorScheme: 'light' }}
           />
         )}
@@ -174,10 +211,13 @@ function CadastroForm() {
             className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
             type={mostrarSenha ? 'text' : 'password'}
             placeholder="Senha"
-            value={senha} onChange={e => setSenha(e.target.value)}
+            value={senha}
+            onChange={e => setSenha(e.target.value)}
           />
-          <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
-            onClick={() => setMostrarSenha(!mostrarSenha)}>
+          <button
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+            onClick={() => setMostrarSenha(!mostrarSenha)}
+          >
             {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
           </button>
         </div>
@@ -191,15 +231,21 @@ function CadastroForm() {
         <button
           className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
           style={{ backgroundColor: cor }}
-          onClick={handleCadastro} disabled={loading}>
-          {loading
-            ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            : 'Criar conta'}
+          onClick={handleCadastro}
+          disabled={loading}
+        >
+          {loading ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            'Criar conta'
+          )}
         </button>
 
         <p className="text-center text-gray-500 text-sm">
           Ja tem conta?{' '}
-          <a href="/login" className="font-bold" style={{ color: cor }}>Entrar</a>
+          <a href="/login" className="font-bold" style={{ color: cor }}>
+            Entrar
+          </a>
         </p>
       </div>
     </div>
@@ -208,11 +254,13 @@ function CadastroForm() {
 
 export default function CadastroPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-white">
+          <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
       <CadastroForm />
     </Suspense>
   )
