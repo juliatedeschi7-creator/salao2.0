@@ -148,28 +148,13 @@ function CadastroForm() {
       }}
     >
       <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
-       <div
-  className="w-20 h-20 mb-2"
-  style={{
-    backgroundColor: cor,
-    WebkitMaskImage: 'url(/logo.png)',
-    maskImage: 'url(/logo.png)',
-    WebkitMaskSize: 'contain',
-    maskSize: 'contain',
-    WebkitMaskRepeat: 'no-repeat',
-    maskRepeat: 'no-repeat',
-    WebkitMaskPosition: 'center',
-    maskPosition: 'center'
-  }}
-/>
-
 {isCliente ? (
-  <div className="text-center">
+  <div className="text-center mt-8">
     <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
       {getNomeParte1()}
     </h1>
     {getNomeParte2() && (
-      <p className="text-sm font-semibold mt-1 text-gray-900">
+      <p className="text-sm font-medium mt-1 text-gray-400">
         {getNomeParte2()}
       </p>
     )}
