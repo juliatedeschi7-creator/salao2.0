@@ -58,7 +58,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10">
       <div className="w-full max-w-sm flex flex-col items-center gap-2 mb-8">
         <div className="w-24 h-24 mb-2">
-          <img src="/logo.png" alt="Organiza" className="w-full h-full object-contain" />
+          <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
         </div>
         <h1 className="text-2xl font-bold text-gray-900">Organiza</h1>
         <p className="text-gray-400 text-sm text-center">Toda a gestao do seu espaco na palma da mao.</p>
