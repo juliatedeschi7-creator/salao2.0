@@ -118,6 +118,7 @@ function CadastroForm() {
   }
 
   const cor = (isCliente && salaoInfo?.cor_primaria) ? salaoInfo.cor_primaria : '#111827'
+  const corSec = (isCliente && salaoInfo?.cor_secundaria) ? salaoInfo.cor_secundaria : '#f3f4f6'
 
   function getNomeParte1() {
     if (!salaoInfo?.nome) return 'Criar conta'
@@ -138,10 +139,17 @@ function CadastroForm() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10">
-      <div className="w-full max-w-sm flex flex-col items-center gap-2 mb-6">
+    <div
+      className="min-h-screen flex flex-col items-center px-6 py-10"
+      style={{
+        background: isCliente
+          ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)`
+          : '#ffffff'
+      }}
+    >
+      <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
         <div
-          className="w-24 h-24 mb-2"
+          className="w-20 h-20 mb-5"
           style={{
             backgroundColor: cor,
             WebkitMaskImage: 'url(/logo.png)',
@@ -157,16 +165,16 @@ function CadastroForm() {
 
         {isCliente ? (
           <div className="text-center">
-            <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
+            <h1 className="text-2xl font-bold leading-tight text-gray-900">
               {getNomeParte1()}
             </h1>
             {getNomeParte2() && (
-              <p className="text-base font-bold mt-0.5" style={{ color: cor }}>
-                ({getNomeParte2()})
+              <p className="text-sm font-semibold mt-1" style={{ color: cor }}>
+                {getNomeParte2()}
               </p>
             )}
-            <p className="text-gray-400 text-sm mt-2 text-center">
-              Crie sua conta para conhecer nosso catalogo de servicos, acompanhar pacotes e agendar horarios.
+            <p className="text-gray-400 text-sm mt-3 text-center leading-relaxed">
+              Crie sua conta para agendar serviços<br />e acompanhar seus pacotes
             </p>
           </div>
         ) : (
@@ -179,47 +187,58 @@ function CadastroForm() {
         )}
       </div>
 
-      <div className="w-full max-w-sm flex flex-col gap-4">
-        <input
-          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
-          placeholder="Seu nome"
-          value={nome}
-          onChange={e => setNome(e.target.value)}
-        />
+      <div className="w-full max-w-sm flex flex-col gap-4 mt-2">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Nome completo</label>
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
+            placeholder="Seu nome completo"
+            value={nome}
+            onChange={e => setNome(e.target.value)}
+          />
+        </div>
 
-        <input
-          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-        />
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Email</label>
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
+            type="email"
+            placeholder="seuemail@exemplo.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+          />
+        </div>
 
         {isCliente && (
-          <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors text-gray-400"
-            type="date"
-            placeholder="Data de nascimento"
-            value={dataNascimento}
-            onChange={e => setDataNascimento(e.target.value)}
-            style={{ colorScheme: 'light' }}
-          />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-gray-500">Data de nascimento</label>
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors text-gray-700"
+              type="date"
+              value={dataNascimento}
+              onChange={e => setDataNascimento(e.target.value)}
+              style={{ colorScheme: 'light' }}
+            />
+          </div>
         )}
 
-        <div className="relative">
-          <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
-            type={mostrarSenha ? 'text' : 'password'}
-            placeholder="Senha"
-            value={senha}
-            onChange={e => setSenha(e.target.value)}
-          />
-          <button
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
-            onClick={() => setMostrarSenha(!mostrarSenha)}
-          >
-            {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
-          </button>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <div className="relative">
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
+              type={mostrarSenha ? 'text' : 'password'}
+              placeholder="Mínimo 6 caracteres"
+              value={senha}
+              onChange={e => setSenha(e.target.value)}
+            />
+            <button
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+              onClick={() => setMostrarSenha(!mostrarSenha)}
+            >
+              {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
         </div>
 
         {erro && (
@@ -229,7 +248,7 @@ function CadastroForm() {
         )}
 
         <button
-          className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
+          className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
           style={{ backgroundColor: cor }}
           onClick={handleCadastro}
           disabled={loading}
@@ -241,8 +260,8 @@ function CadastroForm() {
           )}
         </button>
 
-        <p className="text-center text-gray-500 text-sm">
-          Ja tem conta?{' '}
+        <p className="text-center text-gray-500 text-sm mb-6">
+          Já tem conta?{' '}
           <a href="/login" className="font-bold" style={{ color: cor }}>
             Entrar
           </a>
