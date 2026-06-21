@@ -60,7 +60,7 @@ export default function LoginPage() {
         <div className="w-24 h-24 mb-2">
           <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900">Organiza</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
         <p className="text-gray-400 text-sm text-center">Toda a gestao do seu espaco na palma da mao.</p>
       </div>
 
