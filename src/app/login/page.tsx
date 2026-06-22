@@ -1,14 +1,32 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams()
+  const salaoSlug = searchParams.get('salao')
+  const [salaoInfo, setSalaoInfo] = useState<any>(null)
+  const [carregando, setCarregando] = useState(!!salaoSlug)
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
+
+  useEffect(() => {
+    async function buscarSalao() {
+      if (!salaoSlug) { setCarregando(false); return }
+      const { data } = await supabase.from('saloes')
+        .select('nome, cor_primaria, cor_secundaria')
+        .eq('slug', salaoSlug)
+        .maybeSingle()
+      if (data) setSalaoInfo(data)
+      setCarregando(false)
+    }
+    buscarSalao()
+  }, [salaoSlug])
 
   async function handleLogin() {
     if (!email || !senha) { setErro('Preencha email e senha.'); return }
@@ -54,40 +72,92 @@ export default function LoginPage() {
     window.location.href = destino
   }
 
+  const isCliente = !!salaoSlug
+  const cor = (isCliente && salaoInfo?.cor_primaria) ? salaoInfo.cor_primaria : '#111827'
+  const corSec = (isCliente && salaoInfo?.cor_secundaria) ? salaoInfo.cor_secundaria : '#f3f4f6'
+
+  function getNomeParte1() {
+    if (!salaoInfo?.nome) return 'Entrar'
+    return salaoInfo.nome.includes(' - ') ? salaoInfo.nome.split(' - ')[0] : salaoInfo.nome
+  }
+
+  function getNomeParte2() {
+    if (!salaoInfo?.nome) return null
+    return salaoInfo.nome.includes(' - ') ? salaoInfo.nome.split(' - ')[1] : null
+  }
+
+  if (carregando) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 py-10">
-      <div className="w-full max-w-sm flex flex-col items-center gap-2 mb-8">
-        <div className="w-24 h-24 mb-2">
-          <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
-        </div>
-        <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
-        <p className="text-gray-400 text-sm text-center">Toda a gestao do seu espaco na palma da mao.</p>
+    <div
+      className="min-h-screen flex flex-col items-center px-6 py-10"
+      style={{
+        background: isCliente
+          ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)`
+          : '#ffffff'
+      }}
+    >
+      <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-8 mt-8">
+        {isCliente ? (
+          <div className="text-center">
+            <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
+              {getNomeParte1()}
+            </h1>
+            {getNomeParte2() && (
+              <p className="text-sm font-medium mt-1 text-gray-400">
+                {getNomeParte2()}
+              </p>
+            )}
+            <p className="text-gray-400 text-sm mt-3 text-center">
+              Entre na sua conta para continuar
+            </p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
+            <p className="text-gray-400 text-sm mt-1 text-center">
+              Toda a gestão do seu espaço na palma da mão.
+            </p>
+          </div>
+        )}
       </div>
 
       <div className="w-full max-w-sm flex flex-col gap-4">
-        <input
-          className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none focus:border-gray-900 transition-colors placeholder-gray-400"
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleLogin()}
-        />
-
-        <div className="relative">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Email</label>
           <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none focus:border-gray-900 transition-colors placeholder-gray-400"
-            type={mostrarSenha ? 'text' : 'password'}
-            placeholder="Senha"
-            value={senha}
-            onChange={e => setSenha(e.target.value)}
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
+            type="email"
+            placeholder="seuemail@exemplo.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleLogin()}
           />
-          <button
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
-            onClick={() => setMostrarSenha(!mostrarSenha)}>
-            {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
-          </button>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <div className="relative">
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
+              type={mostrarSenha ? 'text' : 'password'}
+              placeholder="Digite sua senha"
+              value={senha}
+              onChange={e => setSenha(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            />
+            <button
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+              onClick={() => setMostrarSenha(!mostrarSenha)}>
+              {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
         </div>
 
         {erro && (
@@ -97,7 +167,8 @@ export default function LoginPage() {
         )}
 
         <button
-          className="w-full bg-gray-900 text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
+          className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+          style={{ backgroundColor: cor }}
           onClick={handleLogin}
           disabled={loading}>
           {loading
@@ -105,22 +176,45 @@ export default function LoginPage() {
             : 'Entrar'}
         </button>
 
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-gray-400 text-sm">ou</span>
-          <div className="flex-1 h-px bg-gray-200" />
-        </div>
+        {!isCliente && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-gray-400 text-sm">ou</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
 
-        <p className="text-center text-gray-500 text-sm">
-          Nao tem conta?{' '}
-          <a href="/cadastro" className="text-gray-900 font-bold">Criar conta</a>
-        </p>
+            <p className="text-center text-gray-500 text-sm">
+              Não tem conta?{' '}
+              <a href="/cadastro" className="text-gray-900 font-bold">Criar conta</a>
+            </p>
 
-        <a href="/cadastro?tipo=salao"
-          className="w-full border-2 border-gray-900 text-gray-900 rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all">
-          Cadastrar meu salao
-        </a>
+            <a href="/cadastro?tipo=salao"
+              className="w-full border-2 border-gray-900 text-gray-900 rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all">
+              Cadastrar meu salão
+            </a>
+          </>
+        )}
+
+        {isCliente && (
+          <p className="text-center text-gray-500 text-sm">
+            Não tem conta?{' '}
+            <a href={'/cadastro?salao=' + salaoSlug} className="font-bold" style={{ color: cor }}>Criar conta</a>
+          </p>
+        )}
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }
