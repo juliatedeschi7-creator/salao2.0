@@ -1,11 +1,15 @@
 import type { Metadata } from 'next'
 import './globals.css'
 
-export const metadata: Metadata = {
+export const metadata = {
   title: 'Organiza Salão',
   description: 'Sistema de gestão para salões de beleza',
+  manifest: '/manifest.json',
+  icons: {
+    icon: '/icon-512.png',
+    apple: '/apple-icon.png',
+  },
 }
-
 export default function RootLayout({
   children,
 }: {
