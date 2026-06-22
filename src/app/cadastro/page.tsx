@@ -166,12 +166,12 @@ const corSec =
     </h1>
 
     {getNomeParte2() && (
-      <p className="text-sm font-medium mt-1 text-gray-700">
+      <p className="text-sm font-medium mt-1 text-gray-800">
         {getNomeParte2()}
       </p>
     )}
 
-    <p className="text-gray-700 text-sm mt-3 text-center leading-relaxed">
+    <p className="text-gray-800 text-sm mt-3 text-center leading-relaxed">
       Crie sua conta para acessar nosso catálogo,
       agendar serviços e acompanhar seus pacotes
     </p>
@@ -185,7 +185,7 @@ const corSec =
       {salaoInfo?.nome || 'Convite para funcionário'}
     </h1>
 
-    <p className="text-gray-700 text-sm mt-3 leading-relaxed">
+    <p className="text-gray-800 text-sm mt-3 leading-relaxed">
       Crie sua conta para colaborar na gestão do salão.
     </p>
   </div>
@@ -195,7 +195,7 @@ const corSec =
       Crie uma conta para começar a ter controle do seu salão na palma da mão
     </h1>
 
-    <p className="text-gray-700 text-sm mt-3 leading-relaxed">
+    <p className="text-gray-800 text-sm mt-3 leading-relaxed">
       Comece a visualizar agenda, ter catálogo de serviços,
       enviar lembretes de horários e controlar pacotes.
       Facilite sua gestão!
@@ -206,9 +206,9 @@ const corSec =
 
       <div className="w-full max-w-sm flex flex-col gap-4 mt-2">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Nome completo</label>
+          <label className="text-xs font-semibold text-gray-800">Nome completo</label>
           <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-700"
             placeholder="Seu nome completo"
             value={nome}
             onChange={e => setNome(e.target.value)}
@@ -216,9 +216,9 @@ const corSec =
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Email</label>
+          <label className="text-xs font-semibold text-gray-800">Email</label>
           <input
-            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
+className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base text-gray-900 outline-none transition-colors placeholder-gray-500"
             type="email"
             placeholder="seuemail@exemplo.com"
             value={email}
@@ -228,9 +228,9 @@ const corSec =
 
         {isCliente && (
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-gray-500">Data de nascimento</label>
+            <label className="text-xs font-semibold text-gray-800">Data de nascimento</label>
             <input
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors text-gray-700"
+className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base text-gray-900 outline-none transition-colors placeholder-gray-500"
               type="date"
               value={dataNascimento}
               onChange={e => setDataNascimento(e.target.value)}
@@ -240,17 +240,17 @@ const corSec =
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <label className="text-xs font-semibold text-gray-800">Senha</label>
           <div className="relative">
             <input
-              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
+className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base text-gray-900 outline-none transition-colors placeholder-gray-500"
               type={mostrarSenha ? 'text' : 'password'}
               placeholder="Mínimo 6 caracteres"
               value={senha}
               onChange={e => setSenha(e.target.value)}
             />
             <button
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-700"
               onClick={() => setMostrarSenha(!mostrarSenha)}
             >
               {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
@@ -277,7 +277,7 @@ const corSec =
           )}
         </button>
 
-        <p className="text-center text-gray-500 text-sm mb-6">
+        <p className="text-center text-gray-800 text-sm mb-6">
           Já tem conta?{' '}
           <a href={isCliente ? '/login?salao=' + salaoSlug : '/login'} className="font-bold" style={{ color: cor }}>
   Entrar
