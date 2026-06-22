@@ -1,6 +1,6 @@
 {
   "name": "Organiza Salão",
-  "short_name": "Organiza",
+  "short_name": "Organiza Salão",
   "description": "Sistema de gestão para salões de beleza",
   "start_url": "/",
   "display": "standalone",
