@@ -247,9 +247,9 @@ function CadastroForm() {
 
         <p className="text-center text-gray-500 text-sm mb-6">
           Já tem conta?{' '}
-          <a href="/login" className="font-bold" style={{ color: cor }}>
-            Entrar
-          </a>
+          <a href={isCliente ? '/login?salao=' + salaoSlug : '/login'} className="font-bold" style={{ color: cor }}>
+  Entrar
+</a>
         </p>
       </div>
     </div>
