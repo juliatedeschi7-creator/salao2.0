@@ -111,7 +111,7 @@ const isNovoSalao = tipo === 'salao'
         window.location.href = '/aguardando'
         return
       }
-      window.location.href = isSalao ? '/aguardando' : '/login'
+window.location.href = isNovoSalao ? '/aguardando' : '/login'
     } catch (e: any) {
       setErro('Erro: ' + (e.message || 'Tente novamente.'))
     }
