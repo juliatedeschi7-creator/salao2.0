@@ -118,16 +118,18 @@ function LoginForm() {
               Entre na sua conta para continuar
             </p>
           </div>
-        ) : (
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
-            <p className="text-gray-400 text-sm mt-1 text-center">
-              Toda a gestão do seu espaço na palma da mão.
-            </p>
-          </div>
-        )}
+    ) : (
+  <div className="flex flex-col items-center text-center">
+    <div className="w-20 h-20 mb-4">
+      <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
+    </div>
+    <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
+    <p className="text-gray-400 text-sm mt-1 text-center">
+      Toda a gestão do seu espaço na palma da mão.
+    </p>
+  </div>
+)}
       </div>
-
       <div className="w-full max-w-sm flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <label className="text-xs font-semibold text-gray-500">Email</label>
