@@ -20,8 +20,9 @@ function CadastroForm() {
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
 
-  const isCliente = !!salaoSlug
-  const isSalao = tipo === 'salao' || !!token
+const isCliente = !!salaoSlug
+const isFuncionario = !!token
+const isNovoSalao = tipo === 'salao'
 
   useEffect(() => {
     async function buscarSalao() {
@@ -117,8 +118,15 @@ function CadastroForm() {
     setLoading(false)
   }
 
-  const cor = (isCliente && salaoInfo?.cor_primaria) ? salaoInfo.cor_primaria : '#111827'
-  const corSec = (isCliente && salaoInfo?.cor_secundaria) ? salaoInfo.cor_secundaria : '#f3f4f6'
+const cor =
+  (isCliente || isFuncionario) && salaoInfo?.cor_primaria
+    ? salaoInfo.cor_primaria
+    : '#111827'
+
+const corSec =
+  (isCliente || isFuncionario) && salaoInfo?.cor_secundaria
+    ? salaoInfo.cor_secundaria
+    : '#f3f4f6'
 
   function getNomeParte1() {
     if (!salaoInfo?.nome) return 'Criar conta'
@@ -142,7 +150,7 @@ function CadastroForm() {
     <div
       className="min-h-screen flex flex-col items-center px-6 py-10"
       style={{
-        background: isCliente
+        background: (isCliente || isFuncionario)
           ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)`
           : '#ffffff'
       }}
@@ -150,26 +158,50 @@ function CadastroForm() {
       <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
 {isCliente ? (
   <div className="text-center mt-8">
-    <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
+    <h1
+      className="text-2xl font-bold leading-tight"
+      style={{ color: cor }}
+    >
       {getNomeParte1()}
     </h1>
+
     {getNomeParte2() && (
-      <p className="text-sm font-medium mt-1 text-gray-400">
+      <p className="text-sm font-medium mt-1 text-gray-700">
         {getNomeParte2()}
       </p>
     )}
-    <p className="text-gray-400 text-sm mt-3 text-center leading-relaxed">
-      Crie sua conta para agendar serviços<br />e acompanhar seus pacotes
+
+    <p className="text-gray-700 text-sm mt-3 text-center leading-relaxed">
+      Crie sua conta para acessar nosso catálogo,
+      agendar serviços e acompanhar seus pacotes
+    </p>
+  </div>
+) : isFuncionario ? (
+  <div className="text-center">
+    <h1
+      className="text-2xl font-bold"
+      style={{ color: cor }}
+    >
+      {salaoInfo?.nome || 'Convite para funcionário'}
+    </h1>
+
+    <p className="text-gray-700 text-sm mt-3 leading-relaxed">
+      Crie sua conta para colaborar na gestão do salão.
     </p>
   </div>
 ) : (
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Criar conta</h1>
-            <p className="text-gray-400 text-sm mt-1 text-center">
-              {isSalao ? 'Comece a organizar seu salao' : 'Comece agora'}
-            </p>
-          </div>
-        )}
+  <div className="text-center">
+    <h1 className="text-2xl font-bold text-black leading-tight">
+      Crie uma conta para começar a ter controle do seu salão na palma da mão
+    </h1>
+
+    <p className="text-gray-700 text-sm mt-3 leading-relaxed">
+      Comece a visualizar agenda, ter catálogo de serviços,
+      enviar lembretes de horários e controlar pacotes.
+      Facilite sua gestão!
+    </p>
+  </div>
+)}
       </div>
 
       <div className="w-full max-w-sm flex flex-col gap-4 mt-2">
