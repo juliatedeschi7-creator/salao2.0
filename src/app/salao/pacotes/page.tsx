@@ -19,9 +19,9 @@ export default function PacotesPage() {
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    if (!loading && profile?.salao_id) carregarDados()
-  }, [loading])
-
+import { temAcessoTotal } from '@/lib/permissoes'
+// ...
+if (!temAcessoTotal(profile)) { router.push('/login'); return }
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
