@@ -64,14 +64,15 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
       .replace(/\{salao\}/g, salao?.nome || '')
       .replace(/\{data\}/g, new Date().toLocaleDateString('pt-BR'))
 
-    const { data: contrato } = await supabase.from('contratos').insert({
-      salao_id: profile!.salao_id,
-      modelo_id: modalEnviar.id,
-      cliente_id: clienteId,
-      titulo: modalEnviar.titulo,
-      conteudo: conteudoPersonalizado,
-      status: 'pendente'
-    }).select().single()
+const { data: contrato } = await supabase.from('contratos').insert({
+  salao_id: profile!.salao_id,
+  modelo_id: modalEnviar.id,
+  cliente_id: clienteId,
+  titulo: modalEnviar.titulo,
+  conteudo: conteudoPersonalizado,
+  status: 'pendente',
+  criado_por: profile!.id
+}).select().single()
 
     if (cliente?.profile_id) {
       await supabase.from('notificacoes').insert({
