@@ -33,6 +33,17 @@ export default function FuncionariosPage() {
     setGerando(false); carregarDados()
   }
 
+async function alternarAcessoTotal(funcionario: any) {
+  await supabase.from('profiles').update({ acesso_total: !funcionario.acesso_total }).eq('id', funcionario.id)
+  carregarDados()
+}
+
+<button onClick={() => alternarAcessoTotal(f)}
+  className={'text-xs px-3 py-1.5 rounded-full font-medium ' + (f.acesso_total ? 'text-white' : 'bg-gray-100 text-gray-500')}
+  style={f.acesso_total ? { backgroundColor: cor } : {}}>
+  {f.acesso_total ? 'Acesso Total ✓' : 'Dar acesso total'}
+</button>
+
   function copiarLink(token: string) {
     const link = window.location.origin + '/cadastro?token=' + token
     navigator.clipboard.writeText(link)
