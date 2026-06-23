@@ -16,10 +16,10 @@ export interface Profile {
   email: string
   nome: string
   role: UserRole
-  salao_id?: string
   aprovado: boolean
   ativo: boolean
-  created_at: string
+  salao_id?: string | null
+  acesso_total?: boolean
 }
 
 export interface Salao {
