@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Home, Calendar, Users, BarChart2, Settings, Plus, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { Home, Calendar, Users, BarChart2, Settings, Plus, Clock, CheckCircle, AlertCircle, Scissors, Bell } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -12,6 +12,7 @@ export default function SalaoPage() {
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
+  const [pendentesConfirmacao, setPendentesConfirmacao] = useState(0)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
@@ -27,6 +28,7 @@ export default function SalaoPage() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile.salao_id).single()
     if (sal?.pausado) { await supabase.auth.signOut(); router.push('/login'); return }
     setSalao(sal)
+
     const hoje = new Date()
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
     const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
@@ -34,15 +36,26 @@ export default function SalaoPage() {
       .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
       .eq('salao_id', profile.salao_id).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
     setAgendamentos(ags || [])
+
+    const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
+    const { data: pendentes } = await supabase.from('agendamentos')
+      .select('*, confirmacoes_atendimento(*)')
+      .eq('salao_id', profile.salao_id)
+      .eq('status', 'confirmado')
+      .gte('data_hora', ontem.toISOString())
+      .lte('data_hora', hoje.toISOString())
+    const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
+    setPendentesConfirmacao(semConfirmar.length)
+
     setCarregando(false)
   }
 
   const navItems = [
     { icon: Home, label: 'Inicio', href: '/salao' },
     { icon: Calendar, label: 'Agenda', href: '/salao/agenda' },
+    { icon: Scissors, label: 'Servicos', href: '/salao/servicos' },
     { icon: Users, label: 'Clientes', href: '/salao/clientes' },
     { icon: BarChart2, label: 'Financas', href: '/salao/financeiro' },
-    { icon: Settings, label: 'Ajustes', href: '/salao/configuracoes' },
   ]
 
   const statusConfig: Record<string, { cor: string; label: string; icon: any }> = {
@@ -54,8 +67,6 @@ export default function SalaoPage() {
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const hora = new Date().getHours()
-  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
 
   if (loading || carregando) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -63,15 +74,33 @@ export default function SalaoPage() {
         style={{ borderColor: cor }} />
     </div>
   )
+
+  const hora = new Date().getHours()
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
+
   return (
     <div className="min-h-screen pb-20" style={{ backgroundColor: '#f8f9fa' }}>
-<Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} />
-
+      <Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} />
 
       <div className="px-4 py-5 flex flex-col gap-4">
         <h1 className="text-2xl font-bold text-gray-900">
           {saudacao}, {profile?.nome?.split(' ')[0]}! ✨
         </h1>
+
+        {pendentesConfirmacao > 0 && (
+          <button onClick={() => router.push('/salao/notificacoes')}
+            className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl px-4 py-3 flex items-center gap-3 active:scale-95 transition-all">
+            <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
+              <Bell size={20} className="text-yellow-600" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-semibold text-yellow-700 text-sm">
+                {pendentesConfirmacao} atendimento{pendentesConfirmacao > 1 ? 's' : ''} aguardando confirmacao
+              </p>
+              <p className="text-xs text-yellow-600">Confirme se a cliente veio para atualizar pacotes</p>
+            </div>
+          </button>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="card">
