@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Plus, FileText, Send, Edit2, Trash2, CheckCircle, Clock, Download } from 'lucide-react'
 
 export default function ContratosPage() {
@@ -21,15 +22,18 @@ export default function ContratosPage() {
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-import { temAcessoTotal } from '@/lib/permissoes'
-// ...
-if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (loading) return
+    if (!profile) return
+    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (profile.salao_id) carregarDados()
+  }, [loading, profile])
+
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
     const { data: mods } = await supabase.from('modelos_contrato').select('*').eq('salao_id', profile!.salao_id!).eq('ativo', true).order('created_at', { ascending: false })
     setModelos(mods || [])
-    const { data: cnts } = await supabase.from('contratos').select('*, clientes(nome)').eq('salao_id', profile!.salao_id!).order('created_at', { ascending: false })
+    const { data: cnts } = await supabase.from('contratos').select('*, clientes(nome), profiles!criado_por(nome)').eq('salao_id', profile!.salao_id!).order('created_at', { ascending: false })
     setContratos(cnts || [])
     const { data: clis } = await supabase.from('clientes').select('id, nome, profile_id').eq('salao_id', profile!.salao_id!).order('nome')
     setClientes(clis || [])
@@ -44,7 +48,7 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
   async function salvarModelo() {
     if (!formModelo.titulo || !formModelo.conteudo) return
     setSalvando(true)
-    const dados = { salao_id: profile!.salao_id, titulo: formModelo.titulo, categoria: formModelo.categoria || null, conteudo: formModelo.conteudo }
+    const dados = { salao_id: profile!.salao_id, titulo: formModelo.titulo, categoria: formModelo.categoria || null, conteudo: formModelo.conteudo, criado_por: profile!.id }
     if (editandoModelo) await supabase.from('modelos_contrato').update(dados).eq('id', editandoModelo.id)
     else await supabase.from('modelos_contrato').insert(dados)
     setModalModelo(false); setSalvando(false); carregarDados()
@@ -64,15 +68,15 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
       .replace(/\{salao\}/g, salao?.nome || '')
       .replace(/\{data\}/g, new Date().toLocaleDateString('pt-BR'))
 
-const { data: contrato } = await supabase.from('contratos').insert({
-  salao_id: profile!.salao_id,
-  modelo_id: modalEnviar.id,
-  cliente_id: clienteId,
-  titulo: modalEnviar.titulo,
-  conteudo: conteudoPersonalizado,
-  status: 'pendente',
-  criado_por: profile!.id
-}).select().single()
+    const { data: contrato } = await supabase.from('contratos').insert({
+      salao_id: profile!.salao_id,
+      modelo_id: modalEnviar.id,
+      cliente_id: clienteId,
+      titulo: modalEnviar.titulo,
+      conteudo: conteudoPersonalizado,
+      status: 'pendente',
+      criado_por: profile!.id
+    }).select().single()
 
     if (cliente?.profile_id) {
       await supabase.from('notificacoes').insert({
@@ -158,6 +162,7 @@ const { data: contrato } = await supabase.from('contratos').insert({
                 </span>
               </div>
               <p className="text-xs text-gray-400">Enviado: {new Date(c.created_at).toLocaleDateString('pt-BR')}</p>
+              <p className="text-xs text-gray-400">Enviado por: {c.profiles?.nome || 'Desconhecido'}</p>
               {c.status === 'assinado' && (
                 <button onClick={() => router.push('/salao/contratos/' + c.id)}
                   className="w-full py-2.5 rounded-xl border-2 text-sm font-medium flex items-center justify-center gap-2"
