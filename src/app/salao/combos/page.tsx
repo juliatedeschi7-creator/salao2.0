@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Plus, Edit2, Trash2, Package2 } from 'lucide-react'
 
 export default function CombosPage() {
@@ -17,9 +18,12 @@ export default function CombosPage() {
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-import { temAcessoTotal } from '@/lib/permissoes'
-// ...
-if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (loading) return
+    if (!profile) return
+    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (profile.salao_id) carregarDados()
+  }, [loading, profile])
+
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
@@ -45,7 +49,7 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
   async function salvar() {
     if (!form.nome || !form.preco) return
     setSalvando(true)
-    const dados = { salao_id: profile!.salao_id, nome: form.nome, descricao: form.descricao || null, preco: parseFloat(form.preco), servicos_ids: form.servicosIds }
+    const dados = { salao_id: profile!.salao_id, nome: form.nome, descricao: form.descricao || null, preco: parseFloat(form.preco), servicos_ids: form.servicosIds, criado_por: profile!.id }
     if (editando) await supabase.from('combos').update(dados).eq('id', editando.id)
     else await supabase.from('combos').insert(dados)
     setModal(false); setSalvando(false); carregarDados()
