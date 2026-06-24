@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Search, Plus, Calendar, CheckCircle } from 'lucide-react'
 
 export default function PacotesClientesPage() {
@@ -22,9 +23,12 @@ export default function PacotesClientesPage() {
   const [formAntigo, setFormAntigo] = useState({ nome: '', sessoes_total: 1, sessoes_usadas: 0, observacoes: '' })
 
   useEffect(() => {
-import { temAcessoTotal } from '@/lib/permissoes'
-// ...
-if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (loading) return
+    if (!profile) return
+    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (profile.salao_id) carregarDados()
+  }, [loading, profile])
+
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
@@ -36,7 +40,7 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
 
   async function selecionarCliente(cliente: any) {
     setClienteSelecionado(cliente)
-    const { data: pacs } = await supabase.from('cliente_pacotes').select('*, pacotes(nome, descricao)').eq('cliente_id', cliente.id).order('data_compra', { ascending: false })
+    const { data: pacs } = await supabase.from('cliente_pacotes').select('*, pacotes(nome, descricao), profiles!vendido_por(nome)').eq('cliente_id', cliente.id).order('data_compra', { ascending: false })
     setPacotesCliente(pacs || [])
     if (pacs && pacs.length > 0) {
       const ids = pacs.map((p: any) => p.id)
@@ -57,7 +61,8 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
       sessoes_usadas: 0,
       status: 'ativo',
       data_compra: new Date().toISOString(),
-      data_expiracao: dataExpiracao
+      data_expiracao: dataExpiracao,
+      vendido_por: profile!.id
     })
     setModalVenda(false); setSalvando(false); setPacoteModeloId('')
     selecionarCliente(clienteSelecionado)
@@ -74,7 +79,8 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
       status: 'ativo',
       data_compra: new Date().toISOString(),
       historico_manual: true,
-      observacoes: formAntigo.nome + (formAntigo.observacoes ? ' - ' + formAntigo.observacoes : '')
+      observacoes: formAntigo.nome + (formAntigo.observacoes ? ' - ' + formAntigo.observacoes : ''),
+      vendido_por: profile!.id
     })
     setModalAntigo(false); setSalvando(false)
     setFormAntigo({ nome: '', sessoes_total: 1, sessoes_usadas: 0, observacoes: '' })
@@ -142,6 +148,7 @@ if (!temAcessoTotal(profile)) { router.push('/login'); return }
                     ))}
                   </div>
                 )}
+                <p className="text-xs text-gray-400">Vendido por: {p.profiles?.nome || 'Nao informado'}</p>
               </div>
             )
           })}
