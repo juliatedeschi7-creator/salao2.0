@@ -33,16 +33,10 @@ export default function FuncionariosPage() {
     setGerando(false); carregarDados()
   }
 
-async function alternarAcessoTotal(funcionario: any) {
-  await supabase.from('profiles').update({ acesso_total: !funcionario.acesso_total }).eq('id', funcionario.id)
-  carregarDados()
-}
-
-<button onClick={() => alternarAcessoTotal(f)}
-  className={'text-xs px-3 py-1.5 rounded-full font-medium ' + (f.acesso_total ? 'text-white' : 'bg-gray-100 text-gray-500')}
-  style={f.acesso_total ? { backgroundColor: cor } : {}}>
-  {f.acesso_total ? 'Acesso Total ✓' : 'Dar acesso total'}
-</button>
+  async function alternarAcessoTotal(funcionario: any) {
+    await supabase.from('profiles').update({ acesso_total: !funcionario.acesso_total }).eq('id', funcionario.id)
+    carregarDados()
+  }
 
   function copiarLink(token: string) {
     const link = window.location.origin + '/cadastro?token=' + token
@@ -102,9 +96,16 @@ async function alternarAcessoTotal(funcionario: any) {
               <p className="font-semibold text-gray-900">{f.nome}</p>
               <p className="text-sm text-gray-400">{f.email}</p>
             </div>
-            <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (f.aprovado ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
-              {f.aprovado ? 'Ativo' : 'Pendente'}
-            </span>
+            <div className="flex flex-col items-end gap-1.5">
+              <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (f.aprovado ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
+                {f.aprovado ? 'Ativo' : 'Pendente'}
+              </span>
+              <button onClick={() => alternarAcessoTotal(f)}
+                className={'text-xs px-3 py-1 rounded-full font-medium ' + (f.acesso_total ? 'text-white' : 'bg-gray-100 text-gray-500')}
+                style={f.acesso_total ? { backgroundColor: cor } : {}}>
+                {f.acesso_total ? 'Acesso Total ✓' : 'Dar acesso total'}
+              </button>
+            </div>
           </div>
         ))}
       </div>
