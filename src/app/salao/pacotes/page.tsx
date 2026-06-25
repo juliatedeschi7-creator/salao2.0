@@ -16,12 +16,12 @@ export default function PacotesPage() {
   const [form, setForm] = useState({ nome: '', descricao: '', sessoes_inclusas: 1, preco: '', validade_dias: '', regras: '' })
   const [salvando, setSalvando] = useState(false)
 
-  useEffect(() => {
-    if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
-    if (profile.salao_id) carregarDados()
-  }, [loading, profile])
+useEffect(() => {
+  if (loading) return
+  if (!profile) return
+  if (profile.role !== 'dono_salao' && profile.role !== 'funcionario') { router.push('/login'); return }
+  if (profile.salao_id) carregarDados()
+}, [loading, profile])
 
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
