@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Package, CheckCircle, Clock } from 'lucide-react'
+import { ArrowLeft, Package, CheckCircle, Clock, FileText, X } from 'lucide-react'
 
 export default function ClientePacotesPage() {
   const { profile, loading } = useAuth()
@@ -11,6 +11,8 @@ export default function ClientePacotesPage() {
   const [salao, setSalao] = useState<any>(null)
   const [pacotes, setPacotes] = useState<any[]>([])
   const [filtro, setFiltro] = useState<'ativos' | 'expirados' | 'todos'>('ativos')
+  const [modalRegras, setModalRegras] = useState<any>(null)
+  const [confirmando, setConfirmando] = useState(false)
 
   useEffect(() => {
     if (!loading && profile) carregarDados()
@@ -24,6 +26,17 @@ export default function ClientePacotesPage() {
       .eq('cliente_id', cli?.id)
       .order('data_compra', { ascending: false })
     setPacotes(pacs || [])
+  }
+
+  async function confirmarLeituraRegras(pacote: any) {
+    setConfirmando(true)
+    await supabase.from('cliente_pacotes').update({
+      regras_confirmadas: true,
+      regras_confirmadas_em: new Date().toISOString()
+    }).eq('id', pacote.id)
+    setConfirmando(false)
+    setModalRegras(null)
+    carregarDados()
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -66,6 +79,8 @@ export default function ClientePacotesPage() {
         ) : filtrados.map(p => {
           const progresso = p.sessoes_total > 0 ? (p.sessoes_usadas / p.sessoes_total) * 100 : 0
           const expirado = p.data_expiracao && new Date(p.data_expiracao) < new Date()
+          const temRegras = !!p.pacotes?.regras
+
           return (
             <div key={p.id} className="card flex flex-col gap-3">
               <div className="flex items-start justify-between">
@@ -100,16 +115,61 @@ export default function ClientePacotesPage() {
                 )}
               </div>
 
-              {p.pacotes?.regras && (
-                <div className="bg-gray-50 rounded-xl p-3">
-                  <p className="text-xs text-gray-400 font-medium mb-1">Regras do pacote</p>
-                  <p className="text-xs text-gray-500">{p.pacotes.regras}</p>
-                </div>
+              {temRegras && (
+                <button onClick={() => setModalRegras(p)}
+                  className="w-full flex items-center justify-between py-2.5 px-3 rounded-xl border-2 transition-all"
+                  style={{ borderColor: p.regras_confirmadas ? '#d1fae5' : cor }}>
+                  <div className="flex items-center gap-2">
+                    <FileText size={16} style={{ color: p.regras_confirmadas ? '#10b981' : cor }} />
+                    <span className="text-sm font-medium" style={{ color: p.regras_confirmadas ? '#10b981' : cor }}>
+                      {p.regras_confirmadas ? 'Regras confirmadas' : 'Ver regras do pacote'}
+                    </span>
+                  </div>
+                  {p.regras_confirmadas && <CheckCircle size={16} className="text-green-500" />}
+                </button>
+              )}
+
+              {p.regras_confirmadas_em && (
+                <p className="text-xs text-gray-400 text-center">
+                  Confirmado em {new Date(p.regras_confirmadas_em).toLocaleDateString('pt-BR')}
+                </p>
               )}
             </div>
           )
         })}
       </div>
+
+      {modalRegras && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">Regras do Pacote</h3>
+              <button onClick={() => setModalRegras(null)}><X size={20} className="text-gray-400" /></button>
+            </div>
+            <p className="text-sm font-semibold text-gray-700">{modalRegras.pacotes?.nome}</p>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                {modalRegras.pacotes?.regras}
+              </p>
+            </div>
+
+            {modalRegras.regras_confirmadas ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 flex items-center gap-2">
+                <CheckCircle size={18} className="text-green-600" />
+                <p className="text-sm text-green-700">
+                  Voce confirmou que leu em {new Date(modalRegras.regras_confirmadas_em).toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+            ) : (
+              <button onClick={() => confirmarLeituraRegras(modalRegras)} disabled={confirmando}
+                className="w-full py-3 rounded-2xl text-white font-semibold"
+                style={{ backgroundColor: cor }}>
+                {confirmando ? 'Confirmando...' : 'Li e estou de acordo'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
