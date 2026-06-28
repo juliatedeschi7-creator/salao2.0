@@ -106,21 +106,28 @@ export default function NotificacoesPage() {
     setModalConfirm(null); setOQueFez(''); carregarDados()
   }
 
-  async function sugerirHorarios(solicitacao: any) {
-    const horarios = horariosLivres.filter(h => h)
-    if (!horarios.length) return
-    const { data: prof } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
-    await supabase.from('notificacoes').insert({
-      salao_id: profile!.salao_id,
-      remetente_id: profile!.id,
-      destinatario_id: prof?.profile_id,
-      titulo: 'Horarios sugeridos para ' + solicitacao.servicos?.nome,
-      mensagem: 'Temos esses horarios disponiveis: ' + horarios.join(', ') + '. Confirme o de sua preferencia respondendo esta mensagem.',
-      tipo: 'horario_sugerido', lida: false
-    })
-    await supabase.from('solicitacoes_agendamento').update({ status: 'horario_sugerido' }).eq('id', solicitacao.id)
-    setHorariosLivres(['', '', '']); carregarDados()
-  }
+async function sugerirHorarios(solicitacao: any) {
+  const horarios = horariosLivres.filter(h => h)
+  if (!horarios.length) return
+  const { data: prof } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
+
+  await supabase.from('solicitacoes_agendamento').update({
+    status: 'horario_sugerido',
+    horarios_sugeridos: horarios,
+    profissional_id: profile!.id
+  }).eq('id', solicitacao.id)
+
+  await supabase.from('notificacoes').insert({
+    salao_id: profile!.salao_id,
+    remetente_id: profile!.id,
+    destinatario_id: prof?.profile_id,
+    titulo: 'Horarios sugeridos para ' + solicitacao.servicos?.nome,
+    mensagem: 'Escolha um dos horarios disponiveis para confirmar seu agendamento.',
+    tipo: 'horario_sugerido',
+    referencia_id: solicitacao.id
+  })
+  setHorariosLivres(['', '', '']); carregarDados()
+}
 
   async function enviarLembrete() {
     const amanha = new Date(); amanha.setDate(amanha.getDate() + 1)
