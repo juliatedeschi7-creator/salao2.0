@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
-import { ArrowLeft, Search, Plus, Calendar, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Search, Plus, Calendar, CheckCircle, Clock } from 'lucide-react'
 
 export default function PacotesClientesPage() {
   const { profile, loading } = useAuth()
@@ -40,7 +40,10 @@ export default function PacotesClientesPage() {
 
   async function selecionarCliente(cliente: any) {
     setClienteSelecionado(cliente)
-    const { data: pacs } = await supabase.from('cliente_pacotes').select('*, pacotes(nome, descricao), profiles!vendido_por(nome)').eq('cliente_id', cliente.id).order('data_compra', { ascending: false })
+    const { data: pacs } = await supabase.from('cliente_pacotes')
+      .select('*, pacotes(nome, descricao, regras), profiles!vendido_por(nome)')
+      .eq('cliente_id', cliente.id)
+      .order('data_compra', { ascending: false })
     setPacotesCliente(pacs || [])
     if (pacs && pacs.length > 0) {
       const ids = pacs.map((p: any) => p.id)
@@ -149,6 +152,23 @@ export default function PacotesClientesPage() {
                   </div>
                 )}
                 <p className="text-xs text-gray-400">Vendido por: {p.profiles?.nome || 'Nao informado'}</p>
+                {p.pacotes?.regras && (
+                  <div className={'flex items-center gap-2 px-3 py-2 rounded-xl ' + (p.regras_confirmadas ? 'bg-green-50' : 'bg-yellow-50')}>
+                    {p.regras_confirmadas ? (
+                      <>
+                        <CheckCircle size={14} className="text-green-600" />
+                        <p className="text-xs text-green-700">
+                          Cliente confirmou as regras em {new Date(p.regras_confirmadas_em).toLocaleDateString('pt-BR')}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <Clock size={14} className="text-yellow-600" />
+                        <p className="text-xs text-yellow-700">Cliente ainda nao confirmou as regras</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
