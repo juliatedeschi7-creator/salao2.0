@@ -98,10 +98,11 @@ export default function ClienteServicosPage() {
         <h1 className="font-bold text-white text-lg">Servicos do Salao</h1>
       </div>
 
-      <div className="px-4 py-4 flex flex-col gap-4">
-        <AvisoServicos cor={cor} />
+<div className="px-4 py-4 flex flex-col gap-4">
+  {categoriaFiltro === 'Todos' && <AvisoServicos cor={cor} texto={salao?.aviso_servicos} />}
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+  <div className="flex gap-2 overflow-x-auto pb-1">
+
           {categorias.map(c => (
             <button key={c} onClick={() => setCategoriaFiltro(c)}
               className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all"
