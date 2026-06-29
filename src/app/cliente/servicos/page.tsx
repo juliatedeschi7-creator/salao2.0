@@ -37,6 +37,7 @@ function AvisoServicos({ cor }: { cor: string }) {
   )
 }
 
+
 export default function ClienteServicosPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
