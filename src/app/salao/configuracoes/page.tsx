@@ -17,6 +17,8 @@ const CORES = [
 ]
 
 export default function ConfiguracoesPage() {
+  const [avisoServicos, setAvisoServicos] = useState('')
+  const [salvandoAviso, setSalvandoAviso] = useState(false)
   const { profile, loading, logout } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
@@ -33,8 +35,15 @@ export default function ConfiguracoesPage() {
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
+    setAvisoServicos(sal?.aviso_servicos || '')
     setCorSelecionada(sal?.cor_primaria || '#E91E8C')
   }
+
+  async function salvarAviso() {
+  setSalvandoAviso(true)
+  await supabase.from('saloes').update({ aviso_servicos: avisoServicos }).eq('id', profile!.salao_id!)
+  setSalvandoAviso(false)
+}
 
   function copiarLink() {
     const link = `${window.location.origin}/cadastro?salao=${salao?.slug}`
@@ -121,7 +130,22 @@ export default function ConfiguracoesPage() {
               {salvandoCor ? 'Salvando...' : 'Salvar nova cor'}
             </button>
           )}
+
         </div>
+<div className="card flex flex-col gap-3">
+  <p className="font-bold text-gray-900">Aviso na pagina de Servicos</p>
+  <p className="text-xs text-gray-400">
+    Esta mensagem aparece para os clientes na pagina de servicos. Escreva em MAIUSCULA as palavras que quer destacar em negrito.
+  </p>
+  <textarea className="input-field resize-none" rows={6}
+    placeholder="Ex: Os tempos exibidos sao estimativas..."
+    value={avisoServicos} onChange={e => setAvisoServicos(e.target.value)} />
+  <button onClick={salvarAviso} disabled={salvandoAviso}
+    className="w-full py-3 rounded-2xl text-white font-medium"
+    style={{ backgroundColor: cor }}>
+    {salvandoAviso ? 'Salvando...' : 'Salvar aviso'}
+  </button>
+</div>
 
         <div className="card flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Link size={18} />Link de Cadastro de Clientes</p>
