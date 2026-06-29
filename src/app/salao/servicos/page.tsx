@@ -26,6 +26,7 @@ export default function ServicosPage() {
   })
   const [salvando, setSalvando] = useState(false)
   const [uploadando, setUploadando] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState('')
 
   useEffect(() => {
     if (loading) return
@@ -37,7 +38,8 @@ export default function ServicosPage() {
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
-    const { data: srvs } = await supabase.from('servicos').select('*').eq('salao_id', profile!.salao_id!).eq('ativo', true).order('categoria')
+    const { data: srvs, error: errSrv } = await supabase.from('servicos').select('*').eq('salao_id', profile!.salao_id!).eq('ativo', true).order('categoria')
+    if (errSrv) console.error('Erro ao carregar servicos:', errSrv)
     setServicos(srvs || [])
     const { data: fts } = await supabase.from('fotos_servicos').select('*').eq('salao_id', profile!.salao_id!)
     setFotos(fts || [])
@@ -47,6 +49,7 @@ export default function ServicosPage() {
   }
 
   function abrirModal(s?: any) {
+    setErroSalvar('')
     if (s) {
       setEditando(s)
       setForm({
@@ -63,18 +66,47 @@ export default function ServicosPage() {
   }
 
   async function handleSalvar() {
-    if (!form.nome || !form.preco || !form.categoria) return
+    setErroSalvar('')
+    if (!form.nome) { setErroSalvar('Preencha o nome do servico.'); return }
+    if (!form.preco) { setErroSalvar('Preencha o preco do servico.'); return }
+    if (!form.categoria) { setErroSalvar('Selecione uma categoria.'); return }
+
     setSalvando(true)
     const dados = {
-      salao_id: profile!.salao_id, nome: form.nome, descricao: form.descricao || null,
-      categoria: form.categoria, duracao_minutos: form.duracao_minutos, sessoes: form.sessoes,
-      preco: parseFloat(form.preco), custo_material: parseFloat(form.custo_material || '0'),
+      salao_id: profile!.salao_id,
+      nome: form.nome,
+      descricao: form.descricao || null,
+      categoria: form.categoria,
+      duracao_minutos: form.duracao_minutos,
+      sessoes: form.sessoes,
+      preco: parseFloat(form.preco),
+      custo_material: parseFloat(form.custo_material || '0'),
       comissao_percentual: parseFloat(form.comissao_percentual || '0'),
       criado_por: profile!.id,
     }
-    if (editando) await supabase.from('servicos').update(dados).eq('id', editando.id)
-    else await supabase.from('servicos').insert(dados)
-    setModal(false); setSalvando(false); carregarDados()
+
+    let resultado
+    if (editando) {
+      resultado = await supabase.from('servicos').update(dados).eq('id', editando.id).select()
+    } else {
+      resultado = await supabase.from('servicos').insert(dados).select()
+    }
+
+    if (resultado.error) {
+      setErroSalvar('Erro ao salvar: ' + resultado.error.message)
+      setSalvando(false)
+      return
+    }
+
+    if (!resultado.data || resultado.data.length === 0) {
+      setErroSalvar('O servico nao foi salvo. Verifique as permissoes do salao.')
+      setSalvando(false)
+      return
+    }
+
+    setModal(false)
+    setSalvando(false)
+    carregarDados()
   }
 
   async function excluir(id: string) {
@@ -143,6 +175,12 @@ export default function ServicosPage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
+        {categorias.length === 0 && (
+          <div className="card bg-yellow-50 border border-yellow-200">
+            <p className="text-sm text-yellow-700">Crie uma categoria antes de adicionar servicos. Toque no icone de etiqueta no topo.</p>
+          </div>
+        )}
+
         <div className="flex gap-2 overflow-x-auto pb-1">
           {nomesCategorias.map(c => (
             <button key={c} onClick={() => setCategoriaFiltro(c)}
@@ -277,15 +315,26 @@ export default function ServicosPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
             <h3 className="font-bold text-gray-900 text-lg">{editando ? 'Editar Servico' : 'Novo Servico'}</h3>
+
+            {erroSalvar && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm">{erroSalvar}</p>
+              </div>
+            )}
+
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do servico *</label>
               <input className="input-field" placeholder="Ex: Corte Feminino" value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Categoria</label>
-              <select className="input-field" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}>
-                {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-              </select>
+              {categorias.length === 0 ? (
+                <p className="text-xs text-red-500">Nenhuma categoria cadastrada. Crie uma categoria primeiro.</p>
+              ) : (
+                <select className="input-field" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}>
+                  {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                </select>
+              )}
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Descricao do servico</label>
