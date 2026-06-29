@@ -38,6 +38,34 @@ export default function ClienteServicosPage() {
     setFotos(fts || [])
   }
 
+function AvisoServicos({ cor }: { cor: string }) {
+  const texto = `Os tempos exibidos são estimativas e podem variar para mais ou para menos.
+Cada procedimento é realizado respeitando as CARACTERISTICAS INDIVIDUAIS de cada cliente.
+Diferenciais como CONDICAO DAS UNHAS ou dos cabelos, QUANTIDADE DE CABELO, necessidade de maior preparo das CUTICULAS, MOVIMENTACAO DURANTE O ATENDIMENTO (uso de celular, postura), entre outros fatores, podem alterar o tempo de atendimento.
+Nosso foco é a QUALIDADE DO ATENDIMENTO E DO RESULTADO FINAL.`
+
+  function renderLinha(linha: string) {
+    const palavras = linha.split(' ')
+    return palavras.map((palavra, i) => {
+      const ehMaiuscula = palavra === palavra.toUpperCase() && palavra.length > 2 && /[A-Z]/.test(palavra)
+      return (
+        <span key={i} className={ehMaiuscula ? 'font-bold uppercase' : ''}>
+          {palavra}{' '}
+        </span>
+      )
+    })
+  }
+
+  return (
+    <div className="rounded-2xl p-4" style={{ backgroundColor: cor }}>
+      <div className="text-black text-xs leading-relaxed flex flex-col gap-2">
+        {texto.split('\n').map((linha, i) => (
+          <p key={i}>{renderLinha(linha)}</p>
+        ))}
+      </div>
+    </div>
+  )
+}
   async function solicitarAgendamento(servicoId: string) {
     await supabase.from('solicitacoes_agendamento').insert({
       salao_id: salao.id, cliente_id: cliente.id, servico_id: servicoId, status: 'pendente'
@@ -82,7 +110,9 @@ export default function ClienteServicosPage() {
             value={busca} onChange={e => setBusca(e.target.value)} />
         </div>
       </div>
-
+<div className="px-4 py-4 flex flex-col gap-4">
+  <AvisoServicos cor={cor} />
+  {/* resto do código de filtros e lista de serviços continua aqui */}
       <div className="flex bg-white border-b border-gray-100">
         {[
           { key: 'avulsos', label: 'Servicos Avulsos' },
