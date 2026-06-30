@@ -17,26 +17,27 @@ export default function AdminPage() {
     carregarStats()
   }, [profile, loading])
 
-async function carregarStats() {
-  const { data } = await supabase
-    .from('admin_resumo_saloes')
-    .select('*')
-    .single()
+  async function carregarStats() {
+    const { data } = await supabase
+      .from('admin_resumo_saloes')
+      .select('*')
+      .single()
 
-  const { count } = await supabase
-    .from('profiles')
-    .select('*', { count: 'exact', head: true })
-    .neq('role', 'admin_geral')
-    .eq('ativo', true)
-    .eq('aprovado', true)
+    const { count } = await supabase
+      .from('profiles')
+      .select('*', { count: 'exact', head: true })
+      .neq('role', 'admin_geral')
+      .eq('ativo', true)
+      .eq('aprovado', true)
 
-  setStats({
-    total: data?.total_saloes || 0,
-    ativos: data?.saloes_ativos || 0,
-    pausados: data?.saloes_pausados || 0,
-    pendentes: data?.saloes_pendentes || 0,
-    totalUsuarios: count || 0
-  })
+    setStats({
+      total: data?.total_saloes || 0,
+      ativos: data?.saloes_ativos || 0,
+      pausados: data?.saloes_pausados || 0,
+      pendentes: data?.saloes_pendentes || 0,
+      totalUsuarios: count || 0
+    })
+  }
 
   if (loading || !profile) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -143,4 +144,3 @@ async function carregarStats() {
     </div>
   )
 }
-
