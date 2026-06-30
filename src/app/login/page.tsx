@@ -41,12 +41,17 @@ function LoginForm() {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('role, aprovado, ativo, salao_id')
+      .select('role, aprovado, ativo, salao_id, nivel_acesso')
       .eq('id', data.user.id)
       .single()
 
     if (!prof) { setErro('Perfil nao encontrado.'); setLoading(false); return }
     if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
+
+    // funcionario com nivel_acesso 'total' (socio/co-criador/familiar) é tratado
+    // igual ao dono_salao para fins de acesso ao sistema
+    const acessoTotal = prof.role === 'dono_salao' ||
+      (prof.role === 'funcionario' && prof.nivel_acesso === 'total')
 
     let destino = '/login'
     if (prof.role === 'admin_geral') {
@@ -54,7 +59,7 @@ function LoginForm() {
     } else if (!prof.aprovado) {
       if (prof.role === 'dono_salao' || prof.role === 'funcionario') destino = '/aguardando'
       else { await supabase.auth.signOut(); setErro('Conta aguarda aprovacao.'); setLoading(false); return }
-    } else if (prof.role === 'dono_salao') {
+    } else if (acessoTotal) {
       if (!prof.salao_id) {
         destino = '/criar-salao'
       } else {
@@ -63,6 +68,7 @@ function LoginForm() {
         destino = !salao?.aprovado ? '/aguardando' : '/salao'
       }
     } else if (prof.role === 'funcionario') {
+      // funcionario com acesso restrito
       destino = '/funcionario'
     } else {
       destino = '/cliente'
