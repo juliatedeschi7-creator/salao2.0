@@ -39,5 +39,11 @@ export function useAuth() {
     window.location.href = '/login'
   }
 
-  return { profile, loading, logout }
+  // helper para uso nas paginas: indica se o usuario logado tem acesso
+  // total ao sistema do salao (dono_salao, ou funcionario socio/familiar)
+  const temAcessoTotal =
+    profile?.role === 'dono_salao' ||
+    (profile?.role === 'funcionario' && profile?.nivel_acesso === 'total')
+
+  return { profile, loading, logout, temAcessoTotal }
 }
