@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, UserCheck, Copy, Check, Plus } from 'lucide-react'
+import { ArrowLeft, UserCheck, Copy, Check, Plus, Trash2 } from 'lucide-react'
 
 export default function FuncionariosPage() {
   const { profile, loading } = useAuth()
@@ -13,6 +13,7 @@ export default function FuncionariosPage() {
   const [convites, setConvites] = useState<any[]>([])
   const [copiado, setCopiado] = useState('')
   const [gerando, setGerando] = useState(false)
+  const [excluindo, setExcluindo] = useState('')
   const [modalConvite, setModalConvite] = useState(false)
   const [tipoConvite, setTipoConvite] = useState<'comum' | 'total'>('comum')
 
@@ -31,13 +32,32 @@ export default function FuncionariosPage() {
 
   async function gerarConvite() {
     setGerando(true)
-    await supabase.from('convites').insert({
+    const token = crypto.randomUUID()
+    const { error } = await supabase.from('convites').insert({
       salao_id: profile!.salao_id,
       email: '',
       role: 'funcionario',
-      acesso_total: tipoConvite === 'total'
+      acesso_total: tipoConvite === 'total',
+      token: token
     })
-    setGerando(false); setModalConvite(false); carregarDados()
+    if (error) {
+      console.error('Erro ao gerar convite:', error)
+      alert('Erro ao gerar link: ' + error.message)
+    }
+    setGerando(false)
+    setModalConvite(false)
+    carregarDados()
+  }
+
+  async function excluirConvite(id: string) {
+    setExcluindo(id)
+    const { error } = await supabase.from('convites').delete().eq('id', id)
+    if (error) {
+      console.error('Erro ao excluir convite:', error)
+      alert('Erro ao excluir: ' + error.message)
+    }
+    setExcluindo('')
+    carregarDados()
   }
 
   async function alternarAcessoTotal(funcionario: any) {
@@ -82,6 +102,10 @@ export default function FuncionariosPage() {
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium text-white"
                   style={{ backgroundColor: cor }}>
                   {copiado === c.token ? <><Check size={14} />Copiado</> : <><Copy size={14} />Copiar</>}
+                </button>
+                <button onClick={() => excluirConvite(c.id)} disabled={excluindo === c.id}
+                  className="p-2.5 rounded-xl border border-red-200 text-red-500 disabled:opacity-50">
+                  <Trash2 size={16} />
                 </button>
               </div>
             ))}
