@@ -169,7 +169,6 @@ export default function ClienteServicosPage() {
   }
 
   return (
-  return (
     <div className="min-h-screen bg-gray-50 pb-8">
       <div
         className="px-4 pt-12 pb-6 flex items-center gap-3"
