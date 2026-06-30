@@ -13,6 +13,8 @@ export default function FuncionariosPage() {
   const [convites, setConvites] = useState<any[]>([])
   const [copiado, setCopiado] = useState('')
   const [gerando, setGerando] = useState(false)
+  const [modalConvite, setModalConvite] = useState(false)
+  const [tipoConvite, setTipoConvite] = useState<'comum' | 'total'>('comum')
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
@@ -29,8 +31,13 @@ export default function FuncionariosPage() {
 
   async function gerarConvite() {
     setGerando(true)
-    await supabase.from('convites').insert({ salao_id: profile!.salao_id, email: '', role: 'funcionario' })
-    setGerando(false); carregarDados()
+    await supabase.from('convites').insert({
+      salao_id: profile!.salao_id,
+      email: '',
+      role: 'funcionario',
+      acesso_total: tipoConvite === 'total'
+    })
+    setGerando(false); setModalConvite(false); carregarDados()
   }
 
   async function alternarAcessoTotal(funcionario: any) {
@@ -52,10 +59,10 @@ export default function FuncionariosPage() {
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1">Funcionarios</h1>
-        <button onClick={gerarConvite} disabled={gerando}
+        <button onClick={() => setModalConvite(true)}
           className="flex items-center gap-1.5 px-4 py-2 rounded-full text-white text-sm font-medium"
           style={{ backgroundColor: cor }}>
-          <Plus size={14} />{gerando ? '...' : 'Convidar'}
+          <Plus size={14} />Convidar
         </button>
       </div>
 
@@ -66,7 +73,9 @@ export default function FuncionariosPage() {
             {convites.map(c => (
               <div key={c.id} className="card flex items-center gap-3">
                 <div className="flex-1">
-                  <p className="text-xs text-gray-400">Token: {c.token?.substring(0, 16)}...</p>
+                  <p className="text-sm font-medium text-gray-700">
+                    {c.acesso_total ? 'Acesso total (co-gestora)' : 'Funcionario comum'}
+                  </p>
                   <p className="text-xs text-gray-400">{new Date(c.created_at).toLocaleDateString('pt-BR')}</p>
                 </div>
                 <button onClick={() => copiarLink(c.token)}
@@ -109,6 +118,34 @@ export default function FuncionariosPage() {
           </div>
         ))}
       </div>
+
+      {modalConvite && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+            <h3 className="font-bold text-gray-900 text-lg">Novo convite</h3>
+            <p className="text-sm text-gray-500">Escolha o tipo de acesso para quem usar este link</p>
+
+            <button onClick={() => setTipoConvite('comum')}
+              className="w-full text-left px-4 py-3 rounded-xl border-2 transition-all"
+              style={tipoConvite === 'comum' ? { borderColor: cor, backgroundColor: salao?.cor_secundaria || '#FCE4F3' } : { borderColor: '#e5e7eb' }}>
+              <p className="font-semibold text-gray-900 text-sm">Funcionario comum</p>
+              <p className="text-xs text-gray-500 mt-0.5">Acesso a agenda, clientes e servicos. Sem acesso a configuracoes ou financeiro completo.</p>
+            </button>
+
+            <button onClick={() => setTipoConvite('total')}
+              className="w-full text-left px-4 py-3 rounded-xl border-2 transition-all"
+              style={tipoConvite === 'total' ? { borderColor: cor, backgroundColor: salao?.cor_secundaria || '#FCE4F3' } : { borderColor: '#e5e7eb' }}>
+              <p className="font-semibold text-gray-900 text-sm">Acesso total (co-gestora)</p>
+              <p className="text-xs text-gray-500 mt-0.5">Mesmo acesso do dono: financeiro, configuracoes, contratos e gestao completa. Ideal para socias ou familiares.</p>
+            </button>
+
+            <div className="flex gap-3 mt-2">
+              <button onClick={() => setModalConvite(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+              <button onClick={gerarConvite} disabled={gerando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>{gerando ? '...' : 'Gerar link'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
