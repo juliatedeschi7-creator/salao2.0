@@ -8,7 +8,7 @@ import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
 export default function SalaoPage() {
-  const { profile, loading } = useAuth()
+  const { profile, loading, temAcessoTotal } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
@@ -17,7 +17,8 @@ export default function SalaoPage() {
 
   useEffect(() => {
     if (!loading && profile) {
-      if (profile.role !== 'dono_salao' && profile.role !== 'funcionario') { router.push('/login'); return }
+      // acesso total = dono_salao OU funcionario socio/familiar (nivel_acesso 'total')
+      if (!temAcessoTotal) { router.push('/login'); return }
       if (!profile.salao_id) { router.push('/criar-salao'); return }
       carregarDados()
     }
@@ -33,13 +34,13 @@ export default function SalaoPage() {
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
     const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
+      .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome), criador:profiles!agendamentos_criado_por_fkey(nome)')
       .eq('salao_id', profile.salao_id).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
     setAgendamentos(ags || [])
 
     const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
     const { data: pendentes } = await supabase.from('agendamentos')
-      .select('*, confirmacoes_atendimento(*)')
+      .select('*, confirmacoes_atendimento(*, confirmado_por_profile:profiles!confirmacoes_atendimento_confirmado_por_fkey(nome))')
       .eq('salao_id', profile.salao_id)
       .eq('status', 'confirmado')
       .gte('data_hora', ontem.toISOString())
@@ -157,6 +158,9 @@ export default function SalaoPage() {
                   </div>
                   <p className="text-sm text-gray-500 mt-0.5">{ag.servicos?.nome}</p>
                   <p className="text-xs text-gray-400">Prof: {ag.profiles?.nome}</p>
+                  {ag.criador?.nome && (
+                    <p className="text-xs text-gray-300">Criado por: {ag.criador.nome}</p>
+                  )}
                 </div>
               </button>
             )
