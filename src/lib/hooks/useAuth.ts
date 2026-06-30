@@ -43,7 +43,7 @@ export function useAuth() {
   // total ao sistema do salao (dono_salao, ou funcionario socio/familiar)
   const temAcessoTotal =
     profile?.role === 'dono_salao' ||
-    (profile?.role === 'funcionario' && profile?.nivel_acesso === 'total')
+    (profile?.role === 'funcionario' && profile?.acesso_total === true)
 
   return { profile, loading, logout, temAcessoTotal }
 }
