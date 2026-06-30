@@ -41,17 +41,17 @@ function LoginForm() {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('role, aprovado, ativo, salao_id, nivel_acesso')
+      .select('role, aprovado, ativo, salao_id, acesso_total')
       .eq('id', data.user.id)
       .single()
 
     if (!prof) { setErro('Perfil nao encontrado.'); setLoading(false); return }
     if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
 
-    // funcionario com nivel_acesso 'total' (socio/co-criador/familiar) é tratado
+    // funcionario com acesso_total = true (socio/co-criador/familiar) é tratado
     // igual ao dono_salao para fins de acesso ao sistema
     const acessoTotal = prof.role === 'dono_salao' ||
-      (prof.role === 'funcionario' && prof.nivel_acesso === 'total')
+      (prof.role === 'funcionario' && prof.acesso_total === true)
 
     let destino = '/login'
     if (prof.role === 'admin_geral') {
