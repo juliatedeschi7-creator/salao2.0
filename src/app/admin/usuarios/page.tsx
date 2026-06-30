@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, CheckCircle, XCircle, Search, User } from 'lucide-react'
+import { ArrowLeft, CheckCircle, XCircle, Search, User, Pause, Play, Trash2 } from 'lucide-react'
 
 export default function AdminUsuariosPage() {
   const { profile, loading } = useAuth()
@@ -12,7 +12,7 @@ export default function AdminUsuariosPage() {
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<'todos' | 'pendentes' | 'aprovados'>('pendentes')
   const [carregando, setCarregando] = useState(false)
-  const [debug, setDebug] = useState('')
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState<any>(null)
 
   useEffect(() => {
     if (loading) return
@@ -21,22 +21,15 @@ export default function AdminUsuariosPage() {
     carregarUsuarios()
   }, [loading, profile])
 
-async function carregarUsuarios() {
-  setCarregando(true)
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*, saloes!profiles_salao_id_fkey(nome)')
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    setDebug('ERRO: ' + JSON.stringify(error))
-  } else {
-    setDebug('Total: ' + (data?.length || 0) + ' | Sem admin: ' + (data?.filter((u: any) => u.role !== 'admin_geral').length || 0))
+  async function carregarUsuarios() {
+    setCarregando(true)
+    const { data } = await supabase
+      .from('profiles')
+      .select('*, saloes!profiles_salao_id_fkey(nome)')
+      .order('created_at', { ascending: false })
+    setUsuarios((data || []).filter((u: any) => u.role !== 'admin_geral'))
+    setCarregando(false)
   }
-
-  setUsuarios((data || []).filter((u: any) => u.role !== 'admin_geral'))
-  setCarregando(false)
-}
 
   async function aprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
@@ -49,6 +42,17 @@ async function carregarUsuarios() {
 
   async function reprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', u.id)
+    carregarUsuarios()
+  }
+
+  async function alternarPausa(u: any) {
+    await supabase.from('profiles').update({ ativo: !u.ativo }).eq('id', u.id)
+    carregarUsuarios()
+  }
+
+  async function excluirUsuario(u: any) {
+    await supabase.from('profiles').delete().eq('id', u.id)
+    setConfirmandoExclusao(null)
     carregarUsuarios()
   }
 
@@ -87,12 +91,6 @@ async function carregarUsuarios() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-        {debug !== '' && (
-          <div className="bg-gray-100 rounded-xl px-4 py-3">
-            <p className="text-xs text-gray-600 break-all">{debug}</p>
-          </div>
-        )}
-
         <div className="relative">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="input-field pl-11" placeholder="Buscar por nome ou email..."
@@ -131,6 +129,11 @@ async function carregarUsuarios() {
                     (u.aprovado ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700')}>
                     {u.aprovado ? 'Aprovado' : 'Pendente'}
                   </span>
+                  {!u.ativo && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600">
+                      Pausado
+                    </span>
+                  )}
                 </div>
                 <p className="text-sm text-gray-500">{u.email}</p>
                 <p className="text-xs text-gray-400">
@@ -142,7 +145,8 @@ async function carregarUsuarios() {
                 </p>
               </div>
             </div>
-            {!u.aprovado && (
+
+            {!u.aprovado ? (
               <div className="flex gap-2">
                 <button onClick={() => reprovar(u)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-50 text-red-500 font-medium text-sm">
@@ -153,10 +157,43 @@ async function carregarUsuarios() {
                   <CheckCircle size={16} />Aprovar
                 </button>
               </div>
+            ) : (
+              <div className="flex gap-2">
+                <button onClick={() => alternarPausa(u)}
+                  className={'flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium text-sm ' +
+                    (u.ativo ? 'bg-yellow-50 text-yellow-600' : 'bg-green-50 text-green-600')}>
+                  {u.ativo ? <><Pause size={16} />Pausar</> : <><Play size={16} />Reativar</>}
+                </button>
+                <button onClick={() => setConfirmandoExclusao(u)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-50 text-red-500 font-medium text-sm">
+                  <Trash2 size={16} />Excluir
+                </button>
+              </div>
             )}
           </div>
         ))}
       </div>
+
+      {confirmandoExclusao && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+            <h3 className="font-bold text-gray-900 text-lg">Excluir usuario?</h3>
+            <p className="text-sm text-gray-500">
+              Esta acao e permanente e vai remover {confirmandoExclusao.nome} do sistema. Esta acao nao pode ser desfeita.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmandoExclusao(null)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
+                Cancelar
+              </button>
+              <button onClick={() => excluirUsuario(confirmandoExclusao)}
+                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-medium">
+                Confirmar exclusao
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
