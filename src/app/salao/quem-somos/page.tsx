@@ -315,7 +315,7 @@ export default function QuemSomosEdicaoPage() {
                     className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl transition-all ${
                       balaoAtual.emoji === e ? 'ring-2 bg-gray-100' : ''
                     }`}
-                    style={balaoAtual.emoji === e ? { ringColor: cor } : {}}>
+style={balaoAtual.emoji === e ? { outline: `2px solid ${cor}`, outlineOffset: '2px' } : {}}>
                     {e}
                   </button>
                 ))}
