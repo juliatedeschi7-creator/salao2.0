@@ -1,6 +1,3 @@
-/login/page.tsx — Sistema P&B (donos e funcionários
-
-
 'use client'
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
