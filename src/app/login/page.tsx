@@ -4,20 +4,18 @@ import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
-// Logo do Organiza Salão (SVG inline para funcionar em qualquer cor)
-function OrganizaLogo({ cor, size = 72 }: { cor?: string; size?: number }) {
-  const c = cor || '#111827'
-  return (
-    <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="80" height="80" rx="20" fill={c} />
-      <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle"
-        fontSize="38" fontWeight="bold" fill="white" fontFamily="system-ui, sans-serif">
-        O
-      </text>
-      {/* Tesoura estilizada */}
-      <line x1="28" y1="58" x2="52" y2="58" stroke="white" strokeWidth="2.5" strokeLinecap="round" opacity="0.6"/>
-    </svg>
-  )
+// Converte hex para filtro CSS que tinge uma imagem preta naquela cor
+function hexParaFiltroCSS(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+  // Aproximação simples: usa sepia + saturate + hue-rotate
+  // Para cores rosa/pink funciona bem
+  const hue = Math.round(Math.atan2(
+    Math.sqrt(3) * (g - b),
+    2 * r - g - b
+  ) * (180 / Math.PI))
+  return `brightness(0) saturate(100%) invert(20%) sepia(80%) saturate(500%) hue-rotate(${hue}deg) brightness(0.9)`
 }
 
 function LoginForm() {
@@ -117,9 +115,14 @@ function LoginForm() {
       <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-8 mt-8">
         {isCliente ? (
           <div className="text-center">
-            {/* Logo colorido com a cor do salão */}
+            {/* Logo tingido com a cor do salão */}
             <div className="flex justify-center mb-4">
-              <OrganizaLogo cor={cor} size={72} />
+              <img
+                src="/logo.png"
+                alt="Organiza Salão"
+                className="w-20 h-20 object-contain"
+                style={{ filter: hexParaFiltroCSS(cor) }}
+              />
             </div>
             <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
               {nomePrincipal || 'Entrar'}
