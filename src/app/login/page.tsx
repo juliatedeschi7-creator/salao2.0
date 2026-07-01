@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Scissors } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -31,7 +31,6 @@ export default function LoginPage() {
       id: data.user.id, email, nome, role: 'dono_salao', aprovado: false, ativo: false
     })
     setCarregando(false)
-    setErro('')
     setModo('entrar')
     alert('Conta criada! Aguarde a aprovação do administrador.')
   }
@@ -40,24 +39,17 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
       <div className="w-full max-w-sm flex flex-col gap-8">
 
-        {/* Logo sistema */}
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-14 h-14 bg-gray-900 rounded-2xl flex items-center justify-center shadow-lg">
-            <Scissors size={28} className="text-white" />
-          </div>
-          <div className="text-center">
-            <h1 className="font-bold text-gray-900 text-xl tracking-tight">StudioApp</h1>
-<div className="flex flex-col items-center gap-3">
-  <img src="/icon.png" alt="Logo" className="w-16 h-16 object-contain" />
-  <div className="text-center">
-    <h1 className="font-bold text-gray-900 text-2xl tracking-tight leading-snug">
-      Crie sua conta e tenha o controle do seu salão na palma da mão.
-    </h1>
-  </div>
-</div>
+        {/* Logo + título */}
+        <div className="flex flex-col items-center gap-4 text-center">
+          <img src="/icon.png" alt="Logo" className="w-16 h-16 object-contain" />
+          <h1 className="font-bold text-gray-900 text-2xl leading-snug">
+            Crie sua conta e tenha o controle do seu salão na palma da mão.
+          </h1>
+        </div>
 
         {/* Card */}
         <div className="bg-white rounded-3xl shadow-sm p-6 flex flex-col gap-5">
+
           {/* Tabs */}
           <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
             {(['entrar', 'criar'] as const).map(m => (
@@ -89,9 +81,14 @@ export default function LoginPage() {
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Senha</label>
               <div className="relative mt-1.5">
-                <input type={mostrarSenha ? 'text' : 'password'} value={senha} onChange={e => setSenha(e.target.value)} required
+                <input
+                  type={mostrarSenha ? 'text' : 'password'}
+                  value={senha}
+                  onChange={e => setSenha(e.target.value)}
+                  required
                   placeholder="••••••••"
-                  className="w-full px-4 py-3 pr-12 rounded-2xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-gray-400 transition-colors" />
+                  className="w-full px-4 py-3 pr-12 rounded-2xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-gray-400 transition-colors"
+                />
                 <button type="button" onClick={() => setMostrarSenha(!mostrarSenha)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
                   {mostrarSenha ? <EyeOff size={16} /> : <Eye size={16} />}
