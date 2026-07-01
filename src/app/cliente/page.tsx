@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Calendar, Scissors, Package, FileText, Star, Clock, ChevronRight, LogOut, Bell } from 'lucide-react'
+import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, Heart, ChevronRight, Sparkles } from 'lucide-react'
 
 export default function ClientePage() {
   const { profile, loading, logout } = useAuth()
@@ -11,6 +11,7 @@ export default function ClientePage() {
   const [salao, setSalao] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
+  const [pacotesAtivos, setPacotesAtivos] = useState(0)
   const [notifCount, setNotifCount] = useState(0)
 
   useEffect(() => {
@@ -19,7 +20,6 @@ export default function ClientePage() {
 
   async function carregarDados() {
     if (!profile) return
-
     const { data: cli } = await supabase
       .from('clientes')
       .select('*, saloes(*)')
@@ -36,6 +36,13 @@ export default function ClientePage() {
       .limit(10)
     setAgendamentos(ags || [])
 
+    const { count: pacs } = await supabase
+      .from('cliente_pacotes')
+      .select('*', { count: 'exact', head: true })
+      .eq('cliente_id', cli?.id)
+      .eq('status', 'ativo')
+    setPacotesAtivos(pacs || 0)
+
     const { count } = await supabase
       .from('notificacoes')
       .select('*', { count: 'exact', head: true })
@@ -45,139 +52,199 @@ export default function ClientePage() {
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const corSec = salao?.cor_secundaria || '#FCE4F3'
+  const partes = salao?.nome?.split(' - ')
+  const nomePrincipal = partes?.[0] || 'Organiza'
+  const nomeSecundario = partes?.[1]
 
   const proximos = agendamentos.filter(a =>
     new Date(a.data_hora) >= new Date() && a.status !== 'cancelado'
   )
   const historico = agendamentos.filter(a =>
-    new Date(a.data_hora) < new Date() || a.status === 'concluido'
+    new Date(a.data_hora) < new Date() && a.status === 'concluido'
   )
 
+  const hora = new Date().getHours()
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
+
+  const menuItems = [
+    { icon: Calendar, label: 'Agendamentos', sub: 'Meus horários', href: '/cliente/agendamentos', badge: proximos.length > 0 ? proximos.length : null },
+    { icon: Scissors, label: 'Serviços', sub: 'Do salão', href: '/cliente/servicos', badge: null },
+    { icon: Package, label: 'Pacotes', sub: 'Meus pacotes', href: '/cliente/pacotes', badge: pacotesAtivos > 0 ? pacotesAtivos : null },
+    { icon: ClipboardList, label: 'Questionários', sub: 'Dados de saúde', href: '/cliente/anamnese', badge: null },
+  ]
+
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: cor }}>
+      <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
     </div>
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-8">
-      {/* Header com cores do salão */}
-      <div className="px-4 pt-12 pb-6" style={{ backgroundColor: cor }}>
-        <div className="flex items-center justify-between mb-4">
+    <div className="min-h-screen" style={{ backgroundColor: '#f0f0f5' }}>
+
+      {/* Header imersivo */}
+      <div className="relative overflow-hidden" style={{ backgroundColor: cor, minHeight: 220 }}>
+        {/* Círculos decorativos */}
+        <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full opacity-10 bg-white" />
+        <div className="absolute -bottom-20 -left-10 w-48 h-48 rounded-full opacity-10 bg-white" />
+        <div className="absolute top-20 right-8 w-16 h-16 rounded-full opacity-10 bg-white" />
+
+        {/* Topo: sino + avatar */}
+        <div className="relative flex items-center justify-between px-5 pt-12 pb-2">
           <div>
-            <p className="text-white/70 text-xs">Bem-vinda ao</p>
-            <p className="text-white font-bold text-lg">{salao?.nome || 'Organiza'}</p>
+            <p className="text-white/60 text-xs font-medium tracking-wide uppercase">
+              {saudacao} ✨
+            </p>
+            <h1 className="text-white text-2xl font-bold mt-0.5">
+              {profile?.nome?.split(' ')[0]}
+            </h1>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => router.push('/cliente/notificacoes')}
-              className="relative w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
+              className="relative w-10 h-10 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
               <Bell size={18} className="text-white" />
               {notifCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center font-bold">
+                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-400 text-white text-[10px] flex items-center justify-center font-bold border-2 border-white">
                   {notifCount}
                 </span>
               )}
             </button>
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white font-bold">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-base">
               {profile?.nome?.charAt(0).toUpperCase()}
             </div>
           </div>
         </div>
-        <h1 className="text-white text-2xl font-bold">Ola, {profile?.nome?.split(' ')[0]}!</h1>
-        <p className="text-white/70 text-sm mt-0.5">
-          {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
+
+        {/* Nome do salão */}
+        <div className="relative px-5 pb-8 mt-2">
+          <p className="text-white/50 text-[11px] uppercase tracking-widest">Seu salão</p>
+          <p className="text-white font-bold text-lg leading-tight">{nomePrincipal}</p>
+          {nomeSecundario && (
+            <p className="text-white/60 text-xs mt-0.5">{nomeSecundario}</p>
+          )}
+        </div>
       </div>
 
-      {/* Próximo agendamento */}
+      {/* Próximo agendamento — flutuante */}
       {proximos.length > 0 && (
-        <div className="mx-4 -mt-4 card border-l-4 mb-4" style={{ borderColor: cor }}>
-          <p className="text-xs text-gray-400 mb-1">Proximo agendamento</p>
-          <p className="font-bold text-gray-900">{proximos[0].servicos?.nome}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <Clock size={14} style={{ color: cor }} />
-            <p className="text-sm text-gray-500">
-              {new Date(proximos[0].data_hora).toLocaleDateString('pt-BR', {
-                weekday: 'short', day: 'numeric', month: 'short'
-              })} às {new Date(proximos[0].data_hora).toLocaleTimeString('pt-BR', {
-                hour: '2-digit', minute: '2-digit'
-              })}
-            </p>
-          </div>
+        <div className="px-4 -mt-5 relative z-10 mb-3">
+          <button onClick={() => router.push('/cliente/agendamentos')}
+            className="w-full bg-white rounded-2xl px-4 py-3.5 flex items-center gap-3 shadow-md active:scale-[0.98] transition-all text-left">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `${cor}18` }}>
+              <Clock size={18} style={{ color: cor }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-400 font-medium">Próximo agendamento</p>
+              <p className="text-sm font-bold text-gray-900 truncate">{proximos[0].servicos?.nome}</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                {new Date(proximos[0].data_hora).toLocaleDateString('pt-BR', {
+                  weekday: 'short', day: 'numeric', month: 'short'
+                })} · {new Date(proximos[0].data_hora).toLocaleTimeString('pt-BR', {
+                  hour: '2-digit', minute: '2-digit'
+                })}
+              </p>
+            </div>
+            <ChevronRight size={16} className="text-gray-300 shrink-0" />
+          </button>
         </div>
       )}
 
-      <div className="px-4 flex flex-col gap-4">
-        {/* Menu rápido */}
+      <div className="px-4 flex flex-col gap-4 pb-10" style={{ marginTop: proximos.length > 0 ? 0 : -20 }}>
+
+        {/* Menu principal — 2 colunas com cards modernos */}
+        {proximos.length === 0 && <div className="h-5" />}
         <div className="grid grid-cols-2 gap-3">
-          {[
-            { icon: Calendar, label: 'Meus Agendamentos', href: '/cliente/agendamentos' },
-            { icon: Scissors, label: 'Servicos do Salao', href: '/cliente/servicos' },
-            { icon: Package, label: 'Meus Pacotes', href: '/cliente/pacotes' },
-            { icon: FileText, label: 'Anamnese', href: '/cliente/anamnese' },
-          ].map(({ icon: Icon, label, href }) => (
+          {menuItems.map(({ icon: Icon, label, sub, href, badge }) => (
             <button key={href} onClick={() => router.push(href)}
-              className="card flex flex-col items-center gap-2 py-5 active:scale-95 transition-all">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: corSec }}>
-                <Icon size={22} style={{ color: cor }} />
+              className="bg-white rounded-3xl p-4 flex flex-col gap-3 active:scale-95 transition-all shadow-sm text-left relative overflow-hidden">
+              {/* Círculo decorativo */}
+              <div className="absolute -bottom-4 -right-4 w-16 h-16 rounded-full opacity-5"
+                style={{ backgroundColor: cor }} />
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center"
+                style={{ backgroundColor: `${cor}15` }}>
+                <Icon size={20} style={{ color: cor }} />
               </div>
-              <p className="text-sm font-medium text-gray-700 text-center">{label}</p>
+              <div>
+                <p className="font-bold text-gray-900 text-sm">{label}</p>
+                <p className="text-gray-400 text-xs mt-0.5">{sub}</p>
+              </div>
+              {badge && (
+                <div className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                  style={{ backgroundColor: cor }}>
+                  {badge}
+                </div>
+              )}
             </button>
           ))}
         </div>
 
-        {/* Historico */}
+        {/* Quem somos */}
+        <button onClick={() => router.push('/cliente/quem-somos')}
+          className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left relative overflow-hidden">
+          <div className="absolute inset-0 opacity-[0.03]"
+            style={{ background: `linear-gradient(135deg, ${cor}, transparent)` }} />
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+            style={{ backgroundColor: `${cor}15` }}>
+            <Heart size={20} style={{ color: cor }} />
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-gray-900 text-sm">Quem somos</p>
+            <p className="text-gray-400 text-xs mt-0.5">Nossa história e valores</p>
+          </div>
+          <ChevronRight size={16} className="text-gray-300 shrink-0" />
+        </button>
+
+        {/* Histórico de visitas */}
         {historico.length > 0 && (
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="font-bold text-gray-900">Historico de visitas</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="font-bold text-gray-900 text-sm">Últimas visitas</p>
               <button onClick={() => router.push('/cliente/agendamentos')}
-                className="text-sm font-medium" style={{ color: cor }}>
-                Ver todos
-              </button>
+                className="text-xs font-semibold" style={{ color: cor }}>Ver todas</button>
             </div>
-            {historico.slice(0, 3).map(ag => (
-              <div key={ag.id} className="card flex items-center gap-3 mb-2">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: corSec }}>
-                  <Scissors size={18} style={{ color: cor }} />
+            <div className="flex flex-col gap-2">
+              {historico.slice(0, 3).map(ag => (
+                <div key={ag.id} className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${cor}12` }}>
+                    <Scissors size={16} style={{ color: cor }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{ag.servicos?.nome}</p>
+                    <p className="text-xs text-gray-400">
+                      {new Date(ag.data_hora).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </p>
+                  </div>
+                  {ag.valor && (
+                    <p className="text-sm font-bold shrink-0" style={{ color: cor }}>
+                      R$ {Number(ag.valor).toFixed(2).replace('.', ',')}
+                    </p>
+                  )}
                 </div>
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900 text-sm">{ag.servicos?.nome}</p>
-                  <p className="text-xs text-gray-400">
-                    {new Date(ag.data_hora).toLocaleDateString('pt-BR')} com {ag.profiles?.nome}
-                  </p>
-                </div>
-                {ag.valor && (
-                  <p className="text-sm font-bold" style={{ color: cor }}>
-                    R$ {ag.valor.toFixed(2).replace('.', ',')}
-                  </p>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Avaliacao */}
+        {/* Avaliação */}
         <button onClick={() => router.push('/cliente/avaliacoes')}
-          className="card flex items-center gap-3 active:scale-95 transition-all">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-            style={{ backgroundColor: corSec }}>
-            <Star size={18} style={{ color: cor }} />
+          className="relative overflow-hidden rounded-3xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all text-left text-white"
+          style={{ background: `linear-gradient(135deg, ${cor} 0%, ${cor}bb 100%)` }}>
+          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/10" />
+          <div className="w-11 h-11 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+            <Star size={20} className="text-white" />
           </div>
-          <div className="flex-1 text-left">
-            <p className="font-semibold text-gray-900">Deixar avaliacao</p>
-            <p className="text-xs text-gray-400">Compartilhe sua experiencia</p>
+          <div className="flex-1">
+            <p className="font-bold text-white text-sm">Deixar avaliação</p>
+            <p className="text-white/70 text-xs mt-0.5">Compartilhe sua experiência ✨</p>
           </div>
-          <ChevronRight size={18} className="text-gray-300" />
+          <Sparkles size={18} className="text-white/60 shrink-0" />
         </button>
 
-        {/* Sair */}
         <button onClick={logout}
-          className="flex items-center justify-center gap-2 text-gray-400 text-sm py-3">
-          <LogOut size={16} />Sair da conta
+          className="flex items-center justify-center gap-2 text-gray-400 text-sm py-2">
+          <LogOut size={15} />Sair da conta
         </button>
       </div>
     </div>
