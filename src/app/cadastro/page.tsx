@@ -1,10 +1,11 @@
 'use client'
+import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Eye, EyeOff, Scissors } from 'lucide-react'
 
-export default function CadastroPage() {
+function CadastroConteudo() {
   const router = useRouter()
   const params = useSearchParams()
   const token = params.get('token')
@@ -13,7 +14,6 @@ export default function CadastroPage() {
   const [convite, setConvite] = useState<any>(null)
   const [carregandoSalao, setCarregandoSalao] = useState(true)
   const [tokenInvalido, setTokenInvalido] = useState(false)
-
   const [modo, setModo] = useState<'entrar' | 'criar'>('entrar')
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
@@ -26,7 +26,6 @@ export default function CadastroPage() {
     if (token) {
       carregarConvite()
     } else {
-      // Sem token: login simples de cliente/funcionario
       setCarregandoSalao(false)
     }
   }, [token])
@@ -38,13 +37,12 @@ export default function CadastroPage() {
       .eq('token', token)
       .eq('usado', false)
       .single()
-
     if (!conv) {
       setTokenInvalido(true)
     } else {
       setConvite(conv)
       setSalao(conv.saloes)
-      setModo('criar') // convite sempre cria conta
+      setModo('criar')
     }
     setCarregandoSalao(false)
   }
@@ -60,27 +58,19 @@ export default function CadastroPage() {
   async function criar(e: React.FormEvent) {
     e.preventDefault()
     setErro(''); setCarregando(true)
-
     const { data, error } = await supabase.auth.signUp({ email, password: senha })
     if (error || !data.user) { setErro('Erro ao criar conta. Tente outro e-mail.'); setCarregando(false); return }
-
-    const role = convite ? (convite.acesso_total ? 'funcionario' : 'funcionario') : 'cliente'
-
+    const role = convite ? 'funcionario' : 'cliente'
     await supabase.from('profiles').insert({
-      id: data.user.id,
-      email,
-      nome,
-      role,
+      id: data.user.id, email, nome, role,
       salao_id: convite?.salao_id || null,
       acesso_total: convite?.acesso_total || false,
       aprovado: convite ? false : true,
       ativo: convite ? false : true
     })
-
     if (convite) {
       await supabase.from('convites').update({ usado: true }).eq('id', convite.id)
     }
-
     setCarregando(false)
     router.replace(convite ? '/cadastro/aguardando' : '/app')
   }
@@ -90,7 +80,8 @@ export default function CadastroPage() {
 
   if (carregandoSalao) return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor, borderTopColor: 'transparent' }} />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
+        style={{ borderColor: '#1a1a1a', borderTopColor: 'transparent' }} />
     </div>
   )
 
@@ -100,7 +91,7 @@ export default function CadastroPage() {
         <Scissors size={28} className="text-red-400" />
       </div>
       <h1 className="font-bold text-gray-900 text-xl">Link inválido</h1>
-      <p className="text-gray-500 text-sm">Este link de convite já foi usado ou não existe. Peça um novo link para a responsável do salão.</p>
+      <p className="text-gray-500 text-sm">Este link de convite já foi usado ou não existe. Peça um novo para a responsável do salão.</p>
     </div>
   )
 
@@ -114,10 +105,12 @@ export default function CadastroPage() {
             className="w-16 h-16 rounded-2xl object-cover shadow-lg mb-4" />
         ) : (
           <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg mb-4 bg-white/20">
-            <Scissors size={28} className="text-white" />
+            <img src="/icon.png" alt="Logo" className="w-10 h-10 object-contain" />
           </div>
         )}
-        <h1 className="font-bold text-white text-xl text-center">{salao?.nome || 'Bem-vinda!'}</h1>
+        <h1 className="font-bold text-white text-xl text-center">
+          {salao?.nome || 'Bem-vinda!'}
+        </h1>
         {convite && (
           <p className="text-white/70 text-sm mt-1 text-center">
             {convite.acesso_total ? 'Você foi convidada como co-gestora' : 'Você foi convidada como funcionária'}
@@ -128,10 +121,9 @@ export default function CadastroPage() {
         )}
       </div>
 
-      {/* Card de login/cadastro */}
+      {/* Card */}
       <div className="flex-1 bg-white rounded-t-3xl -mt-4 px-6 pt-8 pb-8 flex flex-col gap-5">
 
-        {/* Tabs (só mostra se não veio de convite) */}
         {!convite && (
           <div className="flex rounded-2xl p-1 gap-1" style={{ backgroundColor: corSec }}>
             {(['entrar', 'criar'] as const).map(m => (
@@ -202,5 +194,17 @@ export default function CadastroPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function CadastroPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <CadastroConteudo />
+    </Suspense>
   )
 }
