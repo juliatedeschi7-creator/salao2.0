@@ -3,7 +3,7 @@ import {
   Bell, LogOut, Menu, X,
   Home, Calendar, Users, BarChart2, Settings,
   Scissors, Package, FileText, UserCheck, Box,
-  Sparkles, CreditCard, Camera, DollarSign, Clock
+  Sparkles, CreditCard, DollarSign, Clock
 } from 'lucide-react'
 import { useNotificacoes } from '@/lib/hooks/useNotificacoes'
 import { supabase } from '@/lib/supabase'
@@ -19,31 +19,31 @@ interface Props {
 }
 
 const MENU_DONO = [
-  { icon: Home, label: 'Inicio', href: '/salao', grupo: '' },
+  { icon: Home, label: 'Início', href: '/salao', grupo: '' },
   { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
-  { icon: Scissors, label: 'Catalogo de Servicos', href: '/salao/servicos', grupo: 'Atendimento' },
+  { icon: Scissors, label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento' },
   { icon: Package, label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento' },
   { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento' },
   { icon: FileText, label: 'Fichas de Anamnese', href: '/salao/anamnese', grupo: 'Atendimento' },
-  { icon: UserCheck, label: 'Funcionarios', href: '/salao/funcionarios', grupo: 'Equipe' },
-  { icon: Box, label: 'Estoque', href: '/salao/estoque', grupo: 'Gestao' },
-  { icon: BarChart2, label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestao' },
-  { icon: DollarSign, label: 'Relatorios', href: '/salao/financeiro/relatorios', grupo: 'Gestao' },
-  { icon: Clock, label: 'Caixa do Dia', href: '/salao/financeiro/caixa', grupo: 'Gestao' },
-  { icon: Bell, label: 'Notificacoes', href: '/salao/notificacoes', grupo: 'Outros' },
-  { icon: Sparkles, label: 'Sugestoes IA', href: '/salao/ia', grupo: 'Outros' },
-  { icon: Settings, label: 'Configuracoes', href: '/salao/configuracoes', grupo: 'Outros' },
-{ icon: Package, label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento' },
-{ icon: DollarSign, label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestao' },
-{ icon: FileText, label: 'Contratos', href: '/salao/contratos', grupo: 'Atendimento' },
+  { icon: Package, label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento' },
+  { icon: FileText, label: 'Contratos', href: '/salao/contratos', grupo: 'Atendimento' },
+  { icon: UserCheck, label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe' },
+  { icon: Box, label: 'Estoque', href: '/salao/estoque', grupo: 'Gestão' },
+  { icon: BarChart2, label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão' },
+  { icon: DollarSign, label: 'Relatórios', href: '/salao/financeiro/relatorios', grupo: 'Gestão' },
+  { icon: Clock, label: 'Caixa do Dia', href: '/salao/financeiro/caixa', grupo: 'Gestão' },
+  { icon: DollarSign, label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestão' },
+  { icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' },
+  { icon: Sparkles, label: 'Sugestões IA', href: '/salao/ia', grupo: 'Outros' },
+  { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
 ]
 
 const MENU_ADMIN = [
-  { icon: Home, label: 'Inicio', href: '/admin', grupo: '' },
-  { icon: Users, label: 'Gerenciar Saloes', href: '/admin/saloes', grupo: 'Gestao' },
-  { icon: UserCheck, label: 'Gerenciar Usuarios', href: '/admin/usuarios', grupo: 'Gestao' },
-  { icon: Bell, label: 'Notificacoes', href: '/admin/notificacoes', grupo: 'Gestao' },
+  { icon: Home, label: 'Início', href: '/admin', grupo: '' },
+  { icon: Users, label: 'Gerenciar Salões', href: '/admin/saloes', grupo: 'Gestão' },
+  { icon: UserCheck, label: 'Gerenciar Usuários', href: '/admin/usuarios', grupo: 'Gestão' },
+  { icon: Bell, label: 'Notificações', href: '/admin/notificacoes', grupo: 'Gestão' },
 ]
 
 export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', corSecundaria = '#FCE4F3' }: Props) {
@@ -53,13 +53,12 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
   const router = useRouter()
   const pathname = usePathname()
   const menuItems = profile.role === 'admin_geral' ? MENU_ADMIN : MENU_DONO
+  const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
 
   async function logout() {
     await supabase.auth.signOut()
     window.location.href = '/login'
   }
-
-const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
 
   return (
     <>
@@ -89,22 +88,22 @@ const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
         </div>
       </div>
 
-      {/* Painel notificacoes */}
+      {/* Painel de notificações */}
       {notifAberta && (
         <div className="fixed inset-0 z-50" onClick={() => setNotifAberta(false)}>
           <div className="absolute top-14 right-2 w-80 bg-white rounded-2xl shadow-xl overflow-hidden"
             onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <span className="font-bold text-gray-900">Notificacoes</span>
+              <span className="font-bold text-gray-900">Notificações</span>
               {naoLidas > 0 && (
                 <button onClick={marcarTodasComoLidas} className="text-xs font-medium" style={{ color: corPrimaria }}>
-                  Marcar todas lidas
+                  Marcar todas como lidas
                 </button>
               )}
             </div>
             <div className="max-h-96 overflow-y-auto">
               {notificacoes.length === 0
-                ? <p className="text-center text-gray-400 py-8 text-sm">Nenhuma notificacao</p>
+                ? <p className="text-center text-gray-400 py-8 text-sm">Nenhuma notificação</p>
                 : notificacoes.map(n => (
                   <div key={n.id} onClick={() => marcarComoLida(n.id)}
                     className={'px-4 py-3 border-b cursor-pointer ' + (!n.lida ? 'bg-pink-50' : 'hover:bg-gray-50')}>
@@ -124,7 +123,6 @@ const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
         <div className="fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMenuAberto(false)} />
           <div className="relative w-72 bg-white h-full flex flex-col shadow-xl">
-            {/* Header do menu */}
             <div className="p-5" style={{ backgroundColor: corPrimaria }}>
               <button onClick={() => setMenuAberto(false)} className="absolute top-4 right-4 text-white/70">
                 <X size={20} />
@@ -137,7 +135,6 @@ const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
               {salaoNome && <p className="text-white/80 text-xs mt-1">📍 {salaoNome}</p>}
             </div>
 
-            {/* Itens agrupados */}
             <div className="flex-1 overflow-y-auto py-2">
               {grupos.map(grupo => (
                 <div key={grupo}>
@@ -161,7 +158,6 @@ const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
               ))}
             </div>
 
-            {/* Logout */}
             <button onClick={logout}
               className="flex items-center gap-3 px-5 py-4 text-gray-400 border-t hover:bg-gray-50">
               <LogOut size={18} />
