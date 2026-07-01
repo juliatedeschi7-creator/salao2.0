@@ -1,197 +1,266 @@
 'use client'
-import { Suspense } from 'react'
-import { useEffect, useState } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { Eye, EyeOff, Scissors } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
-function CadastroConteudo() {
-  const router = useRouter()
-  const params = useSearchParams()
-  const token = params.get('token')
+function OrganizaLogo({ cor, size = 72 }: { cor?: string; size?: number }) {
+  const c = cor || '#111827'
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="80" height="80" rx="20" fill={c} />
+      <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle"
+        fontSize="38" fontWeight="bold" fill="white" fontFamily="system-ui, sans-serif">
+        O
+      </text>
+      <line x1="28" y1="58" x2="52" y2="58" stroke="white" strokeWidth="2.5" strokeLinecap="round" opacity="0.6"/>
+    </svg>
+  )
+}
 
-  const [salao, setSalao] = useState<any>(null)
-  const [convite, setConvite] = useState<any>(null)
+function CadastroForm() {
+  const searchParams = useSearchParams()
+  const token = searchParams.get('token')
+  const salaoSlug = searchParams.get('salao')
+  const tipo = searchParams.get('tipo')
+
+  const [salaoInfo, setSalaoInfo] = useState<any>(null)
   const [carregandoSalao, setCarregandoSalao] = useState(true)
-  const [tokenInvalido, setTokenInvalido] = useState(false)
-  const [modo, setModo] = useState<'entrar' | 'criar'>('entrar')
+  const [convite, setConvite] = useState<any>(null)
   const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
+  const [dataNascimento, setDataNascimento] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
-  const [carregando, setCarregando] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
 
+  const isCliente = !!salaoSlug
+  const isFuncionario = !!token
+  const isNovoSalao = tipo === 'salao'
+
   useEffect(() => {
-    if (token) {
-      carregarConvite()
-    } else {
+    async function buscarDados() {
+      if (salaoSlug) {
+        const { data } = await supabase.from('saloes')
+          .select('nome, cor_primaria, cor_secundaria, aprovacao_automatica_clientes')
+          .eq('slug', salaoSlug).maybeSingle()
+        if (data) setSalaoInfo(data)
+      }
+      if (token) {
+        const { data: conv } = await supabase.from('convites')
+          .select('*, saloes(nome, cor_primaria, cor_secundaria, aprovacao_automatica_clientes)')
+          .eq('token', token).eq('usado', false).maybeSingle()
+        if (conv) { setConvite(conv); if (conv.saloes) setSalaoInfo(conv.saloes) }
+      }
       setCarregandoSalao(false)
     }
-  }, [token])
+    buscarDados()
+  }, [salaoSlug, token])
 
-  async function carregarConvite() {
-    const { data: conv } = await supabase
-      .from('convites')
-      .select('*, saloes(*)')
-      .eq('token', token)
-      .eq('usado', false)
-      .single()
-    if (!conv) {
-      setTokenInvalido(true)
-    } else {
-      setConvite(conv)
-      setSalao(conv.saloes)
-      setModo('criar')
+  async function handleCadastro() {
+    if (!nome || !email || !senha) { setErro('Preencha todos os campos.'); return }
+    if (senha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres.'); return }
+    if (isCliente && !dataNascimento) { setErro('Informe sua data de nascimento.'); return }
+    setLoading(true); setErro('')
+
+    const roleInicial = isCliente ? 'cliente' : isFuncionario ? (convite?.role || 'funcionario') : 'dono_salao'
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(), password: senha,
+        options: { data: { nome: nome.trim(), role: roleInicial } }
+      })
+      if (error) {
+        setErro(error.message.includes('already') ? 'Email já cadastrado.' : 'Erro: ' + error.message)
+        setLoading(false); return
+      }
+      if (!data.user) { setErro('Erro ao criar usuário.'); setLoading(false); return }
+
+      // Funcionário
+      if (isFuncionario && convite) {
+        await supabase.from('profiles').upsert({
+          id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
+          role: convite.role, salao_id: convite.salao_id,
+          acesso_total: convite.acesso_total || false, aprovado: false, ativo: true
+        }, { onConflict: 'id' })
+        await supabase.from('convites').update({ usado: true }).eq('id', convite.id)
+        const { data: dono } = await supabase.from('profiles').select('id')
+          .eq('salao_id', convite.salao_id).eq('role', 'dono_salao').single()
+        if (dono) {
+          await supabase.from('notificacoes').insert({
+            destinatario_id: dono.id,
+            titulo: 'Novo funcionário aguardando aprovação',
+            mensagem: `${nome.trim()} se cadastrou como funcionário e aguarda aprovação.`,
+            tipo: 'sistema'
+          })
+        }
+        window.location.href = '/aguardando'; return
+      }
+
+      // Cliente
+      if (isCliente && salaoSlug) {
+        const { data: salao } = await supabase.from('saloes')
+          .select('id, aprovacao_automatica_clientes').eq('slug', salaoSlug).single()
+        if (!salao) { setErro('Salão não encontrado.'); setLoading(false); return }
+
+        const aprovadoAuto = salao.aprovacao_automatica_clientes === true
+
+        // Verifica se já existe cliente com esse email (cadastrado manualmente pelo dono)
+        const { data: clienteExistente } = await supabase.from('clientes')
+          .select('id').eq('salao_id', salao.id).eq('email', email.trim().toLowerCase()).maybeSingle()
+
+        await supabase.from('profiles').upsert({
+          id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
+          role: 'cliente', salao_id: salao.id, aprovado: aprovadoAuto, ativo: true
+        }, { onConflict: 'id' })
+
+        if (clienteExistente) {
+          // Vincula o profile ao cliente já existente
+          await supabase.from('clientes').update({ profile_id: data.user.id })
+            .eq('id', clienteExistente.id)
+        } else {
+          await supabase.from('clientes').insert({
+            salao_id: salao.id, profile_id: data.user.id,
+            nome: nome.trim(), email: email.trim().toLowerCase(),
+            data_nascimento: dataNascimento || null
+          })
+        }
+
+        const { data: dono } = await supabase.from('profiles').select('id')
+          .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
+        if (dono) {
+          await supabase.from('notificacoes').insert({
+            destinatario_id: dono.id,
+            titulo: aprovadoAuto ? 'Nova cliente cadastrada! 🎉' : 'Nova cliente aguardando aprovação',
+            mensagem: aprovadoAuto
+              ? `${nome.trim()} se cadastrou no seu salão.`
+              : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
+            tipo: 'sistema'
+          })
+        }
+
+        window.location.href = aprovadoAuto ? '/cliente' : '/aguardando'; return
+      }
+
+      // Dono de salão
+      await supabase.from('profiles').upsert({
+        id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
+        role: roleInicial, aprovado: false, ativo: true
+      }, { onConflict: 'id' })
+      window.location.href = isNovoSalao ? '/aguardando' : '/login'
+    } catch (e: any) {
+      setErro('Erro: ' + (e.message || 'Tente novamente.'))
     }
-    setCarregandoSalao(false)
+    setLoading(false)
   }
 
-  async function entrar(e: React.FormEvent) {
-    e.preventDefault()
-    setErro(''); setCarregando(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
-    if (error) { setErro('Email ou senha incorretos.'); setCarregando(false); return }
-    router.replace('/app')
-  }
+  const cor = (isCliente || isFuncionario) && salaoInfo?.cor_primaria ? salaoInfo.cor_primaria : '#111827'
+  const corSec = (isCliente || isFuncionario) && salaoInfo?.cor_secundaria ? salaoInfo.cor_secundaria : '#f3f4f6'
 
-  async function criar(e: React.FormEvent) {
-    e.preventDefault()
-    setErro(''); setCarregando(true)
-    const { data, error } = await supabase.auth.signUp({ email, password: senha })
-    if (error || !data.user) { setErro('Erro ao criar conta. Tente outro e-mail.'); setCarregando(false); return }
-    const role = convite ? 'funcionario' : 'cliente'
-    await supabase.from('profiles').insert({
-      id: data.user.id, email, nome, role,
-      salao_id: convite?.salao_id || null,
-      acesso_total: convite?.acesso_total || false,
-      aprovado: convite ? false : true,
-      ativo: convite ? false : true
-    })
-    if (convite) {
-      await supabase.from('convites').update({ usado: true }).eq('id', convite.id)
-    }
-    setCarregando(false)
-    router.replace(convite ? '/cadastro/aguardando' : '/app')
-  }
-
-  const cor = salao?.cor_primaria || '#1a1a1a'
-  const corSec = salao?.cor_secundaria || '#f0f0f0'
+  const partes = salaoInfo?.nome?.split(' - ')
+  const nomePrincipal = partes?.[0]
+  const nomeSecundario = partes?.[1]
 
   if (carregandoSalao) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-        style={{ borderColor: '#1a1a1a', borderTopColor: 'transparent' }} />
-    </div>
-  )
-
-  if (tokenInvalido) return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center gap-4">
-      <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center">
-        <Scissors size={28} className="text-red-400" />
-      </div>
-      <h1 className="font-bold text-gray-900 text-xl">Link inválido</h1>
-      <p className="text-gray-500 text-sm">Este link de convite já foi usado ou não existe. Peça um novo para a responsável do salão.</p>
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
     </div>
   )
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: corSec }}>
+    <div className="min-h-screen flex flex-col items-center px-6 py-10"
+      style={{ background: (isCliente || isFuncionario) ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)` : '#ffffff' }}>
 
-      {/* Header com identidade do salão */}
-      <div className="flex flex-col items-center pt-14 pb-8 px-6" style={{ backgroundColor: cor }}>
-        {salao?.logo_url ? (
-          <img src={salao.logo_url} alt={salao.nome}
-            className="w-16 h-16 rounded-2xl object-cover shadow-lg mb-4" />
-        ) : (
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg mb-4 bg-white/20">
-            <img src="/icon.png" alt="Logo" className="w-10 h-10 object-contain" />
+      <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
+        {isCliente ? (
+          <div className="text-center mt-4">
+            <div className="flex justify-center mb-4">
+              <OrganizaLogo cor={cor} size={72} />
+            </div>
+            <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>{nomePrincipal}</h1>
+            {nomeSecundario && <p className="text-sm font-medium mt-1 text-gray-400">{nomeSecundario}</p>}
+            <p className="text-gray-500 text-sm mt-3 text-center leading-relaxed">
+              Crie sua conta para acessar nosso catálogo, agendar serviços e acompanhar seus pacotes
+            </p>
           </div>
-        )}
-        <h1 className="font-bold text-white text-xl text-center">
-          {salao?.nome || 'Bem-vinda!'}
-        </h1>
-        {convite && (
-          <p className="text-white/70 text-sm mt-1 text-center">
-            {convite.acesso_total ? 'Você foi convidada como co-gestora' : 'Você foi convidada como funcionária'}
-          </p>
-        )}
-        {!salao && !convite && (
-          <p className="text-white/70 text-sm mt-1">Acesse sua conta</p>
+        ) : isFuncionario ? (
+          <div className="text-center">
+            <div className="flex justify-center mb-4">
+              <OrganizaLogo cor={cor} size={64} />
+            </div>
+            <h1 className="text-xl font-bold" style={{ color: cor }}>{nomePrincipal || 'Convite para funcionário'}</h1>
+            {nomeSecundario && <p className="text-sm text-gray-400 mt-0.5">{nomeSecundario}</p>}
+            <p className="text-gray-500 text-sm mt-3 leading-relaxed">
+              {convite?.acesso_total ? 'Crie sua conta como co-gestora do salão.' : 'Crie sua conta para colaborar na gestão do salão.'}
+            </p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <div className="flex justify-center mb-4">
+              <img src="/logo.png" alt="Organiza Salão" className="w-20 h-20 object-contain" />
+            </div>
+            <h1 className="text-2xl font-bold text-black leading-tight">
+              Crie uma conta para começar a ter controle do seu salão na palma da mão
+            </h1>
+            <p className="text-gray-500 text-sm mt-3 leading-relaxed">
+              Visualize agenda, catálogo de serviços, envie lembretes e controle pacotes. Facilite sua gestão!
+            </p>
+          </div>
         )}
       </div>
 
-      {/* Card */}
-      <div className="flex-1 bg-white rounded-t-3xl -mt-4 px-6 pt-8 pb-8 flex flex-col gap-5">
+      <div className="w-full max-w-sm flex flex-col gap-4 mt-2">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Nome completo</label>
+          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
+            placeholder="Seu nome completo" value={nome} onChange={e => setNome(e.target.value)} />
+        </div>
 
-        {!convite && (
-          <div className="flex rounded-2xl p-1 gap-1" style={{ backgroundColor: corSec }}>
-            {(['entrar', 'criar'] as const).map(m => (
-              <button key={m} onClick={() => { setModo(m); setErro('') }}
-                className={'flex-1 py-2 rounded-xl text-sm font-semibold transition-all ' +
-                  (modo === m ? 'bg-white shadow-sm' : 'text-gray-400')}
-                style={modo === m ? { color: cor } : {}}>
-                {m === 'entrar' ? 'Entrar' : 'Cadastrar'}
-              </button>
-            ))}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Email</label>
+          <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
+            type="email" placeholder="seuemail@exemplo.com"
+            value={email} onChange={e => setEmail(e.target.value)} />
+        </div>
+
+        {isCliente && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-gray-500">Data de nascimento</label>
+            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none"
+              type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
+              style={{ colorScheme: 'light' }} />
           </div>
         )}
 
-        {convite && (
-          <div>
-            <h2 className="font-bold text-gray-900 text-lg">Criar sua conta</h2>
-            <p className="text-sm text-gray-400 mt-0.5">Preencha os dados para começar</p>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <div className="relative">
+            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
+              type={mostrarSenha ? 'text' : 'password'} placeholder="Mínimo 6 caracteres"
+              value={senha} onChange={e => setSenha(e.target.value)} />
+            <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+              onClick={() => setMostrarSenha(!mostrarSenha)}>
+              {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+        </div>
+
+        {erro && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <p className="text-red-600 text-sm text-center">{erro}</p>
           </div>
         )}
 
-        <form onSubmit={modo === 'entrar' ? entrar : criar} className="flex flex-col gap-3">
-          {modo === 'criar' && (
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Seu nome</label>
-              <input value={nome} onChange={e => setNome(e.target.value)} required
-                placeholder="Como você se chama?"
-                className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm outline-none transition-colors"
-                onFocus={e => e.target.style.borderColor = cor}
-                onBlur={e => e.target.style.borderColor = '#f3f4f6'} />
-            </div>
-          )}
+        <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+          style={{ backgroundColor: cor }} onClick={handleCadastro} disabled={loading}>
+          {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Criar conta'}
+        </button>
 
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">E-mail</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-              placeholder="seu@email.com"
-              className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm outline-none transition-colors"
-              onFocus={e => e.target.style.borderColor = cor}
-              onBlur={e => e.target.style.borderColor = '#f3f4f6'} />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Senha</label>
-            <div className="relative mt-1.5">
-              <input type={mostrarSenha ? 'text' : 'password'} value={senha} onChange={e => setSenha(e.target.value)} required
-                placeholder="••••••••" minLength={6}
-                className="w-full px-4 py-3 pr-12 rounded-2xl border border-gray-100 bg-gray-50 text-sm outline-none transition-colors"
-                onFocus={e => e.target.style.borderColor = cor}
-                onBlur={e => e.target.style.borderColor = '#f3f4f6'} />
-              <button type="button" onClick={() => setMostrarSenha(!mostrarSenha)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                {mostrarSenha ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-
-          {erro && <p className="text-sm text-red-500 text-center">{erro}</p>}
-
-          <button type="submit" disabled={carregando}
-            className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm mt-2 disabled:opacity-50 transition-all active:scale-[0.98]"
-            style={{ backgroundColor: cor }}>
-            {carregando ? '...' : modo === 'entrar' ? 'Entrar' : 'Criar conta'}
-          </button>
-        </form>
-
-        {salao && (
-          <p className="text-center text-xs text-gray-300 mt-2">{salao.nome}</p>
-        )}
+        <p className="text-center text-gray-500 text-sm mb-6">
+          Já tem conta?{' '}
+          <a href={isCliente ? '/login?salao=' + salaoSlug : '/login'} className="font-bold" style={{ color: cor }}>Entrar</a>
+        </p>
       </div>
     </div>
   )
@@ -200,11 +269,11 @@ function CadastroConteudo() {
 export default function CadastroPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
       </div>
     }>
-      <CadastroConteudo />
+      <CadastroForm />
     </Suspense>
   )
 }
