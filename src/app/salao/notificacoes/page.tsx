@@ -43,7 +43,7 @@ export default function NotificacoesPage() {
     const hoje = new Date()
     const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome, id), servicos(nome), confirmacoes_atendimento(*)')
+      .select('*, clientes(nome, id), servicos(nome), confirmacoes_atendimento(*, confirmado_por_profile:profiles!confirmacoes_atendimento_confirmado_por_fkey(nome))')
       .eq('salao_id', profile!.salao_id!)
       .gte('data_hora', ontem.toISOString())
       .lte('data_hora', hoje.toISOString())
@@ -81,10 +81,15 @@ export default function NotificacoesPage() {
   }
 
   async function confirmarAtendimento(ag: any, veio: boolean) {
+    // registra confirmado_por para rastrear quem confirmou o atendimento
     await supabase.from('confirmacoes_atendimento').insert({
-      agendamento_id: ag.id, confirmado: veio,
-      o_que_fez: veio ? oQueFez : null, respondido_em: new Date().toISOString()
+      agendamento_id: ag.id,
+      confirmado: veio,
+      confirmado_por: profile!.id,
+      o_que_fez: veio ? oQueFez : null,
+      respondido_em: new Date().toISOString()
     })
+
     if (veio && oQueFez) {
       await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', ag.id)
       const { data: pacote } = await supabase.from('cliente_pacotes')
@@ -106,28 +111,28 @@ export default function NotificacoesPage() {
     setModalConfirm(null); setOQueFez(''); carregarDados()
   }
 
-async function sugerirHorarios(solicitacao: any) {
-  const horarios = horariosLivres.filter(h => h)
-  if (!horarios.length) return
-  const { data: prof } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
+  async function sugerirHorarios(solicitacao: any) {
+    const horarios = horariosLivres.filter(h => h)
+    if (!horarios.length) return
+    const { data: prof } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
 
-  await supabase.from('solicitacoes_agendamento').update({
-    status: 'horario_sugerido',
-    horarios_sugeridos: horarios,
-    profissional_id: profile!.id
-  }).eq('id', solicitacao.id)
+    await supabase.from('solicitacoes_agendamento').update({
+      status: 'horario_sugerido',
+      horarios_sugeridos: horarios,
+      profissional_id: profile!.id
+    }).eq('id', solicitacao.id)
 
-  await supabase.from('notificacoes').insert({
-    salao_id: profile!.salao_id,
-    remetente_id: profile!.id,
-    destinatario_id: prof?.profile_id,
-    titulo: 'Horarios sugeridos para ' + solicitacao.servicos?.nome,
-    mensagem: 'Escolha um dos horarios disponiveis para confirmar seu agendamento.',
-    tipo: 'horario_sugerido',
-    referencia_id: solicitacao.id
-  })
-  setHorariosLivres(['', '', '']); carregarDados()
-}
+    await supabase.from('notificacoes').insert({
+      salao_id: profile!.salao_id,
+      remetente_id: profile!.id,
+      destinatario_id: prof?.profile_id,
+      titulo: 'Horários sugeridos para ' + solicitacao.servicos?.nome,
+      mensagem: 'Escolha um dos horários disponíveis para confirmar seu agendamento.',
+      tipo: 'horario_sugerido',
+      referencia_id: solicitacao.id
+    })
+    setHorariosLivres(['', '', '']); carregarDados()
+  }
 
   async function enviarLembrete() {
     const amanha = new Date(); amanha.setDate(amanha.getDate() + 1)
@@ -146,7 +151,7 @@ async function sugerirHorarios(solicitacao: any) {
           remetente_id: profile!.id,
           destinatario_id: ag.clientes.profile_id,
           titulo: 'Lembrete de agendamento',
-          mensagem: 'Ola ' + ag.clientes.nome + '! Voce tem ' + ag.servicos?.nome + ' amanha as ' + hora + '. Te esperamos!',
+          mensagem: `Olá ${ag.clientes.nome}! Você tem ${ag.servicos?.nome} amanhã às ${hora}. Te esperamos!`,
           tipo: 'lembrete', lida: false
         })
       }
@@ -161,7 +166,7 @@ async function sugerirHorarios(solicitacao: any) {
     <div className="min-h-screen bg-[#f8f9fa] pb-8">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Notificacoes</h1>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Notificações</h1>
         <button onClick={() => setModalNotif(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-full text-white text-sm font-medium"
           style={{ backgroundColor: cor }}>
@@ -172,8 +177,8 @@ async function sugerirHorarios(solicitacao: any) {
       <div className="flex bg-white border-b border-gray-100">
         {[
           { key: 'notif', label: 'Enviadas' },
-          { key: 'confirmacoes', label: 'Confirmar (' + confirmacoes.length + ')' },
-          { key: 'solicitacoes', label: 'Pedidos (' + solicitacoes.length + ')' },
+          { key: 'confirmacoes', label: `Confirmar (${confirmacoes.length})` },
+          { key: 'solicitacoes', label: `Pedidos (${solicitacoes.length})` },
         ].map(t => (
           <button key={t.key} onClick={() => setAba(t.key as any)}
             className={'flex-1 py-3 text-xs font-medium transition-all ' + (aba === t.key ? 'border-b-2' : 'text-gray-400')}
@@ -190,13 +195,16 @@ async function sugerirHorarios(solicitacao: any) {
               className="card flex items-center gap-3 active:scale-95 transition-all">
               <Bell size={20} style={{ color: cor }} />
               <div className="flex-1 text-left">
-                <p className="font-semibold text-gray-900 text-sm">Enviar lembretes de amanha</p>
-                <p className="text-xs text-gray-400">Notifica todos os clientes com agendamento amanha</p>
+                <p className="font-semibold text-gray-900 text-sm">Enviar lembretes de amanhã</p>
+                <p className="text-xs text-gray-400">Notifica todos os clientes com agendamento amanhã</p>
               </div>
             </button>
 
             {notificacoes.length === 0 ? (
-              <div className="card text-center py-10"><Bell size={36} className="text-gray-300 mx-auto mb-2" /><p className="text-gray-400">Nenhuma notificacao enviada</p></div>
+              <div className="card text-center py-10">
+                <Bell size={36} className="text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-400">Nenhuma notificação enviada</p>
+              </div>
             ) : notificacoes.map(n => (
               <div key={n.id} className="card flex flex-col gap-1">
                 <div className="flex justify-between">
@@ -212,7 +220,10 @@ async function sugerirHorarios(solicitacao: any) {
 
         {aba === 'confirmacoes' && (
           confirmacoes.length === 0 ? (
-            <div className="card text-center py-10"><CheckCircle size={36} className="text-gray-300 mx-auto mb-2" /><p className="text-gray-400">Nenhum atendimento para confirmar</p></div>
+            <div className="card text-center py-10">
+              <CheckCircle size={36} className="text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-400">Nenhum atendimento para confirmar</p>
+            </div>
           ) : confirmacoes.map(ag => (
             <div key={ag.id} className="card flex flex-col gap-3">
               <div>
@@ -222,14 +233,14 @@ async function sugerirHorarios(solicitacao: any) {
               </div>
               <p className="text-sm font-medium text-gray-700">{ag.clientes?.nome} veio ao atendimento?</p>
               <div className="flex gap-2">
-                <button onClick={() => { setModalConfirm(ag) }}
+                <button onClick={() => setModalConfirm(ag)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium"
                   style={{ backgroundColor: cor }}>
                   <CheckCircle size={16} />Sim, veio
                 </button>
                 <button onClick={() => confirmarAtendimento(ag, false)}
                   className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
-                  <XCircle size={16} />Nao veio
+                  <XCircle size={16} />Não veio
                 </button>
               </div>
             </div>
@@ -238,7 +249,10 @@ async function sugerirHorarios(solicitacao: any) {
 
         {aba === 'solicitacoes' && (
           solicitacoes.length === 0 ? (
-            <div className="card text-center py-10"><Calendar size={36} className="text-gray-300 mx-auto mb-2" /><p className="text-gray-400">Nenhuma solicitacao pendente</p></div>
+            <div className="card text-center py-10">
+              <Calendar size={36} className="text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-400">Nenhuma solicitação pendente</p>
+            </div>
           ) : solicitacoes.map(sol => (
             <div key={sol.id} className="card flex flex-col gap-3">
               <div>
@@ -246,7 +260,7 @@ async function sugerirHorarios(solicitacao: any) {
                 <p className="text-sm text-gray-500">Quer agendar: {sol.servicos?.nome}</p>
                 <p className="text-xs text-gray-400">{new Date(sol.created_at).toLocaleDateString('pt-BR')}</p>
               </div>
-              <p className="text-sm font-medium text-gray-700">Sugerir horarios livres:</p>
+              <p className="text-sm font-medium text-gray-700">Sugerir horários livres:</p>
               {horariosLivres.map((h, i) => (
                 <input key={i} className="input-field" type="datetime-local"
                   value={h} onChange={e => { const n = [...horariosLivres]; n[i] = e.target.value; setHorariosLivres(n) }} />
@@ -254,17 +268,18 @@ async function sugerirHorarios(solicitacao: any) {
               <button onClick={() => sugerirHorarios(sol)}
                 className="w-full py-2.5 rounded-xl text-white text-sm font-medium"
                 style={{ backgroundColor: cor }}>
-                Enviar sugestao de horarios
+                Enviar sugestão de horários
               </button>
             </div>
           ))
         )}
       </div>
 
+      {/* Modal enviar notificação */}
       {modalNotif && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
-            <h3 className="font-bold text-gray-900 text-lg">Enviar Notificacao</h3>
+            <h3 className="font-bold text-gray-900 text-lg">Enviar Notificação</h3>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Para</label>
               <select className="input-field" value={clienteId} onChange={e => setClienteId(e.target.value)}>
@@ -273,8 +288,8 @@ async function sugerirHorarios(solicitacao: any) {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Titulo</label>
-              <input className="input-field" placeholder="Ex: Promocao especial!" value={titulo} onChange={e => setTitulo(e.target.value)} />
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Título</label>
+              <input className="input-field" placeholder="Ex: Promoção especial!" value={titulo} onChange={e => setTitulo(e.target.value)} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Mensagem</label>
@@ -292,13 +307,14 @@ async function sugerirHorarios(solicitacao: any) {
         </div>
       )}
 
+      {/* Modal confirmar atendimento */}
       {modalConfirm && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
             <h3 className="font-bold text-gray-900 text-lg">O que foi feito?</h3>
-            <p className="text-sm text-gray-500">Informe o servico realizado para atualizar o pacote da cliente</p>
+            <p className="text-sm text-gray-500">Informe o serviço realizado para atualizar o pacote da cliente</p>
             <textarea className="input-field resize-none" rows={3}
-              placeholder="Ex: Limpeza de pele + hidratacao..."
+              placeholder="Ex: Limpeza de pele + hidratação..."
               value={oQueFez} onChange={e => setOQueFez(e.target.value)} />
             <div className="flex gap-3">
               <button onClick={() => { setModalConfirm(null); setOQueFez('') }}
