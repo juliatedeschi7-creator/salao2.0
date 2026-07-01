@@ -1,338 +1,321 @@
 'use client'
-
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Calendar, Package, FileText, CreditCard, Plus, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Phone, Mail, Calendar, Package, ClipboardList, Edit3, MessageCircle, Star } from 'lucide-react'
 
-export default function ClienteDetalhePage() {
+type Tab = 'resumo' | 'pacotes' | 'historico' | 'questionarios'
+
+export default function ClientePerfilPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const params = useParams()
+  const clienteId = params.id as string
+
   const [salao, setSalao] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
-  const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [pacotes, setPacotes] = useState<any[]>([])
-  const [contas, setContas] = useState<any[]>([])
-  const [aba, setAba] = useState<'info' | 'agenda' | 'pacotes' | 'contas' | 'anamnese'>('info')
-  const [modalConta, setModalConta] = useState(false)
-  const [novaConta, setNovaConta] = useState({
-    descricao: '', tipo: 'debito', valor: '', forma_pagamento: '', vencimento: ''
-  })
+  const [agendamentos, setAgendamentos] = useState<any[]>([])
+  const [questionarios, setQuestionarios] = useState<any[]>([])
+  const [tab, setTab] = useState<Tab>('resumo')
+  const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
   }, [loading])
 
   async function carregarDados() {
-    const { data: sal } = await supabase.from('saloes').select('*')
-      .eq('id', profile!.salao_id!).single()
+    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    const { data: cli } = await supabase.from('clientes').select('*')
-      .eq('id', params.id as string).single()
+    const { data: cli } = await supabase.from('clientes').select('*').eq('id', clienteId).single()
     setCliente(cli)
 
-    const { data: ags } = await supabase.from('agendamentos')
-      .select('*, servicos(nome)')
-      .eq('cliente_id', params.id as string)
+    const { data: pacs } = await supabase
+      .from('cliente_pacotes')
+      .select('*, pacotes(nome, descricao, categoria)')
+      .eq('cliente_id', clienteId)
+      .order('data_compra', { ascending: false })
+    setPacotes(pacs || [])
+
+    const { data: ags } = await supabase
+      .from('agendamentos')
+      .select('*, servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
+      .eq('cliente_id', clienteId)
       .order('data_hora', { ascending: false })
       .limit(20)
     setAgendamentos(ags || [])
 
-    const { data: pacs } = await supabase.from('cliente_pacotes')
-      .select('*, pacotes(nome, categoria)')
-      .eq('cliente_id', params.id as string)
-      .order('data_compra', { ascending: false })
-    setPacotes(pacs || [])
-
-    const { data: conts } = await supabase.from('contas_clientes')
-      .select('*')
-      .eq('cliente_id', params.id as string)
-      .order('created_at', { ascending: false })
-    setContas(conts || [])
-  }
-
-  async function adicionarConta() {
-    if (!novaConta.descricao || !novaConta.valor) return
-
-    await supabase.from('contas_clientes').insert({
-      salao_id: profile!.salao_id,
-      cliente_id: params.id,
-      descricao: novaConta.descricao,
-      tipo: novaConta.tipo,
-      valor: parseFloat(novaConta.valor),
-      forma_pagamento: novaConta.forma_pagamento || null,
-      vencimento: novaConta.vencimento || null,
-      status: novaConta.tipo === 'pagamento' ? 'pago' : 'pendente',
-      criado_por: profile!.id,
-      pago_em: novaConta.tipo === 'pagamento' ? new Date().toISOString() : null,
-    })
-
-    setModalConta(false)
-    setNovaConta({ descricao: '', tipo: 'debito', valor: '', forma_pagamento: '', vencimento: '' })
-    carregarDados()
+    setCarregando(false)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const saldoDevedor = contas
-    .filter(c => c.status === 'pendente' && c.tipo === 'debito')
-    .reduce((acc, c) => acc + c.valor, 0)
-  const saldoCredito = contas
-    .filter(c => c.status === 'pendente' && c.tipo === 'credito')
-    .reduce((acc, c) => acc + c.valor, 0)
 
-  const abas = [
-    { key: 'info', label: 'Info' },
-    { key: 'agenda', label: 'Agenda' },
-    { key: 'pacotes', label: 'Pacotes' },
-    { key: 'contas', label: 'Contas' },
-    { key: 'anamnese', label: 'Anamnese' },
+  const pacotesAtivos = pacotes.filter(p => p.status === 'ativo')
+  const totalSessoes = pacotesAtivos.reduce((acc, p) => acc + (p.sessoes_total - p.sessoes_usadas), 0)
+  const totalAtendimentos = agendamentos.filter(a => a.status === 'concluido').length
+
+  if (loading || carregando) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    </div>
+  )
+
+  if (!cliente) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-8 text-center">
+      <p className="text-gray-500">Cliente não encontrada.</p>
+      <button onClick={() => router.back()} className="text-sm font-medium" style={{ color: cor }}>Voltar</button>
+    </div>
+  )
+
+  const tabs: { key: Tab; label: string; icon: any }[] = [
+    { key: 'resumo', label: 'Resumo', icon: Star },
+    { key: 'pacotes', label: 'Pacotes', icon: Package },
+    { key: 'historico', label: 'Histórico', icon: Calendar },
+    { key: 'questionarios', label: 'Questionários', icon: ClipboardList },
   ]
 
+  const statusPacote: Record<string, string> = {
+    ativo: 'bg-green-50 text-green-600',
+    expirado: 'bg-red-50 text-red-500',
+    concluido: 'bg-gray-100 text-gray-400',
+  }
+
+  const statusAg: Record<string, { label: string; cor: string }> = {
+    confirmado: { label: 'Confirmado', cor: 'text-green-600' },
+    pendente: { label: 'Pendente', cor: 'text-yellow-600' },
+    concluido: { label: 'Concluído', cor: 'text-gray-400' },
+    cancelado: { label: 'Cancelado', cor: 'text-red-400' },
+  }
+
   return (
-    <div className="min-h-screen bg-[#f8f4f6]">
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button onClick={() => router.back()}>
-          <ArrowLeft size={22} className="text-gray-700" />
+    <div className="min-h-screen pb-10" style={{ backgroundColor: '#f4f4f8' }}>
+
+      {/* Header */}
+      <div className="relative px-5 pt-12 pb-20 overflow-hidden"
+        style={{ background: `linear-gradient(135deg, ${cor} 0%, ${cor}bb 100%)` }}>
+        <div className="absolute -top-6 -right-6 w-36 h-36 rounded-full opacity-10 bg-white" />
+        <div className="absolute -bottom-10 -left-4 w-28 h-28 rounded-full opacity-10 bg-white" />
+
+        <button onClick={() => router.back()}
+          className="relative w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center mb-5">
+          <ArrowLeft size={18} className="text-white" />
         </button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">
-          {cliente?.nome || 'Cliente'}
-        </h1>
-      </div>
 
-      {/* Abas */}
-      <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
-        {abas.map(a => (
-          <button key={a.key} onClick={() => setAba(a.key as any)}
-            className={`px-4 py-3 text-sm font-medium whitespace-nowrap transition-all ${aba === a.key ? 'border-b-2' : 'text-gray-400'}`}
-            style={aba === a.key ? { color: cor, borderColor: cor } : {}}>
-            {a.label}
+        <div className="relative flex items-end gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/40 flex items-center justify-center text-white text-2xl font-bold">
+            {cliente.nome.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 pb-1">
+            <h1 className="text-white text-xl font-bold leading-tight">{cliente.nome}</h1>
+            {cliente.telefone && (
+              <p className="text-white/70 text-xs mt-0.5">{cliente.telefone}</p>
+            )}
+          </div>
+          <button onClick={() => router.push(`/salao/clientes/${clienteId}/editar`)}
+            className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <Edit3 size={16} className="text-white" />
           </button>
-        ))}
+        </div>
       </div>
 
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {aba === 'info' && (
-          <>
-            <div className="card flex flex-col gap-2">
-              <p className="text-xs text-gray-400 font-medium uppercase">Informações</p>
-              <div className="flex flex-col gap-2 mt-1">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Nome</span>
-                  <span className="text-sm font-medium text-gray-900">{cliente?.nome}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Telefone</span>
-                  <span className="text-sm font-medium text-gray-900">{cliente?.telefone || '—'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Email</span>
-                  <span className="text-sm font-medium text-gray-900">{cliente?.email || '—'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Nascimento</span>
-                  <span className="text-sm font-medium text-gray-900">
-                    {cliente?.data_nascimento
-                      ? new Date(cliente.data_nascimento).toLocaleDateString('pt-BR')
-                      : '—'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-500">Cliente desde</span>
-                  <span className="text-sm font-medium text-gray-900">
-                    {cliente?.created_at
-                      ? new Date(cliente.created_at).toLocaleDateString('pt-BR')
-                      : '—'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            {cliente?.observacoes && (
-              <div className="card">
-                <p className="text-xs text-gray-400 font-medium uppercase mb-1">Observações</p>
-                <p className="text-sm text-gray-700">{cliente.observacoes}</p>
-              </div>
-            )}
-          </>
-        )}
-
-        {aba === 'agenda' && (
-          agendamentos.length === 0 ? (
-            <div className="card text-center py-10">
-              <Calendar size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Sem agendamentos</p>
-            </div>
-          ) : agendamentos.map(ag => (
-            <div key={ag.id} className="card">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-semibold text-gray-900">{ag.servicos?.nome}</p>
-                  <p className="text-sm text-gray-400">
-                    {new Date(ag.data_hora).toLocaleDateString('pt-BR')} às{' '}
-                    {new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ag.status === 'concluido' ? 'bg-gray-100 text-gray-500' : ag.status === 'confirmado' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600'}`}>
-                  {ag.status}
-                </span>
-              </div>
-            </div>
-          ))
-        )}
-
-        {aba === 'pacotes' && (
-          pacotes.length === 0 ? (
-            <div className="card text-center py-10">
-              <Package size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Sem pacotes</p>
-            </div>
-          ) : pacotes.map(p => (
-            <div key={p.id} className="card">
-              <div className="flex justify-between items-start mb-2">
-                <p className="font-semibold text-gray-900">{p.pacotes?.nome}</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.status === 'ativo' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
-                  {p.status}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>Sessões: {p.sessoes_usadas}/{p.sessoes_total}</span>
-                <span>Vence: {p.data_expiracao ? new Date(p.data_expiracao).toLocaleDateString('pt-BR') : '—'}</span>
-              </div>
-              <div className="mt-2 h-2 bg-gray-100 rounded-full">
-                <div className="h-2 rounded-full transition-all"
-                  style={{ width: `${(p.sessoes_usadas / p.sessoes_total) * 100}%`, backgroundColor: cor }} />
-              </div>
-            </div>
-          ))
-        )}
-
-        {aba === 'contas' && (
-          <>
-            {/* Resumo */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="card border-l-4 border-red-400">
-                <p className="text-xs text-gray-400">A receber</p>
-                <p className="text-xl font-bold text-red-500">
-                  R$ {saldoDevedor.toFixed(2).replace('.', ',')}
-                </p>
-              </div>
-              <div className="card border-l-4 border-green-400">
-                <p className="text-xs text-gray-400">Crédito</p>
-                <p className="text-xl font-bold text-green-500">
-                  R$ {saldoCredito.toFixed(2).replace('.', ',')}
-                </p>
-              </div>
-            </div>
-
-            <button onClick={() => setModalConta(true)}
-              className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed text-sm font-medium"
-              style={{ borderColor: cor, color: cor }}>
-              <Plus size={16} />Lançar na conta
-            </button>
-
-            {contas.map(c => (
-              <div key={c.id} className="card flex items-start justify-between">
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">{c.descricao}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(c.created_at).toLocaleDateString('pt-BR')}
-                    {c.forma_pagamento && ` • ${c.forma_pagamento}`}
-                  </p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium mt-1 inline-block ${c.status === 'pago' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600'}`}>
-                    {c.status}
-                  </span>
-                </div>
-                <p className={`font-bold text-base ${c.tipo === 'debito' ? 'text-red-500' : c.tipo === 'credito' ? 'text-green-500' : 'text-gray-500'}`}>
-                  {c.tipo === 'debito' ? '-' : '+'} R$ {c.valor.toFixed(2).replace('.', ',')}
-                </p>
-              </div>
-            ))}
-          </>
-        )}
-
-        {aba === 'anamnese' && (
-          <button onClick={() => router.push(`/salao/anamnese?cliente=${params.id}`)}
-            className="card flex items-center gap-3">
-            <FileText size={20} style={{ color: cor }} />
-            <span className="font-medium text-gray-900">Ver fichas de anamnese</span>
-            <ChevronRight size={18} className="text-gray-300 ml-auto" />
-          </button>
-        )}
-      </div>
-
-      {/* Modal conta */}
-      {modalConta && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
-            <h3 className="font-bold text-gray-900 text-lg">Lançar na Conta</h3>
-
-            <div className="flex gap-2">
-              {[
-                { key: 'debito', label: 'Débito', cor: 'bg-red-50 text-red-600 border-red-200' },
-                { key: 'credito', label: 'Crédito', cor: 'bg-green-50 text-green-600 border-green-200' },
-                { key: 'pagamento', label: 'Pagamento', cor: 'bg-blue-50 text-blue-600 border-blue-200' },
-              ].map(t => (
-                <button key={t.key}
-                  onClick={() => setNovaConta(prev => ({ ...prev, tipo: t.key }))}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium border-2 transition-all ${novaConta.tipo === t.key ? t.cor : 'border-gray-200 text-gray-400'}`}>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Descrição</label>
-              <input className="input-field" placeholder="Ex: Coloração, pagamento pendente..."
-                value={novaConta.descricao}
-                onChange={e => setNovaConta(prev => ({ ...prev, descricao: e.target.value }))} />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Valor (R$)</label>
-              <input className="input-field" type="number" placeholder="0,00"
-                value={novaConta.valor}
-                onChange={e => setNovaConta(prev => ({ ...prev, valor: e.target.value }))} />
-            </div>
-
-            {novaConta.tipo === 'pagamento' && (
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">Forma de pagamento</label>
-                <select className="input-field" value={novaConta.forma_pagamento}
-                  onChange={e => setNovaConta(prev => ({ ...prev, forma_pagamento: e.target.value }))}>
-                  <option value="">Selecione...</option>
-                  <option value="pix">Pix</option>
-                  <option value="dinheiro">Dinheiro</option>
-                  <option value="cartao_credito">Cartão de Crédito</option>
-                  <option value="cartao_debito">Cartão de Débito</option>
-                  <option value="outro">Outro</option>
-                </select>
-              </div>
-            )}
-
-            {novaConta.tipo === 'debito' && (
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1.5 block">Vencimento</label>
-                <input className="input-field" type="date" value={novaConta.vencimento}
-                  onChange={e => setNovaConta(prev => ({ ...prev, vencimento: e.target.value }))} />
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button onClick={() => setModalConta(false)}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
-                Cancelar
-              </button>
-              <button onClick={adicionarConta}
-                className="flex-1 py-3 rounded-2xl text-white font-medium"
-                style={{ backgroundColor: cor }}>
-                Confirmar
-              </button>
-            </div>
+      {/* Stats flutuantes */}
+      <div className="px-4 -mt-10 relative z-10 mb-4">
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 grid grid-cols-3 divide-x divide-gray-100">
+          <div className="px-3 py-3 text-center">
+            <p className="text-2xl font-bold text-gray-900">{totalAtendimentos}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Atendimentos</p>
+          </div>
+          <div className="px-3 py-3 text-center">
+            <p className="text-2xl font-bold" style={{ color: cor }}>{pacotesAtivos.length}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Pacotes ativos</p>
+          </div>
+          <div className="px-3 py-3 text-center">
+            <p className="text-2xl font-bold text-gray-900">{totalSessoes}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Sessões restantes</p>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Contato rápido */}
+      <div className="px-4 mb-4 flex gap-2">
+        {cliente.telefone && (
+          <a href={`https://wa.me/55${cliente.telefone?.replace(/\D/g, '')}`} target="_blank"
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-500 text-white text-sm font-medium active:scale-95 transition-all">
+            <MessageCircle size={16} />WhatsApp
+          </a>
+        )}
+        {cliente.email && (
+          <a href={`mailto:${cliente.email}`}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 text-sm font-medium active:scale-95 transition-all">
+            <Mail size={16} />E-mail
+          </a>
+        )}
+        {!cliente.telefone && !cliente.email && (
+          <div className="flex-1 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-400 text-sm text-center">
+            Sem contato cadastrado
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div className="px-4 mb-4">
+        <div className="bg-white rounded-2xl p-1 flex gap-1 shadow-sm border border-gray-100">
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-all ${
+                tab === t.key ? 'text-white shadow-sm' : 'text-gray-400'
+              }`}
+              style={tab === t.key ? { backgroundColor: cor } : {}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Conteúdo das tabs */}
+      <div className="px-4 flex flex-col gap-3">
+
+        {/* RESUMO */}
+        {tab === 'resumo' && (
+          <>
+            <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Dados pessoais</p>
+              <div className="flex flex-col gap-2.5">
+                {cliente.email && (
+                  <div className="flex items-center gap-3">
+                    <Mail size={15} className="text-gray-300 shrink-0" />
+                    <p className="text-sm text-gray-700">{cliente.email}</p>
+                  </div>
+                )}
+                {cliente.telefone && (
+                  <div className="flex items-center gap-3">
+                    <Phone size={15} className="text-gray-300 shrink-0" />
+                    <p className="text-sm text-gray-700">{cliente.telefone}</p>
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <Calendar size={15} className="text-gray-300 shrink-0" />
+                  <p className="text-sm text-gray-500">
+                    Cliente desde {new Date(cliente.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {cliente.observacoes && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Observações</p>
+                <p className="text-sm text-gray-600 leading-relaxed">{cliente.observacoes}</p>
+              </div>
+            )}
+
+            {/* Último agendamento */}
+            {agendamentos[0] && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Último atendimento</p>
+                <p className="text-sm font-semibold text-gray-800">{agendamentos[0].servicos?.nome}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {new Date(agendamentos[0].data_hora).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* PACOTES */}
+        {tab === 'pacotes' && (
+          <>
+            {pacotes.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                <Package size={32} className="text-gray-200 mx-auto mb-2" />
+                <p className="text-gray-400 text-sm">Nenhum pacote registrado</p>
+              </div>
+            ) : pacotes.map(p => {
+              const progresso = p.sessoes_total > 0 ? (p.sessoes_usadas / p.sessoes_total) * 100 : 0
+              return (
+                <div key={p.id} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-50">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">{p.pacotes?.nome}</p>
+                      {p.pacotes?.categoria && (
+                        <p className="text-xs text-gray-400 mt-0.5">{p.pacotes.categoria}</p>
+                      )}
+                    </div>
+                    <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${statusPacote[p.status] || 'bg-gray-100 text-gray-400'}`}>
+                      {p.status === 'ativo' ? 'Ativo' : p.status === 'expirado' ? 'Expirado' : 'Concluído'}
+                    </span>
+                  </div>
+
+                  {/* Barra de progresso */}
+                  <div className="mb-2">
+                    <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+                      <span>{p.sessoes_usadas} usadas</span>
+                      <span>{p.sessoes_total - p.sessoes_usadas} restantes</span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all"
+                        style={{ width: `${progresso}%`, backgroundColor: cor }} />
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1 text-right">{p.sessoes_total} sessões no total</p>
+                  </div>
+
+                  {p.data_expiracao && (
+                    <p className="text-xs text-gray-400">
+                      Expira em {new Date(p.data_expiracao).toLocaleDateString('pt-BR')}
+                    </p>
+                  )}
+                </div>
+              )
+            })}
+          </>
+        )}
+
+        {/* HISTÓRICO */}
+        {tab === 'historico' && (
+          <>
+            {agendamentos.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                <Calendar size={32} className="text-gray-200 mx-auto mb-2" />
+                <p className="text-gray-400 text-sm">Nenhum atendimento registrado</p>
+              </div>
+            ) : agendamentos.map(ag => {
+              const st = statusAg[ag.status] || { label: ag.status, cor: 'text-gray-400' }
+              return (
+                <div key={ag.id} className="bg-white rounded-2xl px-4 py-3.5 shadow-sm border border-gray-50 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${cor}15` }}>
+                    <Calendar size={16} style={{ color: cor }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900">{ag.servicos?.nome || 'Serviço'}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(ag.data_hora).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {ag.profiles?.nome ? ` · ${ag.profiles.nome}` : ''}
+                    </p>
+                  </div>
+                  <span className={`text-xs font-medium shrink-0 ${st.cor}`}>{st.label}</span>
+                </div>
+              )
+            })}
+          </>
+        )}
+
+        {/* QUESTIONÁRIOS */}
+        {tab === 'questionarios' && (
+          <div className="bg-white rounded-2xl p-8 text-center shadow-sm flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center"
+              style={{ backgroundColor: `${cor}15` }}>
+              <ClipboardList size={24} style={{ color: cor }} />
+            </div>
+            <p className="text-gray-700 font-semibold text-sm">Questionários em breve</p>
+            <p className="text-gray-400 text-xs leading-relaxed text-center">
+              Em breve você poderá enviar questionários personalizados para suas clientes e consultar as respostas aqui.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
