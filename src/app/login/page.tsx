@@ -47,9 +47,14 @@ export default function LoginPage() {
           </div>
           <div className="text-center">
             <h1 className="font-bold text-gray-900 text-xl tracking-tight">StudioApp</h1>
-            <p className="text-gray-400 text-sm mt-0.5">Gestão para salões de beleza</p>
-          </div>
-        </div>
+<div className="flex flex-col items-center gap-3">
+  <img src="/icon.png" alt="Logo" className="w-16 h-16 object-contain" />
+  <div className="text-center">
+    <h1 className="font-bold text-gray-900 text-2xl tracking-tight leading-snug">
+      Crie sua conta e tenha o controle do seu salão na palma da mão.
+    </h1>
+  </div>
+</div>
 
         {/* Card */}
         <div className="bg-white rounded-3xl shadow-sm p-6 flex flex-col gap-5">
