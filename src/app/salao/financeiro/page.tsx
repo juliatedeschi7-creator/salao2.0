@@ -3,149 +3,228 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
-import BottomNav from '@/components/BottomNav'
-import { Home, Calendar, Users, BarChart2, Settings } from 'lucide-react'
+import { ArrowLeft, Plus, TrendingUp, TrendingDown, Trash2, X } from 'lucide-react'
+
+const CATEGORIAS_ENTRADA = ['Serviço', 'Pacote', 'Produto', 'Outro']
+const CATEGORIAS_SAIDA = ['Aluguel', 'Material', 'Salário', 'Conta', 'Compra', 'Outro']
 
 export default function FinanceiroPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [periodo, setPeriodo] = useState<'dia' | 'semana' | 'mes' | 'ano'>('mes')
-  const [transacoes, setTransacoes] = useState<any[]>([])
+  const [lancamentos, setLancamentos] = useState<any[]>([])
+  const [filtroMes, setFiltroMes] = useState(new Date().toISOString().slice(0, 7))
+  const [carregando, setCarregando] = useState(true)
   const [modal, setModal] = useState(false)
-  const [form, setForm] = useState({ tipo: 'receita', categoria: '', descricao: '', valor: '', forma_pagamento: '', data_hora: new Date().toISOString().slice(0, 16) })
+  const [tipo, setTipo] = useState<'entrada' | 'saida'>('entrada')
+  const [descricao, setDescricao] = useState('')
+  const [valor, setValor] = useState('')
+  const [categoria, setCategoria] = useState('Serviço')
+  const [data, setData] = useState(new Date().toISOString().slice(0, 10))
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    if (!loading && profile?.salao_id) carregarDados()
-  }, [loading, periodo])
+    if (!loading && profile?.salao_id) inicializar()
+  }, [loading, filtroMes])
 
-  async function carregarDados() {
+  async function inicializar() {
+    setCarregando(true)
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
-    const agora = new Date()
-    let inicio = new Date()
-    if (periodo === 'dia') inicio.setHours(0, 0, 0, 0)
-    else if (periodo === 'semana') inicio.setDate(agora.getDate() - 7)
-    else if (periodo === 'mes') inicio = new Date(agora.getFullYear(), agora.getMonth(), 1)
-    else inicio = new Date(agora.getFullYear(), 0, 1)
-    const { data: trans } = await supabase.from('transacoes').select('*').eq('salao_id', profile!.salao_id!).gte('data_hora', inicio.toISOString()).order('data_hora', { ascending: false })
-    setTransacoes(trans || [])
+    await carregar()
+    setCarregando(false)
   }
 
-  async function handleSalvar() {
-    if (!form.descricao || !form.valor) return
-    setSalvando(true)
-    await supabase.from('transacoes').insert({ salao_id: profile!.salao_id, tipo: form.tipo, categoria: form.categoria || null, descricao: form.descricao, valor: parseFloat(form.valor), forma_pagamento: form.forma_pagamento || null, data_hora: new Date(form.data_hora).toISOString() })
-    setModal(false); setSalvando(false)
-    setForm({ tipo: 'receita', categoria: '', descricao: '', valor: '', forma_pagamento: '', data_hora: new Date().toISOString().slice(0, 16) })
-    carregarDados()
+  async function carregar() {
+    const inicio = filtroMes + '-01'
+    const fim = new Date(filtroMes + '-01')
+    fim.setMonth(fim.getMonth() + 1)
+    const fimStr = fim.toISOString().slice(0, 10)
+    const { data } = await supabase.from('financeiro')
+      .select('*').eq('salao_id', profile!.salao_id!)
+      .gte('data', inicio).lt('data', fimStr)
+      .order('data', { ascending: false })
+    setLancamentos(data || [])
   }
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault()
+    setSalvando(true)
+    const { error } = await supabase.from('financeiro').insert({
+      salao_id: profile!.salao_id,
+      descricao, valor: parseFloat(valor.replace(',', '.')),
+      tipo, categoria, data
+    })
+    if (error) alert('Erro: ' + error.message)
+    setSalvando(false)
+    setModal(false)
+    setDescricao(''); setValor(''); setCategoria('Serviço')
+    carregar()
+  }
+
+  async function excluir(id: string) {
+    if (!confirm('Excluir lançamento?')) return
+    await supabase.from('financeiro').delete().eq('id', id)
+    carregar()
+  }
+
+  const entradas = lancamentos.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0)
+  const saidas = lancamentos.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0)
+  const saldo = entradas - saidas
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const receitas = transacoes.filter(t => t.tipo === 'receita').reduce((a, t) => a + (t.valor as number), 0)
-  const despesas = transacoes.filter(t => t.tipo === 'despesa').reduce((a, t) => a + (t.valor as number), 0)
-  const lucro = receitas - despesas
-  const ticketMedio = transacoes.filter(t => t.tipo === 'receita').length > 0 ? receitas / transacoes.filter(t => t.tipo === 'receita').length : 0
+  const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-  const navItems = [
-    { icon: Home, label: 'Inicio', href: '/salao' },
-    { icon: Calendar, label: 'Agenda', href: '/salao/agenda' },
-    { icon: Users, label: 'Clientes', href: '/salao/clientes' },
-    { icon: BarChart2, label: 'Financas', href: '/salao/financeiro' },
-    { icon: Settings, label: 'Ajustes', href: '/salao/configuracoes' },
-  ]
+  const meses = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(); d.setMonth(d.getMonth() - i)
+    return d.toISOString().slice(0, 7)
+  })
 
   return (
-    <div className="min-h-screen pb-20 bg-[#f8f9fa]">
+    <div className="min-h-screen bg-[#f8f9fa] pb-8">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1">Financeiro</h1>
-        <button onClick={() => setModal(true)} className="w-9 h-9 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: cor }}><Plus size={18} /></button>
+        <button onClick={() => { setModal(true); setTipo('entrada') }}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-white text-sm font-medium"
+          style={{ backgroundColor: cor }}>
+          <Plus size={14} />Lançar
+        </button>
       </div>
+
       <div className="px-4 py-4 flex flex-col gap-4">
-        <div className="flex bg-white rounded-2xl p-1 gap-1">
-          {(['dia', 'semana', 'mes', 'ano'] as const).map(p => (
-            <button key={p} onClick={() => setPeriodo(p)}
-              className="flex-1 py-2 rounded-xl text-sm font-medium transition-all"
-              style={periodo === p ? { backgroundColor: cor, color: 'white' } : { color: '#9ca3af' }}>
-              {p.charAt(0).toUpperCase() + p.slice(1)}
+        {/* Seletor de mês */}
+        <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {meses.map(m => (
+            <button key={m} onClick={() => setFiltroMes(m)}
+              className={'px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap shrink-0 ' +
+                (filtroMes === m ? 'text-white' : 'bg-white text-gray-500')}
+              style={filtroMes === m ? { backgroundColor: cor } : {}}>
+              {new Date(m + '-15').toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('.', '')}
             </button>
           ))}
         </div>
 
-        <div className="rounded-2xl p-5" style={{ backgroundColor: cor }}>
-          <p className="text-white/70 text-sm">Lucro Liquido</p>
-          <p className="text-white text-3xl font-bold mt-1">R$ {lucro.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="card"><div className="flex items-center gap-2 mb-1"><TrendingUp size={14} className="text-green-500" /><p className="text-xs text-gray-400">Receitas</p></div><p className="text-xl font-bold text-gray-900">R$ {receitas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-          <div className="card"><div className="flex items-center gap-2 mb-1"><TrendingDown size={14} className="text-red-400" /><p className="text-xs text-gray-400">Despesas</p></div><p className="text-xl font-bold text-gray-900">R$ {despesas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-        </div>
-
-        <div className="card flex items-center gap-3">
-          <DollarSign size={18} style={{ color: cor }} />
-          <div><p className="text-xs text-gray-400">Ticket Medio</p><p className="font-bold text-gray-900">R$ {ticketMedio.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-          <button onClick={() => router.push('/salao/financeiro/relatorios')} className="ml-auto text-sm font-medium" style={{ color: cor }}>Relatorios</button>
-        </div>
-
-        <p className="font-bold text-gray-900">Transacoes Recentes</p>
-        {transacoes.length === 0 ? (
-          <div className="card text-center py-8"><p className="text-gray-400">Nenhuma transacao no periodo</p></div>
-        ) : transacoes.slice(0, 20).map(t => (
-          <div key={t.id} className="card flex items-center gap-3">
-            <div className={'w-10 h-10 rounded-full flex items-center justify-center ' + (t.tipo === 'receita' ? 'bg-green-50' : 'bg-red-50')}>
-              {t.tipo === 'receita' ? <TrendingUp size={18} className="text-green-500" /> : <TrendingDown size={18} className="text-red-400" />}
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-gray-900 text-sm">{t.descricao}</p>
-              <p className="text-xs text-gray-400">{new Date(t.data_hora).toLocaleDateString('pt-BR')}{t.forma_pagamento && ' - ' + t.forma_pagamento.replace('_', ' ')}</p>
-            </div>
-            <p className={'font-bold ' + (t.tipo === 'receita' ? 'text-green-500' : 'text-red-400')}>
-              {t.tipo === 'receita' ? '+' : '-'} R$ {t.valor.toFixed(2).replace('.', ',')}
-            </p>
+        {/* Cards de resumo */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-green-50 rounded-2xl p-3 text-center">
+            <p className="text-xs text-green-600 font-medium">Entradas</p>
+            <p className="font-bold text-green-700 text-sm mt-1">{fmt(entradas)}</p>
           </div>
-        ))}
+          <div className="bg-red-50 rounded-2xl p-3 text-center">
+            <p className="text-xs text-red-500 font-medium">Saídas</p>
+            <p className="font-bold text-red-600 text-sm mt-1">{fmt(saidas)}</p>
+          </div>
+          <div className="rounded-2xl p-3 text-center" style={{ backgroundColor: saldo >= 0 ? '#f0fdf4' : '#fff1f2' }}>
+            <p className="text-xs font-medium" style={{ color: saldo >= 0 ? '#16a34a' : '#e11d48' }}>Saldo</p>
+            <p className="font-bold text-sm mt-1" style={{ color: saldo >= 0 ? '#15803d' : '#be123c' }}>{fmt(saldo)}</p>
+          </div>
+        </div>
+
+        {/* Lista */}
+        <div className="flex flex-col gap-2">
+          {carregando ? (
+            <div className="flex justify-center py-8">
+              <div className="w-7 h-7 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor, borderTopColor: 'transparent' }} />
+            </div>
+          ) : lancamentos.length === 0 ? (
+            <div className="bg-white rounded-2xl p-8 text-center">
+              <p className="text-gray-400 text-sm">Nenhum lançamento neste mês</p>
+            </div>
+          ) : lancamentos.map(l => (
+            <div key={l.id} className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm">
+              <div className={'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ' +
+                (l.tipo === 'entrada' ? 'bg-green-50' : 'bg-red-50')}>
+                {l.tipo === 'entrada'
+                  ? <TrendingUp size={16} className="text-green-600" />
+                  : <TrendingDown size={16} className="text-red-500" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 text-sm truncate">{l.descricao || l.categoria}</p>
+                <p className="text-xs text-gray-400">
+                  {l.categoria} · {new Date(l.data + 'T12:00:00').toLocaleDateString('pt-BR')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <p className={'font-bold text-sm ' + (l.tipo === 'entrada' ? 'text-green-600' : 'text-red-500')}>
+                  {l.tipo === 'saida' ? '-' : '+'}{fmt(l.valor)}
+                </p>
+                <button onClick={() => excluir(l.id)} className="text-gray-300 hover:text-red-400">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
+      {/* Modal lançamento */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="font-bold text-gray-900 text-lg">Novo Lancamento</h3>
-            <div className="flex gap-2">
-              {[{ key: 'receita', label: 'Receita', cor: 'bg-green-50 text-green-600 border-green-200' }, { key: 'despesa', label: 'Despesa', cor: 'bg-red-50 text-red-500 border-red-200' }].map(t => (
-                <button key={t.key} onClick={() => setForm(p => ({ ...p, tipo: t.key }))}
-                  className={'flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ' + (form.tipo === t.key ? t.cor : 'border-gray-200 text-gray-400')}>
-                  {t.label}
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">Novo lançamento</h3>
+              <button onClick={() => setModal(false)}><X size={20} className="text-gray-400" /></button>
+            </div>
+
+            <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
+              {(['entrada', 'saida'] as const).map(t => (
+                <button key={t} onClick={() => { setTipo(t); setCategoria(t === 'entrada' ? 'Serviço' : 'Aluguel') }}
+                  className={'flex-1 py-2 rounded-xl text-sm font-semibold transition-all ' +
+                    (tipo === t ? 'bg-white shadow-sm' : 'text-gray-400')}
+                  style={tipo === t ? { color: t === 'entrada' ? '#16a34a' : '#e11d48' } : {}}>
+                  {t === 'entrada' ? '+ Entrada' : '- Saída'}
                 </button>
               ))}
             </div>
-            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Descricao</label><input className="input-field" placeholder="Ex: Corte feminino" value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-sm font-medium text-gray-700 mb-1 block">Valor (R$)</label><input className="input-field" type="number" placeholder="0,00" value={form.valor} onChange={e => setForm(p => ({ ...p, valor: e.target.value }))} /></div>
-              <div><label className="text-sm font-medium text-gray-700 mb-1 block">Categoria</label><input className="input-field" placeholder="Ex: Servico" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))} /></div>
-            </div>
-            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Forma de pagamento</label>
-              <select className="input-field" value={form.forma_pagamento} onChange={e => setForm(p => ({ ...p, forma_pagamento: e.target.value }))}>
-                <option value="">Selecione...</option>
-                <option value="pix">Pix</option>
-                <option value="dinheiro">Dinheiro</option>
-                <option value="cartao_credito">Cartao de Credito</option>
-                <option value="cartao_debito">Cartao de Debito</option>
-                <option value="outro">Outro</option>
-              </select>
-            </div>
-            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Data e hora</label><input className="input-field" type="datetime-local" value={form.data_hora} onChange={e => setForm(p => ({ ...p, data_hora: e.target.value }))} /></div>
-            <div className="flex gap-3">
-              <button onClick={() => setModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={handleSalvar} disabled={salvando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>{salvando ? '...' : 'Salvar'}</button>
-            </div>
+
+            <form onSubmit={salvar} className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Descrição</label>
+                <input value={descricao} onChange={e => setDescricao(e.target.value)}
+                  placeholder="Ex: Coloração cliente Ana"
+                  className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm outline-none" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Valor (R$)</label>
+                  <input value={valor} onChange={e => setValor(e.target.value)} required
+                    placeholder="0,00" inputMode="decimal"
+                    className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm outline-none" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Data</label>
+                  <input type="date" value={data} onChange={e => setData(e.target.value)} required
+                    className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm outline-none" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Categoria</label>
+                <select value={categoria} onChange={e => setCategoria(e.target.value)}
+                  className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-100 bg-gray-50 text-sm outline-none">
+                  {(tipo === 'entrada' ? CATEGORIAS_ENTRADA : CATEGORIAS_SAIDA).map(c => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 mt-2">
+                <button type="button" onClick={() => setModal(false)}
+                  className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={salvando}
+                  className="flex-1 py-3 rounded-2xl text-white font-medium"
+                  style={{ backgroundColor: cor }}>
+                  {salvando ? '...' : 'Salvar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
-      <BottomNav items={navItems} corPrimaria={cor} />
     </div>
   )
 }
