@@ -201,7 +201,7 @@ function CadastroForm() {
               <img src="/logo.png" alt="Organiza Salão" className="w-20 h-20 object-contain" />
             </div>
             <h1 className="text-2xl font-bold text-black leading-tight">
-              Crie uma conta para começar a ter controle do seu salão na palma da mão
+              Crie uma conta para começar a ter controle do seu salão na palma da mão.
             </h1>
             <p className="text-gray-500 text-sm mt-3 leading-relaxed">
               Visualize agenda, catálogo de serviços, envie lembretes e controle pacotes. Facilite sua gestão!
