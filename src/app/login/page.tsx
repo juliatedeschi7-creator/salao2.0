@@ -1,112 +1,236 @@
 'use client'
-import { useState } from 'react'
+import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
-  const router = useRouter()
+// Logo do Organiza Salão (SVG inline para funcionar em qualquer cor)
+function OrganizaLogo({ cor, size = 72 }: { cor?: string; size?: number }) {
+  const c = cor || '#111827'
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="80" height="80" rx="20" fill={c} />
+      <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle"
+        fontSize="38" fontWeight="bold" fill="white" fontFamily="system-ui, sans-serif">
+        O
+      </text>
+      {/* Tesoura estilizada */}
+      <line x1="28" y1="58" x2="52" y2="58" stroke="white" strokeWidth="2.5" strokeLinecap="round" opacity="0.6"/>
+    </svg>
+  )
+}
+
+function LoginForm() {
+  const searchParams = useSearchParams()
+  const salaoSlug = searchParams.get('salao')
+  const [salaoInfo, setSalaoInfo] = useState<any>(null)
+  const [carregando, setCarregando] = useState(!!salaoSlug)
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
-  const [carregando, setCarregando] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
-  const [modo, setModo] = useState<'entrar' | 'criar'>('entrar')
-  const [nome, setNome] = useState('')
 
-  async function entrar(e: React.FormEvent) {
-    e.preventDefault()
-    setErro(''); setCarregando(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
-    if (error) { setErro('Email ou senha incorretos.'); setCarregando(false); return }
-    router.replace('/salao')
-  }
+  useEffect(() => {
+    async function buscarSalao() {
+      if (!salaoSlug) { setCarregando(false); return }
+      const { data } = await supabase.from('saloes')
+        .select('nome, cor_primaria, cor_secundaria')
+        .eq('slug', salaoSlug)
+        .maybeSingle()
+      if (data) setSalaoInfo(data)
+      setCarregando(false)
+    }
+    buscarSalao()
+  }, [salaoSlug])
 
-  async function criar(e: React.FormEvent) {
-    e.preventDefault()
-    setErro(''); setCarregando(true)
-    const { data, error } = await supabase.auth.signUp({ email, password: senha })
-    if (error || !data.user) { setErro('Erro ao criar conta. Tente outro e-mail.'); setCarregando(false); return }
-    await supabase.from('profiles').insert({
-      id: data.user.id, email, nome, role: 'dono_salao', aprovado: false, ativo: false
+  async function handleLogin() {
+    if (!email || !senha) { setErro('Preencha email e senha.'); return }
+    setLoading(true); setErro('')
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(), password: senha
     })
-    setCarregando(false)
-    setModo('entrar')
-    alert('Conta criada! Aguarde a aprovação do administrador.')
+
+    if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
+    if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
+
+    const { data: prof } = await supabase
+      .from('profiles')
+      .select('role, aprovado, ativo, salao_id, acesso_total')
+      .eq('id', data.user.id)
+      .single()
+
+    if (!prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
+    if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
+
+    const acessoTotal = prof.role === 'dono_salao' ||
+      (prof.role === 'funcionario' && prof.acesso_total === true)
+
+    let destino = '/login'
+    if (prof.role === 'admin_geral') {
+      destino = '/admin'
+    } else if (!prof.aprovado) {
+      if (prof.role === 'dono_salao' || prof.role === 'funcionario') destino = '/aguardando'
+      else { await supabase.auth.signOut(); setErro('Conta aguarda aprovação.'); setLoading(false); return }
+    } else if (acessoTotal) {
+      if (!prof.salao_id) {
+        destino = '/criar-salao'
+      } else {
+        const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
+        if (salao?.pausado) { await supabase.auth.signOut(); setErro('Salão pausado.'); setLoading(false); return }
+        destino = !salao?.aprovado ? '/aguardando' : '/salao'
+      }
+    } else if (prof.role === 'funcionario') {
+      destino = '/funcionario'
+    } else {
+      destino = '/cliente'
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500))
+    window.location.href = destino
   }
+
+  const isCliente = !!salaoSlug
+  const cor = (isCliente && salaoInfo?.cor_primaria) ? salaoInfo.cor_primaria : '#111827'
+  const corSec = (isCliente && salaoInfo?.cor_secundaria) ? salaoInfo.cor_secundaria : '#f3f4f6'
+
+  const partes = salaoInfo?.nome?.split(' - ')
+  const nomePrincipal = partes?.[0]
+  const nomeSecundario = partes?.[1]
+
+  if (carregando) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-sm flex flex-col gap-8">
-
-        {/* Logo + título */}
-        <div className="flex flex-col items-center gap-4 text-center">
-          <img src="/icon.png" alt="Logo" className="w-16 h-16 object-contain" />
-          <h1 className="font-bold text-gray-900 text-2xl leading-snug">
-            Crie sua conta e tenha o controle do seu salão na palma da mão.
-          </h1>
-        </div>
-
-        {/* Card */}
-        <div className="bg-white rounded-3xl shadow-sm p-6 flex flex-col gap-5">
-
-          {/* Tabs */}
-          <div className="flex bg-gray-100 rounded-2xl p-1 gap-1">
-            {(['entrar', 'criar'] as const).map(m => (
-              <button key={m} onClick={() => { setModo(m); setErro('') }}
-                className={'flex-1 py-2 rounded-xl text-sm font-semibold transition-all ' +
-                  (modo === m ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400')}>
-                {m === 'entrar' ? 'Entrar' : 'Criar conta'}
-              </button>
-            ))}
-          </div>
-
-          <form onSubmit={modo === 'entrar' ? entrar : criar} className="flex flex-col gap-3">
-            {modo === 'criar' && (
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nome do salão</label>
-                <input value={nome} onChange={e => setNome(e.target.value)} required
-                  placeholder="Ex: Studio Ana Paula"
-                  className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-gray-400 transition-colors" />
-              </div>
+    <div
+      className="min-h-screen flex flex-col items-center px-6 py-10"
+      style={{
+        background: isCliente
+          ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)`
+          : '#ffffff'
+      }}
+    >
+      <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-8 mt-8">
+        {isCliente ? (
+          <div className="text-center">
+            {/* Logo colorido com a cor do salão */}
+            <div className="flex justify-center mb-4">
+              <OrganizaLogo cor={cor} size={72} />
+            </div>
+            <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
+              {nomePrincipal || 'Entrar'}
+            </h1>
+            {nomeSecundario && (
+              <p className="text-sm font-medium mt-1 text-gray-400">{nomeSecundario}</p>
             )}
-
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">E-mail</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
-                placeholder="seu@email.com"
-                className="mt-1.5 w-full px-4 py-3 rounded-2xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-gray-400 transition-colors" />
+            <p className="text-gray-400 text-sm mt-3 text-center">
+              Entre na sua conta para continuar
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center text-center">
+            <div className="w-20 h-20 mb-4">
+              <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
             </div>
+            <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
+            <p className="text-gray-400 text-sm mt-1 text-center">
+              Toda a gestão do seu espaço na palma da mão.
+            </p>
+          </div>
+        )}
+      </div>
 
-            <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Senha</label>
-              <div className="relative mt-1.5">
-                <input
-                  type={mostrarSenha ? 'text' : 'password'}
-                  value={senha}
-                  onChange={e => setSenha(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                  className="w-full px-4 py-3 pr-12 rounded-2xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-gray-400 transition-colors"
-                />
-                <button type="button" onClick={() => setMostrarSenha(!mostrarSenha)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                  {mostrarSenha ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            {erro && <p className="text-sm text-red-500 text-center">{erro}</p>}
-
-            <button type="submit" disabled={carregando}
-              className="w-full py-3.5 rounded-2xl bg-gray-900 text-white font-semibold text-sm mt-1 disabled:opacity-50 transition-opacity active:scale-[0.98]">
-              {carregando ? '...' : modo === 'entrar' ? 'Entrar' : 'Criar conta'}
-            </button>
-          </form>
+      <div className="w-full max-w-sm flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Email</label>
+          <input
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
+            type="email"
+            placeholder="seuemail@exemplo.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+          />
         </div>
 
-        <p className="text-center text-xs text-gray-300">StudioApp ©️ 2025</p>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <div className="relative">
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
+              type={mostrarSenha ? 'text' : 'password'}
+              placeholder="Digite sua senha"
+              value={senha}
+              onChange={e => setSenha(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            />
+            <button
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+              onClick={() => setMostrarSenha(!mostrarSenha)}>
+              {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+        </div>
+
+        {erro && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+            <p className="text-red-600 text-sm text-center">{erro}</p>
+          </div>
+        )}
+
+        <button
+          className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+          style={{ backgroundColor: cor }}
+          onClick={handleLogin}
+          disabled={loading}>
+          {loading
+            ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            : 'Entrar'}
+        </button>
+
+        {!isCliente && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-gray-400 text-sm">ou</span>
+              <div className="flex-1 h-px bg-gray-200" />
+            </div>
+            <p className="text-center text-gray-500 text-sm">
+              Não tem conta?{' '}
+              <a href="/cadastro" className="text-gray-900 font-bold">Criar conta</a>
+            </p>
+            <a href="/cadastro?tipo=salao"
+              className="w-full border-2 border-gray-900 text-gray-900 rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all">
+              Cadastrar meu salão
+            </a>
+          </>
+        )}
+
+        {isCliente && (
+          <p className="text-center text-gray-500 text-sm">
+            Não tem conta?{' '}
+            <a href={'/cadastro?salao=' + salaoSlug} className="font-bold" style={{ color: cor }}>
+              Criar conta
+            </a>
+          </p>
+        )}
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }
