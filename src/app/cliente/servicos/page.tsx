@@ -126,7 +126,7 @@ export default function ClienteServicosPage() {
       tipo: 'solicitacao'
     })
 
-    setSolicitados(prev => new Set([...prev, servicoId]))
+setSolicitados(prev => new Set(Array.from(prev).concat(servicoId)))
     setSolicitando(null)
   }
 
