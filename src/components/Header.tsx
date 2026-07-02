@@ -3,7 +3,7 @@ import {
   Bell, LogOut, Menu, X,
   Home, Calendar, Users, BarChart2, Settings,
   Scissors, Package, FileText, UserCheck, Box,
-  Sparkles, CreditCard, DollarSign, Clock
+  Sparkles, CreditCard, DollarSign, Clock, Heart
 } from 'lucide-react'
 import { useNotificacoes } from '@/lib/hooks/useNotificacoes'
 import { supabase } from '@/lib/supabase'
@@ -31,11 +31,12 @@ const MENU_DONO = [
   { icon: UserCheck, label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe' },
   { icon: Box, label: 'Estoque', href: '/salao/estoque', grupo: 'Gestão' },
   { icon: BarChart2, label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão' },
-  { icon: DollarSign, label: 'Relatórios', href: '/salao/financeiro/relatorios', grupo: 'Gestão' },
-  { icon: Clock, label: 'Caixa do Dia', href: '/salao/financeiro/caixa', grupo: 'Gestão' },
+  { icon: DollarSign, label: 'Relatórios', href: '/salao/relatorios', grupo: 'Gestão' },
+  { icon: Clock, label: 'Caixa do Dia', href: '/salao/caixa', grupo: 'Gestão' },
   { icon: DollarSign, label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestão' },
   { icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' },
   { icon: Sparkles, label: 'Sugestões IA', href: '/salao/ia', grupo: 'Outros' },
+  { icon: Heart, label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros' },
   { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
 ]
 
@@ -88,7 +89,6 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         </div>
       </div>
 
-      {/* Painel de notificações */}
       {notifAberta && (
         <div className="fixed inset-0 z-50" onClick={() => setNotifAberta(false)}>
           <div className="absolute top-14 right-2 w-80 bg-white rounded-2xl shadow-xl overflow-hidden"
@@ -118,7 +118,6 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         </div>
       )}
 
-      {/* Menu lateral */}
       {menuAberto && (
         <div className="fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMenuAberto(false)} />
