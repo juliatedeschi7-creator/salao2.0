@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Home, Calendar, Plus, Clock, CheckCircle, AlertCircle, Scissors, Bell } from 'lucide-react'
+import { Home, Calendar, Plus, Clock, CheckCircle, AlertCircle, Scissors, Bell, Users, BarChart2 } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -34,40 +34,31 @@ export default function SalaoPage() {
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
     const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome), criador:profiles!agendamentos_criado_por_fkey(nome)')
+      .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
       .eq('salao_id', profile.salao_id).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
     setAgendamentos(ags || [])
 
     const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
     const { data: pendentes } = await supabase.from('agendamentos')
-      .select('*, confirmacoes_atendimento(*, confirmado_por_profile:profiles!confirmacoes_atendimento_confirmado_por_fkey(nome))')
+      .select('*, confirmacoes_atendimento(*)')
       .eq('salao_id', profile.salao_id).eq('status', 'confirmado')
       .gte('data_hora', ontem.toISOString()).lte('data_hora', hoje.toISOString())
     const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
     setPendentesConfirmacao(semConfirmar.length)
 
-    // Conta notificações não lidas
     const { count } = await supabase.from('notificacoes')
       .select('*', { count: 'exact', head: true })
       .eq('destinatario_id', profile.id).eq('lida', false)
     setNotifNaoLidas(count || 0)
-
     setCarregando(false)
   }
 
   const navItems = [
     { icon: Home, label: 'Início', href: '/salao' },
     { icon: Calendar, label: 'Agenda', href: '/salao/agenda' },
-    { icon: Scissors, label: 'Serviços', href: '/salao/servicos' },
-    {
-      // Notificações com badge dinâmico
-      icon: Bell,
-      label: 'Avisos',
-      href: '/salao/notificacoes',
-      badge: notifNaoLidas > 0 ? notifNaoLidas : undefined,
-      pulse: notifNaoLidas > 0,
-    },
-    { icon: Home, label: 'Finanças', href: '/salao/financeiro' },
+    { icon: Users, label: 'Clientes', href: '/salao/clientes' },
+    { icon: BarChart2, label: 'Finanças', href: '/salao/financeiro' },
+    { icon: Bell, label: 'Avisos', href: '/salao/notificacoes' },
   ]
 
   const statusConfig: Record<string, { cor: string; label: string; icon: any }> = {
@@ -82,8 +73,7 @@ export default function SalaoPage() {
 
   if (loading || carregando) return (
     <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-        style={{ borderColor: cor }} />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
     </div>
   )
 
@@ -92,7 +82,7 @@ export default function SalaoPage() {
 
   return (
     <div className="min-h-screen pb-20" style={{ backgroundColor: '#f8f9fa' }}>
-      <Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} />
+      <Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} notifCount={notifNaoLidas} />
 
       <div className="px-4 py-5 flex flex-col gap-4">
         <h1 className="text-2xl font-bold text-gray-900">
@@ -113,45 +103,6 @@ export default function SalaoPage() {
             </div>
           </button>
         )}
-
-        {/* Atalhos rápidos — inclui Notificações com pulse */}
-        <div className="grid grid-cols-3 gap-3">
-          <button onClick={() => router.push('/salao/agenda')}
-            className="bg-white rounded-2xl p-3 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: `${cor}15` }}>
-              <Calendar size={20} style={{ color: cor }} />
-            </div>
-            <p className="text-xs font-semibold text-gray-700">Agenda</p>
-          </button>
-
-          <button onClick={() => router.push('/salao/clientes')}
-            className="bg-white rounded-2xl p-3 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: `${cor}15` }}>
-              <Scissors size={20} style={{ color: cor }} />
-            </div>
-            <p className="text-xs font-semibold text-gray-700">Serviços</p>
-          </button>
-
-          {/* Notificações com sininho pulsando */}
-          <button onClick={() => router.push('/salao/notificacoes')}
-            className="bg-white rounded-2xl p-3 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all relative">
-            <div className="relative">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${notifNaoLidas > 0 ? 'animate-pulse' : ''}`}
-                style={{ backgroundColor: notifNaoLidas > 0 ? `${cor}25` : `${cor}15` }}>
-                <Bell size={20} style={{ color: cor }} />
-              </div>
-              {notifNaoLidas > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center font-bold"
-                  style={{ backgroundColor: cor }}>
-                  {notifNaoLidas > 9 ? '9+' : notifNaoLidas}
-                </span>
-              )}
-            </div>
-            <p className="text-xs font-semibold text-gray-700">Avisos</p>
-          </button>
-        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="card">
@@ -184,38 +135,33 @@ export default function SalaoPage() {
               + Novo Agendamento
             </button>
           </div>
-        ) : (
-          agendamentos.map(ag => {
-            const st = statusConfig[ag.status] || statusConfig.pendente
-            const StatusIcon = st.icon
-            const horaAg = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-            const horaFim = new Date(new Date(ag.data_hora).getTime() + ag.duracao_minutos * 60000)
-              .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-            return (
-              <button key={ag.id} onClick={() => router.push('/salao/agenda')}
-                className="card text-left flex items-start gap-3 active:scale-95 transition-all">
-                <div className="flex flex-col items-center gap-1 shrink-0">
-                  <span className="text-sm font-bold text-gray-900">{horaAg}</span>
-                  <div className="w-0.5 h-4 bg-gray-200" />
-                  <span className="text-xs text-gray-400">{horaFim}</span>
+        ) : agendamentos.map(ag => {
+          const st = statusConfig[ag.status] || statusConfig.pendente
+          const StatusIcon = st.icon
+          const horaAg = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          const horaFim = new Date(new Date(ag.data_hora).getTime() + (ag.duracao_minutos || 60) * 60000)
+            .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          return (
+            <button key={ag.id} onClick={() => router.push('/salao/agenda')}
+              className="card text-left flex items-start gap-3 active:scale-95 transition-all">
+              <div className="flex flex-col items-center gap-1 shrink-0">
+                <span className="text-sm font-bold text-gray-900">{horaAg}</span>
+                <div className="w-0.5 h-4 bg-gray-200" />
+                <span className="text-xs text-gray-400">{horaFim}</span>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-start justify-between">
+                  <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
+                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ' + st.cor}>
+                    <StatusIcon size={10} />{st.label}
+                  </span>
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-start justify-between">
-                    <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
-                    <span className={'text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ' + st.cor}>
-                      <StatusIcon size={10} />{st.label}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-0.5">{ag.servicos?.nome}</p>
-                  <p className="text-xs text-gray-400">Prof: {ag.profiles?.nome}</p>
-                  {ag.criador?.nome && (
-                    <p className="text-xs text-gray-300">Criado por: {ag.criador.nome}</p>
-                  )}
-                </div>
-              </button>
-            )
-          })
-        )}
+                <p className="text-sm text-gray-500 mt-0.5">{ag.servicos?.nome}</p>
+                <p className="text-xs text-gray-400">Prof: {ag.profiles?.nome}</p>
+              </div>
+            </button>
+          )
+        })}
       </div>
 
       <button onClick={() => router.push('/salao/agenda/novo')}
