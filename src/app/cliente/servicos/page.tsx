@@ -15,14 +15,10 @@ function formatarDuracao(minutos: number): string {
 }
 
 function AvisoServicos({ cor, texto }: { cor: string; texto?: string | null }) {
+  // Só mostra o aviso se o dono tiver escrito algo nas configurações
   const linhas = texto
     ? texto.split('\n').map(l => l.trim()).filter(l => l.length > 0)
-    : [
-        'Os tempos exibidos são estimativas e podem variar para mais ou para menos.',
-        'Cada procedimento é realizado respeitando as CARACTERISTICAS INDIVIDUAIS de cada cliente.',
-        'Diferenciais como CONDICAO DAS UNHAS ou dos cabelos, QUANTIDADE DE CABELO, necessidade de maior preparo das CUTICULAS, MOVIMENTACAO DURANTE O ATENDIMENTO (uso de celular, postura), entre outros fatores, podem alterar o tempo de atendimento.',
-        'Nosso foco é a QUALIDADE DO ATENDIMENTO E DO RESULTADO FINAL.'
-      ]
+    : []
 
   function renderLinha(linha: string) {
     return linha.split(' ').map((palavra, i) => {
@@ -130,7 +126,7 @@ export default function ClienteServicosPage() {
       tipo: 'solicitacao'
     })
 
-setSolicitados(prev => new Set([...Array.from(prev), servicoId]))
+    setSolicitados(prev => new Set([...prev, servicoId]))
     setSolicitando(null)
   }
 
@@ -170,8 +166,8 @@ setSolicitados(prev => new Set([...Array.from(prev), servicoId]))
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-4">
-        {categoriaFiltro === 'Todos' && (
-          <AvisoServicos cor={cor} texto={salao?.aviso_servicos} />
+        {categoriaFiltro === 'Todos' && salao?.aviso_servicos && (
+          <AvisoServicos cor={cor} texto={salao.aviso_servicos} />
         )}
 
         {/* Filtros de categoria */}
@@ -302,4 +298,4 @@ setSolicitados(prev => new Set([...Array.from(prev), servicoId]))
       </div>
     </div>
   )
-} 
+}
