@@ -4,20 +4,6 @@ import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
-function OrganizaLogo({ cor, size = 72 }: { cor?: string; size?: number }) {
-  const c = cor || '#111827'
-  return (
-    <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="80" height="80" rx="20" fill={c} />
-      <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle"
-        fontSize="38" fontWeight="bold" fill="white" fontFamily="system-ui, sans-serif">
-        O
-      </text>
-      <line x1="28" y1="58" x2="52" y2="58" stroke="white" strokeWidth="2.5" strokeLinecap="round" opacity="0.6"/>
-    </svg>
-  )
-}
-
 function CadastroForm() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
@@ -49,7 +35,7 @@ function CadastroForm() {
       }
       if (token) {
         const { data: conv } = await supabase.from('convites')
-          .select('*, saloes(nome, cor_primaria, cor_secundaria, aprovacao_automatica_clientes)')
+          .select('*, saloes(nome, cor_primaria, cor_secundaria)')
           .eq('token', token).eq('usado', false).maybeSingle()
         if (conv) { setConvite(conv); if (conv.saloes) setSalaoInfo(conv.saloes) }
       }
@@ -77,7 +63,6 @@ function CadastroForm() {
       }
       if (!data.user) { setErro('Erro ao criar usuário.'); setLoading(false); return }
 
-      // Funcionário
       if (isFuncionario && convite) {
         await supabase.from('profiles').upsert({
           id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
@@ -85,40 +70,22 @@ function CadastroForm() {
           acesso_total: convite.acesso_total || false, aprovado: false, ativo: true
         }, { onConflict: 'id' })
         await supabase.from('convites').update({ usado: true }).eq('id', convite.id)
-        const { data: dono } = await supabase.from('profiles').select('id')
-          .eq('salao_id', convite.salao_id).eq('role', 'dono_salao').single()
-        if (dono) {
-          await supabase.from('notificacoes').insert({
-            destinatario_id: dono.id,
-            titulo: 'Novo funcionário aguardando aprovação',
-            mensagem: `${nome.trim()} se cadastrou como funcionário e aguarda aprovação.`,
-            tipo: 'sistema'
-          })
-        }
         window.location.href = '/aguardando'; return
       }
 
-      // Cliente
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes')
           .select('id, aprovacao_automatica_clientes').eq('slug', salaoSlug).single()
         if (!salao) { setErro('Salão não encontrado.'); setLoading(false); return }
-
         const aprovadoAuto = salao.aprovacao_automatica_clientes === true
-
-        // Verifica se já existe cliente com esse email (cadastrado manualmente pelo dono)
         const { data: clienteExistente } = await supabase.from('clientes')
           .select('id').eq('salao_id', salao.id).eq('email', email.trim().toLowerCase()).maybeSingle()
-
         await supabase.from('profiles').upsert({
           id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
           role: 'cliente', salao_id: salao.id, aprovado: aprovadoAuto, ativo: true
         }, { onConflict: 'id' })
-
         if (clienteExistente) {
-          // Vincula o profile ao cliente já existente
-          await supabase.from('clientes').update({ profile_id: data.user.id })
-            .eq('id', clienteExistente.id)
+          await supabase.from('clientes').update({ profile_id: data.user.id }).eq('id', clienteExistente.id)
         } else {
           await supabase.from('clientes').insert({
             salao_id: salao.id, profile_id: data.user.id,
@@ -126,24 +93,9 @@ function CadastroForm() {
             data_nascimento: dataNascimento || null
           })
         }
-
-        const { data: dono } = await supabase.from('profiles').select('id')
-          .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
-        if (dono) {
-          await supabase.from('notificacoes').insert({
-            destinatario_id: dono.id,
-            titulo: aprovadoAuto ? 'Nova cliente cadastrada! 🎉' : 'Nova cliente aguardando aprovação',
-            mensagem: aprovadoAuto
-              ? `${nome.trim()} se cadastrou no seu salão.`
-              : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
-            tipo: 'sistema'
-          })
-        }
-
         window.location.href = aprovadoAuto ? '/cliente' : '/aguardando'; return
       }
 
-      // Dono de salão
       await supabase.from('profiles').upsert({
         id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
         role: roleInicial, aprovado: false, ativo: true
@@ -157,7 +109,6 @@ function CadastroForm() {
 
   const cor = (isCliente || isFuncionario) && salaoInfo?.cor_primaria ? salaoInfo.cor_primaria : '#111827'
   const corSec = (isCliente || isFuncionario) && salaoInfo?.cor_secundaria ? salaoInfo.cor_secundaria : '#f3f4f6'
-
   const partes = salaoInfo?.nome?.split(' - ')
   const nomePrincipal = partes?.[0]
   const nomeSecundario = partes?.[1]
@@ -175,31 +126,70 @@ function CadastroForm() {
       <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
         {isCliente ? (
           <div className="text-center mt-4">
-            <div className="flex justify-center mb-4">
-              <OrganizaLogo cor={cor} size={72} />
-            </div>
-            <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>{nomePrincipal}</h1>
-            {nomeSecundario && <p className="text-sm font-medium mt-1 text-gray-400">{nomeSecundario}</p>}
+            <div
+              className="w-20 h-20 mb-4 mx-auto"
+              style={{
+                backgroundColor: cor,
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center'
+              }}
+            />
+            <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
+              {nomePrincipal}
+            </h1>
+            {nomeSecundario && (
+              <p className="text-sm font-normal mt-1 text-gray-500">{nomeSecundario}</p>
+            )}
             <p className="text-gray-500 text-sm mt-3 text-center leading-relaxed">
               Crie sua conta para acessar nosso catálogo, agendar serviços e acompanhar seus pacotes
             </p>
           </div>
         ) : isFuncionario ? (
           <div className="text-center">
-            <div className="flex justify-center mb-4">
-              <OrganizaLogo cor={cor} size={64} />
-            </div>
-            <h1 className="text-xl font-bold" style={{ color: cor }}>{nomePrincipal || 'Convite para funcionário'}</h1>
-            {nomeSecundario && <p className="text-sm text-gray-400 mt-0.5">{nomeSecundario}</p>}
+            <div
+              className="w-16 h-16 mb-4 mx-auto"
+              style={{
+                backgroundColor: cor,
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center'
+              }}
+            />
+            <h1 className="text-xl font-bold" style={{ color: cor }}>
+              {nomePrincipal || 'Convite para funcionário'}
+            </h1>
+            {nomeSecundario && <p className="text-sm text-gray-500 mt-0.5">{nomeSecundario}</p>}
             <p className="text-gray-500 text-sm mt-3 leading-relaxed">
               {convite?.acesso_total ? 'Crie sua conta como co-gestora do salão.' : 'Crie sua conta para colaborar na gestão do salão.'}
             </p>
           </div>
         ) : (
           <div className="text-center">
-            <div className="flex justify-center mb-4">
-              <img src="/logo.png" alt="Organiza Salão" className="w-20 h-20 object-contain" />
-            </div>
+            <div
+              className="w-20 h-20 mb-4 mx-auto"
+              style={{
+                backgroundColor: '#111827',
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center'
+              }}
+            />
             <h1 className="text-2xl font-bold text-black leading-tight">
               Crie uma conta para começar a ter controle do seu salão na palma da mão.
             </h1>
@@ -212,13 +202,13 @@ function CadastroForm() {
 
       <div className="w-full max-w-sm flex flex-col gap-4 mt-2">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Nome completo</label>
+          <label className="text-xs font-semibold text-gray-900">Nome completo</label>
           <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
             placeholder="Seu nome completo" value={nome} onChange={e => setNome(e.target.value)} />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Email</label>
+          <label className="text-xs font-semibold text-gray-900">Email</label>
           <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
             type="email" placeholder="seuemail@exemplo.com"
             value={email} onChange={e => setEmail(e.target.value)} />
@@ -226,7 +216,7 @@ function CadastroForm() {
 
         {isCliente && (
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-gray-500">Data de nascimento</label>
+            <label className="text-xs font-semibold text-gray-900">Data de nascimento</label>
             <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none"
               type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
               style={{ colorScheme: 'light' }} />
@@ -234,7 +224,7 @@ function CadastroForm() {
         )}
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <label className="text-xs font-semibold text-gray-900">Senha</label>
           <div className="relative">
             <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
               type={mostrarSenha ? 'text' : 'password'} placeholder="Mínimo 6 caracteres"
@@ -257,7 +247,7 @@ function CadastroForm() {
           {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Criar conta'}
         </button>
 
-        <p className="text-center text-gray-500 text-sm mb-6">
+        <p className="text-center text-gray-900 text-sm mb-6">
           Já tem conta?{' '}
           <a href={isCliente ? '/login?salao=' + salaoSlug : '/login'} className="font-bold" style={{ color: cor }}>Entrar</a>
         </p>
