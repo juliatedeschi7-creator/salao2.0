@@ -127,7 +127,7 @@ function CadastroForm() {
         {isCliente ? (
           <div className="text-center mt-4">
             <div
-              className="w-20 h-20 mb-4 mx-auto"
+              className="w-28 h-28 mb-4 mx-auto"
               style={{
                 backgroundColor: cor,
                 WebkitMaskImage: 'url(/logo.png)',
@@ -146,8 +146,8 @@ function CadastroForm() {
             {nomeSecundario && (
               <p className="text-sm font-normal mt-1 text-gray-500">{nomeSecundario}</p>
             )}
-            <p className="text-gray-500 text-sm mt-3 text-center leading-relaxed">
-              Crie sua conta para acessar nosso catálogo, agendar serviços e acompanhar seus pacotes
+            <p className="text-black-500 text-sm mt-3 text-center leading-relaxed">
+              Crie sua conta para acessar nosso catálogo, agendar serviços e acompanhar seus pacotes.
             </p>
           </div>
         ) : isFuncionario ? (
@@ -166,7 +166,7 @@ function CadastroForm() {
                 maskPosition: 'center'
               }}
             />
-            <h1 className="text-xl font-bold" style={{ color: cor }}>
+            <h1 className="text-xl font-Dancing Script-" style={{ color: cor }}>
               {nomePrincipal || 'Convite para funcionário'}
             </h1>
             {nomeSecundario && <p className="text-sm text-gray-500 mt-0.5">{nomeSecundario}</p>}
