@@ -21,10 +21,8 @@ export default function ClientePage() {
   async function carregarDados() {
     if (!profile) return
     const { data: cli } = await supabase
-      .from('clientes')
-      .select('*, saloes(*)')
-      .eq('profile_id', profile.id)
-      .single()
+      .from('clientes').select('*, saloes(*)')
+      .eq('profile_id', profile.id).single()
     setCliente(cli)
     if (cli?.saloes) setSalao(cli.saloes)
 
@@ -32,22 +30,17 @@ export default function ClientePage() {
       .from('agendamentos')
       .select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
       .eq('cliente_id', cli?.id)
-      .order('data_hora', { ascending: false })
-      .limit(10)
+      .order('data_hora', { ascending: false }).limit(10)
     setAgendamentos(ags || [])
 
     const { count: pacs } = await supabase
-      .from('cliente_pacotes')
-      .select('*', { count: 'exact', head: true })
-      .eq('cliente_id', cli?.id)
-      .eq('status', 'ativo')
+      .from('cliente_pacotes').select('*', { count: 'exact', head: true })
+      .eq('cliente_id', cli?.id).eq('status', 'ativo')
     setPacotesAtivos(pacs || 0)
 
     const { count } = await supabase
-      .from('notificacoes')
-      .select('*', { count: 'exact', head: true })
-      .eq('destinatario_id', profile.id)
-      .eq('lida', false)
+      .from('notificacoes').select('*', { count: 'exact', head: true })
+      .eq('destinatario_id', profile.id).eq('lida', false)
     setNotifCount(count || 0)
   }
 
@@ -56,7 +49,6 @@ export default function ClientePage() {
   const nomePrincipal = partes?.[0] || 'Organiza'
   const nomeSecundario = partes?.[1]
 
-  // configurações de visibilidade controladas pelo dono
   const mostrarPacotes = salao?.mostrar_pacotes !== false
   const mostrarQuestionarios = salao?.mostrar_questionarios !== false
   const mostrarAvaliacoes = salao?.mostrar_avaliacoes !== false
@@ -73,40 +65,11 @@ export default function ClientePage() {
   const hora = new Date().getHours()
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
 
-  // menu dinâmico baseado nas configurações do dono
   const menuItems = [
-    {
-      icon: Calendar,
-      label: 'Agendamentos',
-      sub: '(Meus horários)',
-      href: '/cliente/agendamentos',
-      badge: proximos.length > 0 ? proximos.length : null,
-      sempre: true,
-    },
-    {
-      icon: Scissors,
-      label: 'Serviços disponíveis',
-      sub: 'Confira valores e explicações',
-      href: '/cliente/servicos',
-      badge: null,
-      sempre: true,
-    },
-    mostrarPacotes ? {
-      icon: Package,
-      label: 'Meus pacotes',
-      sub: 'Datas e sessões',
-      href: '/cliente/pacotes',
-      badge: pacotesAtivos > 0 ? pacotesAtivos : null,
-      sempre: false,
-    } : null,
-    mostrarQuestionarios ? {
-      icon: ClipboardList,
-      label: 'Questionários',
-      sub: 'Dados de saúde',
-      href: '/cliente/anamnese',
-      badge: null,
-      sempre: false,
-    } : null,
+    { icon: Calendar, label: 'Agendamentos', sub: '(Meus horários)', href: '/cliente/agendamentos', badge: proximos.length > 0 ? proximos.length : null },
+    { icon: Scissors, label: 'Serviços disponíveis', sub: 'Valores e explicações', href: '/cliente/servicos', badge: null },
+    mostrarPacotes ? { icon: Package, label: 'Meus pacotes', sub: 'Datas e sessões', href: '/cliente/pacotes', badge: pacotesAtivos > 0 ? pacotesAtivos : null } : null,
+    mostrarQuestionarios ? { icon: ClipboardList, label: 'Questionários', sub: 'Dados de saúde', href: '/cliente/anamnese', badge: null } : null,
   ].filter(Boolean) as any[]
 
   if (loading) return (
@@ -117,9 +80,14 @@ export default function ClientePage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f0f0f5' }}>
+      {/* Importa fonte cursiva do Google */}
+      <link
+        href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap"
+        rel="stylesheet"
+      />
 
-      {/* Header imersivo */}
-      <div className="relative overflow-hidden" style={{ backgroundColor: cor, minHeight: 230 }}>
+      {/* Header */}
+      <div className="relative overflow-hidden" style={{ backgroundColor: cor, minHeight: 240 }}>
         <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full opacity-10 bg-white" />
         <div className="absolute -bottom-20 -left-10 w-48 h-48 rounded-full opacity-10 bg-white" />
         <div className="absolute top-20 right-8 w-16 h-16 rounded-full opacity-10 bg-white" />
@@ -127,11 +95,11 @@ export default function ClientePage() {
         {/* Sino + avatar */}
         <div className="relative flex items-center justify-between px-5 pt-12 pb-2">
           <div>
-            <p className="text-white/60 text-xs font-medium tracking-wide uppercase">
+            <p className="text-white/70 text-sm font-medium tracking-wide">
               {saudacao} ✨
             </p>
-            <h1 className="text-white text-2xl font-bold mt-0.5">
-              {profile?.nome?.split(' ')[0]}
+            <h1 className="text-white text-3xl font-bold mt-0.5 leading-tight">
+              {profile?.nome?.split(' ')[0]}!
             </h1>
           </div>
           <div className="flex items-center gap-2">
@@ -150,14 +118,32 @@ export default function ClientePage() {
           </div>
         </div>
 
-        {/* Nome do salão */}
-        <div className="relative px-5 pb-8 mt-2">
-          <p className="text-white/50 text-[11px] uppercase tracking-widest">
-            Você está no ambiente:
+        {/* Nome do salão em cursiva */}
+        <div className="relative px-5 pb-8 mt-3">
+          <p className="text-white/60 text-[10px] uppercase tracking-[0.2em] font-medium mb-1">
+            Bem-vinda ao ambiente
           </p>
-          <p className="text-white font-bold text-lg leading-tight">{nomePrincipal}</p>
+          <p
+            className="text-white leading-tight"
+            style={{
+              fontFamily: "'Dancing Script', cursive",
+              fontSize: '2rem',
+              fontWeight: 700,
+              textShadow: '0 2px 12px rgba(0,0,0,0.15)',
+              lineHeight: 1.2,
+            }}>
+            {nomePrincipal}
+          </p>
           {nomeSecundario && (
-            <p className="text-white/60 text-xs mt-0.5">{nomeSecundario}</p>
+            <p
+              className="text-white/80 mt-0.5"
+              style={{
+                fontFamily: "'Dancing Script', cursive",
+                fontSize: '1.1rem',
+                fontWeight: 600,
+              }}>
+              {nomeSecundario}
+            </p>
           )}
         </div>
       </div>
@@ -189,10 +175,9 @@ export default function ClientePage() {
 
       <div className="px-4 flex flex-col gap-4 pb-10"
         style={{ marginTop: proximos.length > 0 ? 0 : -20 }}>
-
         {proximos.length === 0 && <div className="h-5" />}
 
-        {/* Menu principal */}
+        {/* Menu */}
         <div className="grid grid-cols-2 gap-3">
           {menuItems.map(({ icon: Icon, label, sub, href, badge }: any) => (
             <button key={href} onClick={() => router.push(href)}
@@ -217,7 +202,7 @@ export default function ClientePage() {
           ))}
         </div>
 
-        {/* Quem somos — controlado pelo dono */}
+        {/* Quem somos */}
         {mostrarQuemSomos && (
           <button onClick={() => router.push('/cliente/quem-somos')}
             className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left relative overflow-hidden">
@@ -267,7 +252,7 @@ export default function ClientePage() {
           </div>
         )}
 
-        {/* Avaliação — controlada pelo dono */}
+        {/* Avaliação */}
         {mostrarAvaliacoes && (
           <button onClick={() => router.push('/cliente/avaliacoes')}
             className="relative overflow-hidden rounded-3xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all text-left"
@@ -290,5 +275,3 @@ export default function ClientePage() {
         </button>
       </div>
     </div>
-  )
-}
