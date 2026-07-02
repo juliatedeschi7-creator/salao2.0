@@ -4,20 +4,6 @@ import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
-// Converte hex para filtro CSS que tinge uma imagem preta naquela cor
-function hexParaFiltroCSS(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16) / 255
-  const g = parseInt(hex.slice(3, 5), 16) / 255
-  const b = parseInt(hex.slice(5, 7), 16) / 255
-  // Aproximação simples: usa sepia + saturate + hue-rotate
-  // Para cores rosa/pink funciona bem
-  const hue = Math.round(Math.atan2(
-    Math.sqrt(3) * (g - b),
-    2 * r - g - b
-  ) * (180 / Math.PI))
-  return `brightness(0) saturate(100%) invert(20%) sepia(80%) saturate(500%) hue-rotate(${hue}deg) brightness(0.9)`
-}
-
 function LoginForm() {
   const searchParams = useSearchParams()
   const salaoSlug = searchParams.get('salao')
@@ -115,30 +101,46 @@ function LoginForm() {
       <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-8 mt-8">
         {isCliente ? (
           <div className="text-center">
-            {/* Logo tingido com a cor do salão */}
-            <div className="flex justify-center mb-4">
-              <img
-                src="/logo.png"
-                alt="Organiza Salão"
-                className="w-20 h-20 object-contain"
-                style={{ filter: hexParaFiltroCSS(cor) }}
-              />
-            </div>
+            <div
+              className="w-20 h-20 mb-4 mx-auto"
+              style={{
+                backgroundColor: cor,
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center'
+              }}
+            />
             <h1 className="text-2xl font-bold leading-tight" style={{ color: cor }}>
               {nomePrincipal || 'Entrar'}
             </h1>
             {nomeSecundario && (
               <p className="text-sm font-medium mt-1 text-gray-400">{nomeSecundario}</p>
             )}
-            <p className="text-gray-400 text-sm mt-3 text-center">
+            <p className="text-gray-900 text-sm mt-3 text-center">
               Entre na sua conta para continuar
             </p>
           </div>
         ) : (
           <div className="flex flex-col items-center text-center">
-            <div className="w-20 h-20 mb-4">
-              <img src="/logo.png" alt="Organiza Salão" className="w-full h-full object-contain" />
-            </div>
+            <div
+              className="w-20 h-20 mb-4"
+              style={{
+                backgroundColor: '#111827',
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center'
+              }}
+            />
             <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
             <p className="text-gray-400 text-sm mt-1 text-center">
               Toda a gestão do seu espaço na palma da mão.
@@ -149,7 +151,7 @@ function LoginForm() {
 
       <div className="w-full max-w-sm flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Email</label>
+          <label className="text-xs font-semibold text-gray-900">Email</label>
           <input
             className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none transition-colors placeholder-gray-400"
             type="email"
@@ -161,7 +163,7 @@ function LoginForm() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <label className="text-xs font-semibold text-gray-900">Senha</label>
           <div className="relative">
             <input
               className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none transition-colors placeholder-gray-400"
@@ -214,7 +216,7 @@ function LoginForm() {
         )}
 
         {isCliente && (
-          <p className="text-center text-gray-500 text-sm">
+          <p className="text-center text-gray-900 text-sm">
             Não tem conta?{' '}
             <a href={'/cadastro?salao=' + salaoSlug} className="font-bold" style={{ color: cor }}>
               Criar conta
