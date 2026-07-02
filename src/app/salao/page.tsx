@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Home, Calendar, Users, BarChart2, Settings, Plus, Clock, CheckCircle, AlertCircle, Scissors, Bell } from 'lucide-react'
+import { Home, Calendar, Plus, Clock, CheckCircle, AlertCircle, Scissors, Bell } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -13,11 +13,11 @@ export default function SalaoPage() {
   const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [pendentesConfirmacao, setPendentesConfirmacao] = useState(0)
+  const [notifNaoLidas, setNotifNaoLidas] = useState(0)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
     if (!loading && profile) {
-      // acesso total = dono_salao OU funcionario socio/familiar (nivel_acesso 'total')
       if (!temAcessoTotal) { router.push('/login'); return }
       if (!profile.salao_id) { router.push('/criar-salao'); return }
       carregarDados()
@@ -41,28 +41,39 @@ export default function SalaoPage() {
     const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
     const { data: pendentes } = await supabase.from('agendamentos')
       .select('*, confirmacoes_atendimento(*, confirmado_por_profile:profiles!confirmacoes_atendimento_confirmado_por_fkey(nome))')
-      .eq('salao_id', profile.salao_id)
-      .eq('status', 'confirmado')
-      .gte('data_hora', ontem.toISOString())
-      .lte('data_hora', hoje.toISOString())
+      .eq('salao_id', profile.salao_id).eq('status', 'confirmado')
+      .gte('data_hora', ontem.toISOString()).lte('data_hora', hoje.toISOString())
     const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
     setPendentesConfirmacao(semConfirmar.length)
+
+    // Conta notificações não lidas
+    const { count } = await supabase.from('notificacoes')
+      .select('*', { count: 'exact', head: true })
+      .eq('destinatario_id', profile.id).eq('lida', false)
+    setNotifNaoLidas(count || 0)
 
     setCarregando(false)
   }
 
   const navItems = [
-    { icon: Home, label: 'Inicio', href: '/salao' },
+    { icon: Home, label: 'Início', href: '/salao' },
     { icon: Calendar, label: 'Agenda', href: '/salao/agenda' },
-    { icon: Scissors, label: 'Servicos', href: '/salao/servicos' },
-    { icon: Users, label: 'Clientes', href: '/salao/clientes' },
-    { icon: BarChart2, label: 'Financas', href: '/salao/financeiro' },
+    { icon: Scissors, label: 'Serviços', href: '/salao/servicos' },
+    {
+      // Notificações com badge dinâmico
+      icon: Bell,
+      label: 'Avisos',
+      href: '/salao/notificacoes',
+      badge: notifNaoLidas > 0 ? notifNaoLidas : undefined,
+      pulse: notifNaoLidas > 0,
+    },
+    { icon: Home, label: 'Finanças', href: '/salao/financeiro' },
   ]
 
   const statusConfig: Record<string, { cor: string; label: string; icon: any }> = {
     confirmado: { cor: 'text-green-600 bg-green-50', label: 'Confirmado', icon: CheckCircle },
     pendente: { cor: 'text-yellow-600 bg-yellow-50', label: 'Pendente', icon: AlertCircle },
-    concluido: { cor: 'text-gray-500 bg-gray-50', label: 'Concluido', icon: CheckCircle },
+    concluido: { cor: 'text-gray-500 bg-gray-50', label: 'Concluído', icon: CheckCircle },
     cancelado: { cor: 'text-red-500 bg-red-50', label: 'Cancelado', icon: AlertCircle },
     aguardando_confirmacao: { cor: 'text-blue-600 bg-blue-50', label: 'Aguardando', icon: Clock },
   }
@@ -96,12 +107,51 @@ export default function SalaoPage() {
             </div>
             <div className="flex-1 text-left">
               <p className="font-semibold text-yellow-700 text-sm">
-                {pendentesConfirmacao} atendimento{pendentesConfirmacao > 1 ? 's' : ''} aguardando confirmacao
+                {pendentesConfirmacao} atendimento{pendentesConfirmacao > 1 ? 's' : ''} aguardando confirmação
               </p>
               <p className="text-xs text-yellow-600">Confirme se a cliente veio para atualizar pacotes</p>
             </div>
           </button>
         )}
+
+        {/* Atalhos rápidos — inclui Notificações com pulse */}
+        <div className="grid grid-cols-3 gap-3">
+          <button onClick={() => router.push('/salao/agenda')}
+            className="bg-white rounded-2xl p-3 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${cor}15` }}>
+              <Calendar size={20} style={{ color: cor }} />
+            </div>
+            <p className="text-xs font-semibold text-gray-700">Agenda</p>
+          </button>
+
+          <button onClick={() => router.push('/salao/clientes')}
+            className="bg-white rounded-2xl p-3 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `${cor}15` }}>
+              <Scissors size={20} style={{ color: cor }} />
+            </div>
+            <p className="text-xs font-semibold text-gray-700">Serviços</p>
+          </button>
+
+          {/* Notificações com sininho pulsando */}
+          <button onClick={() => router.push('/salao/notificacoes')}
+            className="bg-white rounded-2xl p-3 flex flex-col items-center gap-2 shadow-sm active:scale-95 transition-all relative">
+            <div className="relative">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${notifNaoLidas > 0 ? 'animate-pulse' : ''}`}
+                style={{ backgroundColor: notifNaoLidas > 0 ? `${cor}25` : `${cor}15` }}>
+                <Bell size={20} style={{ color: cor }} />
+              </div>
+              {notifNaoLidas > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full text-white text-[10px] flex items-center justify-center font-bold"
+                  style={{ backgroundColor: cor }}>
+                  {notifNaoLidas > 9 ? '9+' : notifNaoLidas}
+                </span>
+              )}
+            </div>
+            <p className="text-xs font-semibold text-gray-700">Avisos</p>
+          </button>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="card">
