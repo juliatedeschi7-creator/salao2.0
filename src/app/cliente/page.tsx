@@ -80,19 +80,16 @@ export default function ClientePage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f0f0f5' }}>
-      {/* Importa fonte cursiva do Google */}
       <link
         href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap"
         rel="stylesheet"
       />
 
-      {/* Header */}
       <div className="relative overflow-hidden" style={{ backgroundColor: cor, minHeight: 240 }}>
         <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full opacity-10 bg-white" />
         <div className="absolute -bottom-20 -left-10 w-48 h-48 rounded-full opacity-10 bg-white" />
         <div className="absolute top-20 right-8 w-16 h-16 rounded-full opacity-10 bg-white" />
 
-        {/* Sino + avatar */}
         <div className="relative flex items-center justify-between px-5 pt-12 pb-2">
           <div>
             <p className="text-white/70 text-sm font-medium tracking-wide">
@@ -118,7 +115,6 @@ export default function ClientePage() {
           </div>
         </div>
 
-        {/* Nome do salão em cursiva */}
         <div className="relative px-5 pb-8 mt-3">
           <p className="text-white/60 text-[10px] uppercase tracking-[0.2em] font-medium mb-1">
             Bem-vinda ao ambiente
@@ -148,7 +144,6 @@ export default function ClientePage() {
         </div>
       </div>
 
-      {/* Próximo agendamento flutuante */}
       {proximos.length > 0 && (
         <div className="px-4 -mt-5 relative z-10 mb-3">
           <button onClick={() => router.push('/cliente/agendamentos')}
@@ -177,7 +172,6 @@ export default function ClientePage() {
         style={{ marginTop: proximos.length > 0 ? 0 : -20 }}>
         {proximos.length === 0 && <div className="h-5" />}
 
-        {/* Menu */}
         <div className="grid grid-cols-2 gap-3">
           {menuItems.map(({ icon: Icon, label, sub, href, badge }: any) => (
             <button key={href} onClick={() => router.push(href)}
@@ -202,7 +196,6 @@ export default function ClientePage() {
           ))}
         </div>
 
-        {/* Quem somos */}
         {mostrarQuemSomos && (
           <button onClick={() => router.push('/cliente/quem-somos')}
             className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left relative overflow-hidden">
@@ -220,7 +213,6 @@ export default function ClientePage() {
           </button>
         )}
 
-        {/* Histórico */}
         {historico.length > 0 && (
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -252,7 +244,6 @@ export default function ClientePage() {
           </div>
         )}
 
-        {/* Avaliação */}
         {mostrarAvaliacoes && (
           <button onClick={() => router.push('/cliente/avaliacoes')}
             className="relative overflow-hidden rounded-3xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all text-left"
@@ -275,3 +266,5 @@ export default function ClientePage() {
         </button>
       </div>
     </div>
+  )
+}
