@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, Heart, ChevronRight, Sparkles } from 'lucide-react'
+import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, Heart, ChevronRight, Sparkles, FileText, Wallet } from 'lucide-react'
 
 export default function ClientePage() {
   const { profile, loading, logout } = useAuth()
@@ -13,6 +13,7 @@ export default function ClientePage() {
   const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [pacotesAtivos, setPacotesAtivos] = useState(0)
   const [notifCount, setNotifCount] = useState(0)
+  const [contratosCount, setContratosCount] = useState(0)
 
   useEffect(() => {
     if (!loading && profile) carregarDados()
@@ -38,10 +39,15 @@ export default function ClientePage() {
       .eq('cliente_id', cli?.id).eq('status', 'ativo')
     setPacotesAtivos(pacs || 0)
 
-    const { count } = await supabase
+    const { count: notifs } = await supabase
       .from('notificacoes').select('*', { count: 'exact', head: true })
       .eq('destinatario_id', profile.id).eq('lida', false)
-    setNotifCount(count || 0)
+    setNotifCount(notifs || 0)
+
+    const { count: contratos } = await supabase
+      .from('contratos').select('*', { count: 'exact', head: true })
+      .eq('cliente_id', cli?.id).eq('status', 'pendente')
+    setContratosCount(contratos || 0)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -53,6 +59,8 @@ export default function ClientePage() {
   const mostrarQuestionarios = salao?.mostrar_questionarios !== false
   const mostrarAvaliacoes = salao?.mostrar_avaliacoes !== false
   const mostrarQuemSomos = salao?.mostrar_quem_somos !== false
+  const mostrarContratos = salao?.mostrar_contratos !== false
+  const mostrarContas = salao?.mostrar_contas !== false
   const tituloQuemSomos = salao?.titulo_quem_somos || 'Quem somos'
 
   const proximos = agendamentos.filter(a =>
@@ -66,8 +74,8 @@ export default function ClientePage() {
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
 
   const menuItems = [
-    { icon: Calendar, label: 'Agendamentos', sub: '(Meus horários)', href: '/cliente/agendamentos', badge: proximos.length > 0 ? proximos.length : null },
-    { icon: Scissors, label: 'Serviços disponíveis', sub: 'Valores e explicações', href: '/cliente/servicos', badge: null },
+    { icon: Calendar, label: 'Agendamentos', sub: 'Meus horários', href: '/cliente/agendamentos', badge: proximos.length > 0 ? proximos.length : null },
+    { icon: Scissors, label: 'Serviços', sub: 'Valores e opções', href: '/cliente/servicos', badge: null },
     mostrarPacotes ? { icon: Package, label: 'Meus pacotes', sub: 'Datas e sessões', href: '/cliente/pacotes', badge: pacotesAtivos > 0 ? pacotesAtivos : null } : null,
     mostrarQuestionarios ? { icon: ClipboardList, label: 'Questionários', sub: 'Dados de saúde', href: '/cliente/anamnese', badge: null } : null,
   ].filter(Boolean) as any[]
@@ -92,9 +100,7 @@ export default function ClientePage() {
 
         <div className="relative flex items-center justify-between px-5 pt-12 pb-2">
           <div>
-            <p className="text-white/70 text-sm font-medium tracking-wide">
-              {saudacao} ✨
-            </p>
+            <p className="text-white/70 text-sm font-medium tracking-wide">{saudacao} ✨</p>
             <h1 className="text-white text-3xl font-bold mt-0.5 leading-tight">
               {profile?.nome?.split(' ')[0]}!
             </h1>
@@ -119,25 +125,15 @@ export default function ClientePage() {
           <p className="text-white/60 text-[10px] uppercase tracking-[0.2em] font-medium mb-1">
             Bem-vinda ao ambiente
           </p>
-          <p
-            className="text-white leading-tight"
-            style={{
-              fontFamily: "'Dancing Script', cursive",
-              fontSize: '2rem',
-              fontWeight: 700,
-              textShadow: '0 2px 12px rgba(0,0,0,0.15)',
-              lineHeight: 1.2,
-            }}>
+          <p className="text-white leading-tight" style={{
+            fontFamily: "'Dancing Script', cursive",
+            fontSize: '2rem', fontWeight: 700,
+            textShadow: '0 2px 12px rgba(0,0,0,0.15)', lineHeight: 1.2,
+          }}>
             {nomePrincipal}
           </p>
           {nomeSecundario && (
-            <p
-              className="text-white/80 mt-0.5"
-              style={{
-                fontFamily: "'Dancing Script', cursive",
-                fontSize: '1.1rem',
-                fontWeight: 600,
-              }}>
+            <p className="text-white/80 mt-0.5 font-normal text-base">
               {nomeSecundario}
             </p>
           )}
@@ -208,6 +204,42 @@ export default function ClientePage() {
             <div className="flex-1">
               <p className="font-bold text-gray-900 text-sm">{tituloQuemSomos}</p>
               <p className="text-gray-400 text-xs mt-0.5">Nossa história e valores</p>
+            </div>
+            <ChevronRight size={16} className="text-gray-300 shrink-0" />
+          </button>
+        )}
+
+        {mostrarContratos && (
+          <button onClick={() => router.push('/cliente/contratos')}
+            className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left relative overflow-hidden">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `${cor}15` }}>
+              <FileText size={20} style={{ color: cor }} />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-gray-900 text-sm">Contratos e termos</p>
+              <p className="text-gray-400 text-xs mt-0.5">Documentos para assinar</p>
+            </div>
+            {contratosCount > 0 && (
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
+                style={{ backgroundColor: cor }}>
+                {contratosCount}
+              </span>
+            )}
+            <ChevronRight size={16} className="text-gray-300 shrink-0" />
+          </button>
+        )}
+
+        {mostrarContas && (
+          <button onClick={() => router.push('/cliente/contas')}
+            className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left relative overflow-hidden">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `${cor}15` }}>
+              <Wallet size={20} style={{ color: cor }} />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-gray-900 text-sm">Minhas contas</p>
+              <p className="text-gray-400 text-xs mt-0.5">Saldo e pagamentos</p>
             </div>
             <ChevronRight size={16} className="text-gray-300 shrink-0" />
           </button>
