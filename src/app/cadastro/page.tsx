@@ -4,14 +4,6 @@ import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 
-function hexParaFiltroCSS(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  const hue = Math.round(Math.atan2(Math.sqrt(3) * (g - b), 2 * r - g - b) * (180 / Math.PI))
-  return `brightness(0) saturate(100%) invert(20%) sepia(80%) saturate(500%) hue-rotate(${hue}deg) brightness(0.9)`
-}
-
 function CadastroForm() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
@@ -68,7 +60,6 @@ function CadastroForm() {
       if (error) { setErro(error.message.includes('already') ? 'Email já cadastrado.' : 'Erro: ' + error.message); setLoading(false); return }
       if (!data.user) { setErro('Erro ao criar usuário.'); setLoading(false); return }
 
-      // Funcionário
       if (isFuncionario && convite) {
         await supabase.from('profiles').upsert({
           id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
@@ -89,23 +80,17 @@ function CadastroForm() {
         window.location.href = '/aguardando'; return
       }
 
-      // Cliente
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes')
           .select('id, aprovacao_automatica_clientes').eq('slug', salaoSlug).single()
         if (!salao) { setErro('Salão não encontrado.'); setLoading(false); return }
-
         const aprovadoAuto = salao.aprovacao_automatica_clientes === true
-
-        // Verifica se já existe cliente com esse email (cadastrado manualmente)
         const { data: clienteExistente } = await supabase.from('clientes')
           .select('id').eq('salao_id', salao.id).eq('email', email.trim().toLowerCase()).maybeSingle()
-
         await supabase.from('profiles').upsert({
           id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
           role: 'cliente', salao_id: salao.id, aprovado: aprovadoAuto, ativo: true
         }, { onConflict: 'id' })
-
         if (clienteExistente) {
           await supabase.from('clientes').update({ profile_id: data.user.id }).eq('id', clienteExistente.id)
         } else {
@@ -115,24 +100,19 @@ function CadastroForm() {
             data_nascimento: dataNascimento || null
           })
         }
-
         const { data: dono } = await supabase.from('profiles').select('id')
           .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
         if (dono) {
           await supabase.from('notificacoes').insert({
             destinatario_id: dono.id,
             titulo: aprovadoAuto ? 'Nova cliente cadastrada! 🎉' : 'Nova cliente aguardando aprovação',
-            mensagem: aprovadoAuto
-              ? `${nome.trim()} se cadastrou no seu salão.`
-              : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
+            mensagem: aprovadoAuto ? `${nome.trim()} se cadastrou no seu salão.` : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
             tipo: 'sistema'
           })
         }
-
         window.location.href = aprovadoAuto ? '/cliente' : '/aguardando'; return
       }
 
-      // Dono de salão
       await supabase.from('profiles').upsert({
         id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
         role: roleInicial, aprovado: false, ativo: true
@@ -161,21 +141,38 @@ function CadastroForm() {
       {(isCliente || isFuncionario) && (
         <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />
       )}
-      <div className="min-h-screen flex flex-col items-center px-6 py-10"
-        style={{ background: (isCliente || isFuncionario) ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)` : '#ffffff' }}>
+      <div className="min-h-screen flex flex-col items-center px-6 py-6"
+        style={{ background: (isCliente || isFuncionario) ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 300px)` : '#ffffff' }}>
 
-        <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
+        <div className="w-full max-w-sm flex flex-col items-center mb-4 mt-4">
           {isCliente ? (
-            <div className="text-center mt-2">
-              <div className="flex justify-center mb-2">
-                <img src="/logo.png" alt="Organiza Salão" className="w-28 h-28 object-contain"
-                  style={{ filter: hexParaFiltroCSS(cor) }} />
-              </div>
-              <h1 style={{ fontFamily: "'Dancing Script', cursive", fontSize: '2.2rem', fontWeight: 700, color: cor, lineHeight: 1.2 }}>
+            <div className="text-center">
+              <div
+                className="w-24 h-24 mb-1 mx-auto"
+                style={{
+                  backgroundColor: cor,
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center'
+                }}
+              />
+              <h1 style={{
+                fontFamily: "'Dancing Script', cursive",
+                fontSize: '2.2rem',
+                fontWeight: 700,
+                color: cor,
+                lineHeight: 1.1,
+                marginTop: 0,
+              }}>
                 {nomePrincipal}
               </h1>
               {nomeSecundario && (
-                <p className="font-bold text-xs tracking-widest uppercase mt-1" style={{ color: cor }}>
+                <p className="text-sm font-bold text-gray-900 mt-0.5">
                   {nomeSecundario}
                 </p>
               )}
@@ -185,61 +182,88 @@ function CadastroForm() {
             </div>
           ) : isFuncionario ? (
             <div className="text-center">
-              <div className="flex justify-center mb-2">
-                <img src="/logo.png" alt="Organiza Salão" className="w-28 h-28 object-contain"
-                  style={{ filter: hexParaFiltroCSS(cor) }} />
-              </div>
-              <h1 style={{ fontFamily: "'Dancing Script', cursive", fontSize: '2rem', fontWeight: 700, color: cor, lineHeight: 1.2 }}>
+              <div
+                className="w-20 h-20 mb-1 mx-auto"
+                style={{
+                  backgroundColor: cor,
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center'
+                }}
+              />
+              <h1 style={{
+                fontFamily: "'Dancing Script', cursive",
+                fontSize: '2rem',
+                fontWeight: 700,
+                color: cor,
+                lineHeight: 1.1,
+              }}>
                 {nomePrincipal || 'Convite'}
               </h1>
               {nomeSecundario && (
-                <p className="font-bold text-xs tracking-widest uppercase mt-1" style={{ color: cor }}>{nomeSecundario}</p>
+                <p className="text-sm font-bold text-gray-900 mt-0.5">{nomeSecundario}</p>
               )}
-              <p className="text-gray-500 text-sm mt-3 leading-relaxed">
+              <p className="text-gray-500 text-sm mt-2 leading-relaxed">
                 {convite?.acesso_total ? 'Crie sua conta como co-gestora do salão.' : 'Crie sua conta para colaborar na gestão do salão.'}
               </p>
             </div>
           ) : (
             <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <img src="/logo.png" alt="Organiza Salão" className="w-20 h-20 object-contain" />
-              </div>
+              <div
+                className="w-20 h-20 mb-3 mx-auto"
+                style={{
+                  backgroundColor: '#111827',
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center'
+                }}
+              />
               <h1 className="text-2xl font-bold text-black leading-tight">
                 Crie uma conta para começar a ter controle do seu salão na palma da mão
               </h1>
-              <p className="text-gray-500 text-sm mt-3 leading-relaxed">
+              <p className="text-gray-500 text-sm mt-2 leading-relaxed">
                 Visualize agenda, catálogo de serviços, envie lembretes e controle pacotes.
               </p>
             </div>
           )}
         </div>
 
-        <div className="w-full max-w-sm flex flex-col gap-4 mt-2">
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-gray-500">Nome completo</label>
-            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
+        <div className="w-full max-w-sm flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-900">Nome completo</label>
+            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none placeholder-gray-400"
               placeholder="Seu nome completo" value={nome} onChange={e => setNome(e.target.value)} />
           </div>
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-gray-500">Email</label>
-            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-900">Email</label>
+            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none placeholder-gray-400"
               type="email" placeholder="seuemail@exemplo.com" value={email} onChange={e => setEmail(e.target.value)} />
           </div>
 
           {isCliente && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-semibold text-gray-500">Data de nascimento</label>
-              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none"
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-900">Data de nascimento</label>
+              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none"
                 type="date" value={dataNascimento} onChange={e => setDataNascimento(e.target.value)}
                 style={{ colorScheme: 'light' }} />
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-gray-500">Senha</label>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-900">Senha</label>
             <div className="relative">
-              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
+              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 pr-12 text-base outline-none placeholder-gray-400"
                 type={mostrarSenha ? 'text' : 'password'} placeholder="Mínimo 6 caracteres"
                 value={senha} onChange={e => setSenha(e.target.value)} />
               <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setMostrarSenha(!mostrarSenha)}>
@@ -254,12 +278,12 @@ function CadastroForm() {
             </div>
           )}
 
-          <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+          <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
             style={{ backgroundColor: cor }} onClick={handleCadastro} disabled={loading}>
             {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Criar conta'}
           </button>
 
-          <p className="text-center text-gray-500 text-sm mb-6">
+          <p className="text-center text-gray-900 text-sm pb-4">
             Já tem conta?{' '}
             <a href={isCliente ? '/login?salao=' + salaoSlug : '/login'} className="font-bold" style={{ color: cor }}>Entrar</a>
           </p>
@@ -271,7 +295,11 @@ function CadastroForm() {
 
 export default function CadastroPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-white"><div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" /></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
       <CadastroForm />
     </Suspense>
   )
