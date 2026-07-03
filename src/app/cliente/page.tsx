@@ -134,13 +134,7 @@ export default function ClientePage() {
               {nomePrincipal}
             </p>
             {nomeSecundario && (
-              <p style={{
-                fontFamily: "'Dancing Script', cursive",
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.75)',
-                marginTop: '2px',
-              }}>
+              <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mt-1">
                 {nomeSecundario}
               </p>
             )}
