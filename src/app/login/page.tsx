@@ -80,7 +80,7 @@ function LoginForm() {
           {isCliente ? (
             <div className="text-center">
               <div
-                className="w-28 h-28 mb-3 mx-auto"
+                className="w-28 h-28 mb-1 mx-auto"
                 style={{
                   backgroundColor: cor,
                   WebkitMaskImage: 'url(/logo.png)',
