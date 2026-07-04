@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/salao-horarios-page.tsx << 'ENDOFFILE'
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -192,4 +191,3 @@ export default function HorariosPage() {
     </div>
   )
 }
-ENDOFFILE
