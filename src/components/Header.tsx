@@ -38,6 +38,7 @@ const MENU_DONO = [
   { icon: Sparkles, label: 'Sugestões IA', href: '/salao/ia', grupo: 'Outros' },
   { icon: Heart, label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros' },
   { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
+{ icon: Clock, label: 'Horários', href: '/salao/horarios', grupo: 'Outros' },
 ]
 
 const MENU_ADMIN = [
