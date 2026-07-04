@@ -74,9 +74,9 @@ export default function ClientePage() {
     { icon: Calendar, label: 'Agendamentos', sub: '(Meus horários)', href: '/cliente/agendamentos', badge: proximos.length > 0 ? proximos.length : null },
     { icon: Scissors, label: 'Serviços disponíveis', sub: 'Valores e explicações', href: '/cliente/servicos', badge: null },
     mostrarPacotes ? { icon: Package, label: 'Meus pacotes', sub: 'Datas e sessões', href: '/cliente/pacotes', badge: pacotesAtivos > 0 ? pacotesAtivos : null } : null,
-    mostrarQuestionarios ? { icon: ClipboardList, label: 'Questionários', sub: 'Dados de saúde', href: '/cliente/anamnese', badge: null } : null,
+      mostrarQuestionarios ? { icon: ClipboardList, label: 'Questionários', sub: 'Dados de saúde', href: '/cliente/anamnese', badge: null } : null,
+    { icon: Clock, label: 'Funcionamento', sub: 'Dias e horários', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
-{ icon: Clock, label: 'Funcionamento', sub: 'Dias e horários', href: '/cliente/horarios', badge: null },
 
   // Mostra loading até ter auth E dados do salão
   if (loading || carregando) return (
