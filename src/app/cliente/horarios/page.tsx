@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/cliente-horarios-page.tsx << 'ENDOFFILE'
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -16,13 +15,7 @@ const DIAS = [
   { key: 'domingo', label: 'Domingo', abrev: 'DOM' },
 ]
 
-// índice 0=dom, 1=seg... ajustamos pra segunda=0
-const DIA_SEMANA_ATUAL = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'][new Date().getDay()]
-
-function formatarHorario(inicio: string | null, fim: string | null) {
-  if (!inicio || !fim) return null
-  return `${inicio} às ${fim}`
-}
+const CHAVE_DIA = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
 
 export default function ClienteHorariosPage() {
   const { profile, loading } = useAuth()
@@ -39,12 +32,22 @@ export default function ClienteHorariosPage() {
       .from('clientes').select('salao_id, saloes(*)').eq('profile_id', profile!.id).single()
     if (cli?.saloes) {
       setSalao(cli.saloes)
-      setHorarios(cli.saloes.horarios_funcionamento || {})
+      setHorarios((cli.saloes as any).horarios_funcionamento || {})
     }
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const corSec = salao?.cor_secundaria || '#FCE4F3'
+  const diaHojeKey = CHAVE_DIA[new Date().getDay()]
+
+  const hojeAberto = () => {
+    const h = horarios[diaHojeKey]
+    if (!h || !h.ativo) return false
+    const agora = new Date()
+    const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
+    const noManha = h.manha_inicio && h.manha_fim && horaAtual >= h.manha_inicio && horaAtual <= h.manha_fim
+    const naTarde = h.tarde_inicio && h.tarde_fim && horaAtual >= h.tarde_inicio && horaAtual <= h.tarde_fim
+    return noManha || naTarde
+  }
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center">
@@ -52,9 +55,11 @@ export default function ClienteHorariosPage() {
     </div>
   )
 
+  const aberto = hojeAberto()
+  const hojeH = horarios[diaHojeKey]
+
   return (
     <div className="min-h-screen bg-[#f0f0f5] pb-10">
-      {/* Header */}
       <div className="px-4 pt-12 pb-6" style={{ backgroundColor: cor }}>
         <button onClick={() => router.back()} className="mb-4 flex items-center gap-2 text-white/80">
           <ArrowLeft size={20} />
@@ -72,53 +77,38 @@ export default function ClienteHorariosPage() {
       </div>
 
       <div className="px-4 -mt-3 flex flex-col gap-3 pb-6">
-        {/* Card "aberto agora" */}
-        {(() => {
-          const hoje = horarios[DIA_SEMANA_ATUAL]
-          if (!hoje) return null
-          const agora = new Date()
-          const horaAtual = `${String(agora.getHours()).padStart(2, '0')}:${String(agora.getMinutes()).padStart(2, '0')}`
-          const abertoManha = hoje.ativo && hoje.manha_inicio && hoje.manha_fim &&
-            horaAtual >= hoje.manha_inicio && horaAtual <= hoje.manha_fim
-          const abertoTarde = hoje.ativo && hoje.tarde_inicio && hoje.tarde_fim &&
-            horaAtual >= hoje.tarde_inicio && horaAtual <= hoje.tarde_fim
-          const aberto = abertoManha || abertoTarde
-          const fechado = !hoje.ativo
-
-          return (
-            <div className={'rounded-2xl px-4 py-4 flex items-center gap-3 shadow-sm ' +
-              (aberto ? 'bg-green-50 border border-green-100' : 'bg-white border border-gray-100')}>
-              {aberto
-                ? <CheckCircle size={22} className="text-green-500 shrink-0" />
-                : <XCircle size={22} className="text-gray-300 shrink-0" />}
-              <div>
-                <p className={'font-bold text-base ' + (aberto ? 'text-green-700' : 'text-gray-400')}>
-                  {aberto ? 'Aberto agora' : fechado ? 'Fechado hoje' : 'Fora do horário'}
+        {hojeH && (
+          <div className={'rounded-2xl px-4 py-4 flex items-center gap-3 shadow-sm ' +
+            (aberto ? 'bg-green-50 border border-green-100' : 'bg-white border border-gray-100')}>
+            {aberto
+              ? <CheckCircle size={22} className="text-green-500 shrink-0" />
+              : <XCircle size={22} className="text-gray-300 shrink-0" />}
+            <div>
+              <p className={'font-bold text-base ' + (aberto ? 'text-green-700' : 'text-gray-400')}>
+                {aberto ? 'Aberto agora' : !hojeH.ativo ? 'Fechado hoje' : 'Fora do horário'}
+              </p>
+              {hojeH.ativo && (
+                <p className="text-sm text-gray-500 mt-0.5">
+                  {hojeH.manha_inicio && hojeH.manha_fim &&
+                    `${hojeH.tarde_inicio ? 'Manhã: ' : ''}${hojeH.manha_inicio} – ${hojeH.manha_fim}`}
+                  {hojeH.tarde_inicio && hojeH.tarde_fim &&
+                    `  •  Tarde: ${hojeH.tarde_inicio} – ${hojeH.tarde_fim}`}
                 </p>
-                {hoje.ativo && (
-                  <p className="text-sm text-gray-500 mt-0.5">
-                    {hoje.manha_inicio && hoje.manha_fim && `Manhã: ${hoje.manha_inicio} – ${hoje.manha_fim}`}
-                    {hoje.tarde_inicio && hoje.tarde_fim && `  •  Tarde: ${hoje.tarde_inicio} – ${hoje.tarde_fim}`}
-                  </p>
-                )}
-              </div>
+              )}
             </div>
-          )
-        })()}
+          </div>
+        )}
 
-        {/* Tabela de dias */}
         <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="px-4 py-3 border-b border-gray-50">
             <p className="font-bold text-gray-900 text-sm">Todos os horários</p>
           </div>
           {DIAS.map(({ key, label, abrev }, i) => {
             const h = horarios[key]
-            const ehHoje = key === DIA_SEMANA_ATUAL
+            const ehHoje = key === diaHojeKey
             return (
               <div key={key}
-                className={'flex items-start gap-3 px-4 py-3 ' +
-                  (i < DIAS.length - 1 ? 'border-b border-gray-50 ' : '') +
-                  (ehHoje ? '' : '')}
+                className={'flex items-start gap-3 px-4 py-3 ' + (i < DIAS.length - 1 ? 'border-b border-gray-50' : '')}
                 style={ehHoje ? { backgroundColor: `${cor}08` } : {}}>
                 <div className={'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold ' +
                   (ehHoje ? 'text-white' : 'text-gray-400 bg-gray-50')}
@@ -127,7 +117,7 @@ export default function ClienteHorariosPage() {
                 </div>
                 <div className="flex-1 pt-0.5">
                   <p className={'text-sm font-semibold ' + (ehHoje ? 'text-gray-900' : 'text-gray-700')}>
-                    {label} {ehHoje && <span className="text-xs font-normal text-gray-400">(hoje)</span>}
+                    {label}{ehHoje && <span className="text-xs font-normal text-gray-400"> (hoje)</span>}
                   </p>
                   {!h || !h.ativo ? (
                     <p className="text-xs text-gray-300 mt-0.5">Fechado</p>
@@ -139,17 +129,13 @@ export default function ClienteHorariosPage() {
                         </p>
                       )}
                       {h.tarde_inicio && h.tarde_fim && (
-                        <p className="text-xs text-gray-500">
-                          Tarde: {h.tarde_inicio} – {h.tarde_fim}
-                        </p>
+                        <p className="text-xs text-gray-500">Tarde: {h.tarde_inicio} – {h.tarde_fim}</p>
                       )}
                     </div>
                   )}
                 </div>
-                <div className="pt-1.5">
-                  {h?.ativo
-                    ? <div className="w-2 h-2 rounded-full bg-green-400" />
-                    : <div className="w-2 h-2 rounded-full bg-gray-200" />}
+                <div className="pt-2">
+                  <div className={'w-2 h-2 rounded-full ' + (h?.ativo ? 'bg-green-400' : 'bg-gray-200')} />
                 </div>
               </div>
             )
@@ -168,4 +154,3 @@ export default function ClienteHorariosPage() {
     </div>
   )
 }
-ENDOFFILE
