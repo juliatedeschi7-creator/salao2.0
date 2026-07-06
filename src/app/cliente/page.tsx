@@ -52,7 +52,7 @@ export default function ClientePage() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
   const partes = salao?.nome?.split(' - ')
-  const nomePrincipal = partes?.[0] || 'Organiza'
+  const nomePrincipal = partes?.[0] || ''
   const nomeSecundario = partes?.[1]
 
   const mostrarPacotes = salao?.mostrar_pacotes !== false
