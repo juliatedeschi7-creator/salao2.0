@@ -130,9 +130,9 @@ export default function ClientePage() {
           }}>
             {nomePrincipal}
           </p>
-          {nomeSecundario && (
-            <p className="text-white/80 mt-0.5 font-normal text-base">{nomeSecundario}</p>
-          )}
+       {nomeSecundario && (
+  <p className="text-white/60 text-[10px] uppercase tracking-[0.2em] font-medium mt-2">{nomeSecundario}</p>
+)}
           {salao?.descricao && (
             <p className="text-white/60 text-[10px] uppercase tracking-[0.15em] font-medium mt-2">
               {salao.descricao}
