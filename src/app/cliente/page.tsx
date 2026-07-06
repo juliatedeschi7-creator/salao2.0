@@ -78,12 +78,16 @@ export default function ClientePage() {
     { icon: Clock, label: 'Funcionamento', sub: 'Dias e horários', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
 
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: cor }}>
+if (loading || !cliente || !salao) {
+  return (
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ backgroundColor: cor }}
+    >
       <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
     </div>
   )
-
+}
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f0f0f5' }}>
       <link
