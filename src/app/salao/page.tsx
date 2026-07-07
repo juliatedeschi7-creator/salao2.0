@@ -17,11 +17,13 @@ export default function SalaoPage() {
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
-    if (!loading && profile) {
-      if (!temAcessoTotal) { router.push('/login'); return }
-      if (!profile.salao_id) { router.push('/criar-salao'); return }
-      carregarDados()
-    }
+    if (loading) return
+
+    if (!profile) { router.push('/login'); return }
+    if (!temAcessoTotal) { router.push('/login'); return }
+    if (!profile.salao_id) { router.push('/criar-salao'); return }
+
+    carregarDados()
   }, [profile, loading])
 
   async function carregarDados() {
