@@ -79,14 +79,32 @@ export default function ConfiguracoesPage() {
     setSalvandoAviso(false)
   }
 
+  const [erroInfo, setErroInfo] = useState('')
+
   async function salvarInfo() {
+    if (!formInfo.nome.trim()) { setErroInfo('O nome do salão é obrigatório.'); return }
     setSalvandoInfo(true)
-    const { error } = await supabase.from('saloes').update({
-      nome: formInfo.nome.trim(), telefone: formInfo.telefone.trim(),
-      instagram: formInfo.instagram.trim(), cidade: formInfo.cidade.trim(),
-      descricao: formInfo.descricao.trim(),
-    }).eq('id', profile!.salao_id!)
-    if (!error) { setInfoSalva(true); setEditandoInfo(false); carregarDados(); setTimeout(() => setInfoSalva(false), 3000) }
+    setErroInfo('')
+
+    const { error } = await supabase
+      .from('saloes')
+      .update({
+        nome: formInfo.nome.trim(),
+        telefone: formInfo.telefone.trim(),
+        instagram: formInfo.instagram.trim(),
+        cidade: formInfo.cidade.trim(),
+        descricao: formInfo.descricao.trim(),
+      })
+      .eq('id', profile!.salao_id!)
+
+    if (error) {
+      setErroInfo('Erro: ' + error.message)
+    } else {
+      setEditandoInfo(false)
+      setInfoSalva(true)
+      carregarDados()
+      setTimeout(() => setInfoSalva(false), 3000)
+    }
     setSalvandoInfo(false)
   }
 
@@ -236,6 +254,11 @@ export default function ConfiguracoesPage() {
                   onChange={e => setFormInfo(p => ({ ...p, descricao: e.target.value }))}
                   placeholder="Ex: Especialistas em unhas e cabelos desde 2018" />
               </div>
+              {erroInfo && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                  <p className="text-red-600 text-xs">{erroInfo}</p>
+                </div>
+              )}
               <button onClick={salvarInfo} disabled={salvandoInfo}
                 className="w-full py-3 rounded-2xl text-white font-medium flex items-center justify-center gap-2"
                 style={{ backgroundColor: cor }}>
