@@ -1,0 +1,297 @@
+'use client'
+import { useEffect, useState, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Sparkles, Camera } from 'lucide-react'
+
+// Componente slider antes/depois
+function SliderAnatesDepois({ antes, depois, cor }: { antes: string; depois: string; cor: string }) {
+  const [pos, setPos] = useState(50)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const arrastando = useRef(false)
+
+  function calcularPos(clientX: number) {
+    if (!containerRef.current) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const p = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100))
+    setPos(p)
+  }
+
+  return (
+    <div ref={containerRef}
+      className="relative w-full h-52 rounded-2xl overflow-hidden cursor-col-resize select-none"
+      onMouseDown={e => { arrastando.current = true; calcularPos(e.clientX) }}
+      onMouseMove={e => { if (arrastando.current) calcularPos(e.clientX) }}
+      onMouseUp={() => { arrastando.current = false }}
+      onMouseLeave={() => { arrastando.current = false }}
+      onTouchStart={e => { arrastando.current = true; calcularPos(e.touches[0].clientX) }}
+      onTouchMove={e => { if (arrastando.current) calcularPos(e.touches[0].clientX) }}
+      onTouchEnd={() => { arrastando.current = false }}>
+      {/* Foto depois (fundo) */}
+      <img src={depois} alt="Depois" className="absolute inset-0 w-full h-full object-cover" />
+      {/* Foto antes (recortada) */}
+      <div className="absolute inset-0 overflow-hidden" style={{ width: `${pos}%` }}>
+        <img src={antes} alt="Antes" className="absolute inset-0 h-full object-cover" style={{ width: containerRef.current?.clientWidth || 300 }} />
+      </div>
+      {/* Linha divisória */}
+      <div className="absolute top-0 bottom-0 w-0.5 bg-white shadow-lg" style={{ left: `${pos}%` }}>
+        <div className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-8 h-8 rounded-full bg-white shadow-xl flex items-center justify-center"
+          style={{ border: `2px solid ${cor}` }}>
+          <span className="text-xs font-bold" style={{ color: cor }}>↔</span>
+        </div>
+      </div>
+      {/* Labels */}
+      <span className="absolute bottom-2 left-3 text-xs bg-black/50 text-white px-2 py-0.5 rounded-full">Antes</span>
+      <span className="absolute bottom-2 right-3 text-xs bg-black/50 text-white px-2 py-0.5 rounded-full">Depois</span>
+    </div>
+  )
+}
+
+function mesesEntre(d1: Date, d2: Date) {
+  return (d2.getFullYear() - d1.getFullYear()) * 12 + (d2.getMonth() - d1.getMonth())
+}
+
+const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+export default function ClienteEvolucaoPage() {
+  const { profile, loading } = useAuth()
+  const router = useRouter()
+  const [salao, setSalao] = useState<any>(null)
+  const [cliente, setCliente] = useState<any>(null)
+  const [registros, setRegistros] = useState<any[]>([])
+  const [categoriaAtiva, setCategoriaAtiva] = useState('Todos')
+  const [filtroAno, setFiltroAno] = useState<number | null>(null)
+  const [filtroMes, setFiltroMes] = useState<number | null>(null)
+  const [carregando, setCarregando] = useState(true)
+
+  useEffect(() => {
+    if (!loading && profile) carregarDados()
+  }, [loading])
+
+  async function carregarDados() {
+    const { data: cli } = await supabase
+      .from('clientes').select('*, saloes(*)').eq('profile_id', profile!.id).single()
+    setCliente(cli)
+    if (cli?.saloes) setSalao(cli.saloes)
+
+    const { data: regs } = await supabase
+      .from('evolucao_registros')
+      .select('*')
+      .eq('cliente_id', cli?.id)
+      .eq('visivel_cliente', true)
+      .order('data_registro', { ascending: true })
+    setRegistros(regs || [])
+    setCarregando(false)
+  }
+
+  const cor = salao?.cor_primaria || '#E91E8C'
+  const corSec = salao?.cor_secundaria || '#FCE4F3'
+
+  const categorias = ['Todos', ...Array.from(new Set(registros.map(r => r.categoria)))]
+  const anos = Array.from(new Set(registros.map(r => new Date(r.data_registro).getFullYear()))).sort()
+
+  // Filtrar registros
+  const registrosFiltrados = registros.filter(r => {
+    const d = new Date(r.data_registro)
+    if (categoriaAtiva !== 'Todos' && r.categoria !== categoriaAtiva) return false
+    if (filtroAno && d.getFullYear() !== filtroAno) return false
+    if (filtroMes !== null && d.getMonth() !== filtroMes) return false
+    return true
+  })
+
+  // Primeiro e último por categoria ativa
+  const regsPorCategoria = categoriaAtiva === 'Todos'
+    ? registros
+    : registros.filter(r => r.categoria === categoriaAtiva)
+
+  const primeiro = regsPorCategoria[0]
+  const ultimo = regsPorCategoria[regsPorCategoria.length - 1]
+
+  const mesesMembro = registros.length > 0
+    ? mesesEntre(new Date(registros[0].data_registro), new Date())
+    : null
+
+  const temComparacao = primeiro && ultimo && primeiro.id !== ultimo.id
+    && primeiro.foto_antes && ultimo.foto_depois
+
+  if (loading || carregando) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: cor }}>
+      <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen pb-10" style={{ backgroundColor: '#f0f0f5' }}>
+      {/* Header */}
+      <div className="px-4 pt-12 pb-8" style={{ backgroundColor: cor }}>
+        <button onClick={() => router.back()} className="flex items-center gap-2 text-white/80 mb-5">
+          <ArrowLeft size={20} />
+          <span className="text-sm">Voltar</span>
+        </button>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center">
+            <Sparkles size={22} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-white text-xl font-bold">Minha Evolução</h1>
+            <p className="text-white/70 text-sm">{salao?.nome}</p>
+          </div>
+        </div>
+
+        {/* Card "membro há X meses" */}
+        {mesesMembro !== null && (
+          <div className="bg-white/15 rounded-2xl px-4 py-3">
+            <p className="text-white/70 text-xs uppercase tracking-wide">Você faz parte desta história há</p>
+            <p className="text-white text-2xl font-bold mt-0.5">
+              {mesesMembro === 0 ? 'menos de 1 mês'
+                : mesesMembro === 1 ? '1 mês'
+                : `${mesesMembro} meses`} ✨
+            </p>
+            <p className="text-white/60 text-xs mt-0.5">
+              Desde {new Date(registros[0].data_registro).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 -mt-3 flex flex-col gap-4">
+        {registros.length === 0 ? (
+          <div className="bg-white rounded-2xl p-10 text-center shadow-sm">
+            <Camera size={36} className="text-gray-200 mx-auto mb-3" />
+            <p className="text-gray-400 font-medium">Nenhum registro ainda</p>
+            <p className="text-gray-300 text-sm mt-1">Seus registros de evolução aparecerão aqui</p>
+          </div>
+        ) : (
+          <>
+            {/* Filtro de categorias */}
+            <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4">
+              {categorias.map(c => (
+                <button key={c} onClick={() => setCategoriaAtiva(c)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-all"
+                  style={categoriaAtiva === c
+                    ? { backgroundColor: cor, color: 'white' }
+                    : { backgroundColor: 'white', color: '#6b7280' }}>
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            {/* Comparação primeira vs última */}
+            {temComparacao && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+                <p className="font-bold text-gray-900 text-sm">
+                  Comparação: Primeiro → Último
+                  {categoriaAtiva !== 'Todos' && ` · ${categoriaAtiva}`}
+                </p>
+                <SliderAnatesDepois antes={primeiro.foto_antes} depois={ultimo.foto_depois} cor={cor} />
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>{new Date(primeiro.data_registro).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}</span>
+                  <span>{new Date(ultimo.data_registro).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Filtros de ano e mês */}
+            <div className="flex flex-col gap-2">
+              {anos.length > 1 && (
+                <div className="flex gap-2">
+                  <button onClick={() => { setFiltroAno(null); setFiltroMes(null) }}
+                    className={'px-3 py-1.5 rounded-full text-xs font-medium ' + (filtroAno === null ? 'text-white' : 'bg-white text-gray-500')}
+                    style={filtroAno === null ? { backgroundColor: cor } : {}}>
+                    Todos anos
+                  </button>
+                  {anos.map(a => (
+                    <button key={a} onClick={() => { setFiltroAno(a); setFiltroMes(null) }}
+                      className={'px-3 py-1.5 rounded-full text-xs font-medium ' + (filtroAno === a ? 'text-white' : 'bg-white text-gray-500')}
+                      style={filtroAno === a ? { backgroundColor: cor } : {}}>
+                      {a}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {filtroAno && (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  <button onClick={() => setFiltroMes(null)}
+                    className={'px-3 py-1.5 rounded-full text-xs font-medium shrink-0 ' + (filtroMes === null ? 'text-white' : 'bg-white text-gray-500')}
+                    style={filtroMes === null ? { backgroundColor: cor } : {}}>
+                    Todos meses
+                  </button>
+                  {MESES.map((m, idx) => (
+                    <button key={m} onClick={() => setFiltroMes(idx)}
+                      className={'px-3 py-1.5 rounded-full text-xs font-medium shrink-0 ' + (filtroMes === idx ? 'text-white' : 'bg-white text-gray-500')}
+                      style={filtroMes === idx ? { backgroundColor: cor } : {}}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Linha do tempo */}
+            <div className="flex flex-col gap-1">
+              <p className="font-bold text-gray-900 text-sm px-1">
+                Linha do tempo {registrosFiltrados.length > 0 ? `(${registrosFiltrados.length})` : ''}
+              </p>
+
+              {registrosFiltrados.length === 0 ? (
+                <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                  <p className="text-gray-400 text-sm">Nenhum registro neste período</p>
+                </div>
+              ) : [...registrosFiltrados].reverse().map((r, i) => {
+                const data = new Date(r.data_registro)
+                const mesAno = `${MESES[data.getMonth()]} ${data.getFullYear()}`
+                const mesAnterior = i > 0
+                  ? (() => { const d = new Date([...registrosFiltrados].reverse()[i - 1].data_registro); return `${MESES[d.getMonth()]} ${d.getFullYear()}` })()
+                  : null
+                const mostrarMes = mesAno !== mesAnterior
+
+                return (
+                  <div key={r.id}>
+                    {mostrarMes && (
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 pt-3 pb-1">
+                        {mesAno}
+                      </p>
+                    )}
+                    <div className="bg-white rounded-2xl overflow-hidden shadow-sm mb-2">
+                      {/* Fotos */}
+                      {(r.foto_antes || r.foto_depois) && (
+                        <div className={r.foto_antes && r.foto_depois ? 'grid grid-cols-2 gap-0.5' : ''}>
+                          {r.foto_antes && (
+                            <div className="relative">
+                              <img src={r.foto_antes} alt="Antes" className="w-full h-36 object-cover" />
+                              <span className="absolute bottom-2 left-2 text-xs bg-black/50 text-white px-2 py-0.5 rounded-full">Antes</span>
+                            </div>
+                          )}
+                          {r.foto_depois && (
+                            <div className="relative">
+                              <img src={r.foto_depois} alt="Depois" className="w-full h-36 object-cover" />
+                              <span className="absolute bottom-2 left-2 text-xs bg-black/50 text-white px-2 py-0.5 rounded-full">Depois</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div className="px-4 py-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-full text-white"
+                            style={{ backgroundColor: cor }}>{r.categoria}</span>
+                          {r.subcategoria && <span className="text-xs text-gray-500">{r.subcategoria}</span>}
+                        </div>
+                        {r.servico_nome && <p className="text-sm text-gray-700 mt-1">{r.servico_nome}</p>}
+                        {r.observacoes && <p className="text-xs text-gray-400 mt-0.5">{r.observacoes}</p>}
+                        <p className="text-xs text-gray-300 mt-1">
+                          {data.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
