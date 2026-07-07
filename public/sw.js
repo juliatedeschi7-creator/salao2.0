@@ -15,22 +15,21 @@ self.addEventListener('push', function (event) {
   );
 });
 
-self.addEventListener('notificationclick', function (event) {
-  event.notification.close();
-
-  const url = event.notification.data?.url || '/';
+self.addEventListener('push', function (event) {
+  if (!event.data) return
+  const data = event.data.json()
 
   event.waitUntil(
-    clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    }).then((clientList) => {
-
-      for (const client of clientList) {
-        if (client.url.includes(url) && 'focus' in client) {
-          return client.focus();
-        }
-      }
+    self.registration.showNotification(data.title || 'Nova notificação', {
+      body: data.body || '',
+      icon: data.icon || '/logo.png',
+      badge: '/logo.png',
+      tag: data.tag || 'default',
+      data: { url: data.url || '/' },
+      vibrate: [200, 100, 200],
+    })
+  )
+})
 
       if (clients.openWindow) {
         return clients.openWindow(url);
