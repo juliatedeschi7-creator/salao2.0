@@ -70,18 +70,21 @@ export async function registrarPush(
 
     }
 
-    const { error } = await supabase
-      .from('push_subscriptions')
-      .upsert({
-        profile_id: profileId,
-        salao_id: salaoId ?? null,
-        subscription
-      })
+const { data, error } = await supabase
+  .from('push_subscriptions')
+  .upsert({
+    profile_id: profileId,
+    salao_id: salaoId ?? null,
+    subscription
+  })
+  .select()
 
-    if (error) {
-      console.error(error)
-      return false
-    }
+console.log('Subscription salva:', data)
+
+if (error) {
+  console.error('Erro ao salvar subscription:', error)
+  return false
+}
 
     return true
 
