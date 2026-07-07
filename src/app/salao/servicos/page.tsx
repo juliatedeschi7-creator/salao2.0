@@ -27,6 +27,7 @@ export default function ServicosPage() {
   const [salvando, setSalvando] = useState(false)
   const [uploadando, setUploadando] = useState(false)
   const [erroSalvar, setErroSalvar] = useState('')
+  const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
     if (loading) return
@@ -36,16 +37,21 @@ export default function ServicosPage() {
   }, [loading, profile])
 
   async function carregarDados() {
-    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
-    setSalao(sal)
-    const { data: srvs, error: errSrv } = await supabase.from('servicos').select('*').eq('salao_id', profile!.salao_id!).eq('ativo', true).order('categoria')
-    if (errSrv) console.error('Erro ao carregar servicos:', errSrv)
-    setServicos(srvs || [])
-    const { data: fts } = await supabase.from('fotos_servicos').select('*').eq('salao_id', profile!.salao_id!)
-    setFotos(fts || [])
-    const { data: cats } = await supabase.from('categorias_servicos').select('*').eq('salao_id', profile!.salao_id!).order('nome')
-    setCategorias(cats || [])
-    if (cats && cats.length > 0 && !form.categoria) setForm(p => ({ ...p, categoria: cats[0].nome }))
+    setCarregando(true)
+    const [salRes, srvsRes, ftsRes, catsRes] = await Promise.all([
+      supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
+      supabase.from('servicos').select('*').eq('salao_id', profile!.salao_id!).eq('ativo', true).order('categoria'),
+      supabase.from('fotos_servicos').select('*').eq('salao_id', profile!.salao_id!),
+      supabase.from('categorias_servicos').select('*').eq('salao_id', profile!.salao_id!).order('nome'),
+    ])
+    setSalao(salRes.data)
+    setServicos(srvsRes.data || [])
+    setFotos(ftsRes.data || [])
+    setCategorias(catsRes.data || [])
+    if (catsRes.data && catsRes.data.length > 0 && !form.categoria) {
+      setForm(p => ({ ...p, categoria: catsRes.data![0].nome }))
+    }
+    setCarregando(false)
   }
 
   function abrirModal(s?: any) {
@@ -67,18 +73,15 @@ export default function ServicosPage() {
 
   async function handleSalvar() {
     setErroSalvar('')
-    if (!form.nome) { setErroSalvar('Preencha o nome do servico.'); return }
-    if (!form.preco) { setErroSalvar('Preencha o preco do servico.'); return }
+    if (!form.nome) { setErroSalvar('Preencha o nome do serviço.'); return }
+    if (!form.preco) { setErroSalvar('Preencha o preço do serviço.'); return }
     if (!form.categoria) { setErroSalvar('Selecione uma categoria.'); return }
 
     setSalvando(true)
     const dados = {
-      salao_id: profile!.salao_id,
-      nome: form.nome,
-      descricao: form.descricao || null,
-      categoria: form.categoria,
-      duracao_minutos: form.duracao_minutos,
-      sessoes: form.sessoes,
+      salao_id: profile!.salao_id, nome: form.nome,
+      descricao: form.descricao || null, categoria: form.categoria,
+      duracao_minutos: form.duracao_minutos, sessoes: form.sessoes,
       preco: parseFloat(form.preco),
       custo_material: parseFloat(form.custo_material || '0'),
       comissao_percentual: parseFloat(form.comissao_percentual || '0'),
@@ -92,21 +95,10 @@ export default function ServicosPage() {
       resultado = await supabase.from('servicos').insert(dados).select()
     }
 
-    if (resultado.error) {
-      setErroSalvar('Erro ao salvar: ' + resultado.error.message)
-      setSalvando(false)
-      return
-    }
+    if (resultado.error) { setErroSalvar('Erro ao salvar: ' + resultado.error.message); setSalvando(false); return }
+    if (!resultado.data || resultado.data.length === 0) { setErroSalvar('Serviço não salvo. Verifique as permissões.'); setSalvando(false); return }
 
-    if (!resultado.data || resultado.data.length === 0) {
-      setErroSalvar('O servico nao foi salvo. Verifique as permissoes do salao.')
-      setSalvando(false)
-      return
-    }
-
-    setModal(false)
-    setSalvando(false)
-    carregarDados()
+    setModal(false); setSalvando(false); carregarDados()
   }
 
   async function excluir(id: string) {
@@ -117,12 +109,13 @@ export default function ServicosPage() {
   async function uploadFoto(servicoId: string, file: File) {
     setUploadando(true)
     const ext = file.name.split('.').pop()
-    const path = profile!.salao_id + '/' + servicoId + '/' + Date.now() + '.' + ext
+    const path = `${profile!.salao_id}/${servicoId}/${Date.now()}.${ext}`
     const { error: upErr } = await supabase.storage.from('fotos-servicos').upload(path, file)
     if (!upErr) {
       const { data: urlData } = supabase.storage.from('fotos-servicos').getPublicUrl(path)
       await supabase.from('fotos_servicos').insert({
-        salao_id: profile!.salao_id, servico_id: servicoId, url: urlData.publicUrl, adicionado_por: profile!.id
+        salao_id: profile!.salao_id, servico_id: servicoId,
+        url: urlData.publicUrl, adicionado_por: profile!.id
       })
       carregarDados()
     }
@@ -149,20 +142,59 @@ export default function ServicosPage() {
 
   async function excluirCategoria(cat: any) {
     const emUso = servicos.some(s => s.categoria === cat.nome)
-    if (emUso) { alert('Esta categoria tem servicos cadastrados. Mude a categoria deles antes de excluir.'); return }
+    if (emUso) { alert('Esta categoria tem serviços. Mude a categoria deles antes de excluir.'); return }
     await supabase.from('categorias_servicos').delete().eq('id', cat.id)
     carregarDados()
+  }
+
+  function formatarDuracao(minutos: number) {
+    if (minutos < 60) return `${minutos} min`
+    const h = Math.floor(minutos / 60), m = minutos % 60
+    if (m === 0) return h === 1 ? '1 hora' : `${h} horas`
+    return `${h} hora${h > 1 ? 's' : ''} e ${m} minutos`
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
   const nomesCategorias = ['Todos', ...categorias.map(c => c.nome)]
   const filtrados = servicos.filter(s => categoriaFiltro === 'Todos' || s.categoria === categoriaFiltro)
 
+  // Loading skeleton — evita flash de conteúdo vazio
+  if (loading || carregando) return (
+    <div className="min-h-screen pb-8 bg-[#f8f9fa]">
+      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
+        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Catálogo de Serviços</h1>
+      </div>
+      <div className="px-4 py-4 flex flex-col gap-3">
+        {/* Skeleton de filtros */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-9 w-20 rounded-full bg-gray-200 animate-pulse shrink-0" />
+          ))}
+        </div>
+        {/* Skeleton de cards */}
+        {[1, 2, 3].map(i => (
+          <div key={i} className="bg-white rounded-2xl p-4 animate-pulse flex flex-col gap-3">
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <div className="h-4 bg-gray-100 rounded w-2/3 mb-2" />
+                <div className="h-3 bg-gray-100 rounded w-1/3" />
+              </div>
+              <div className="flex gap-1.5">
+                {[1, 2, 3].map(j => <div key={j} className="w-8 h-8 rounded-full bg-gray-100" />)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
   return (
     <div className="min-h-screen pb-8 bg-[#f8f9fa]">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Catalogo de Servicos</h1>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Catálogo de Serviços</h1>
         <button onClick={() => setModalCategorias(true)}
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
           <Tag size={16} className="text-gray-600" />
@@ -175,9 +207,10 @@ export default function ServicosPage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
+        {/* Aviso só aparece DEPOIS de carregar, quando realmente não há categorias */}
         {categorias.length === 0 && (
           <div className="card bg-yellow-50 border border-yellow-200">
-            <p className="text-sm text-yellow-700">Crie uma categoria antes de adicionar servicos. Toque no icone de etiqueta no topo.</p>
+            <p className="text-sm text-yellow-700">Crie uma categoria antes de adicionar serviços. Toque no ícone de etiqueta no topo.</p>
           </div>
         )}
 
@@ -191,13 +224,13 @@ export default function ServicosPage() {
           ))}
         </div>
 
-        {filtrados.length === 0 ? (
+        {filtrados.length === 0 && categorias.length > 0 ? (
           <div className="card text-center py-10">
-            <p className="text-gray-400">Nenhum servico cadastrado</p>
+            <p className="text-gray-400">Nenhum serviço nesta categoria</p>
             <button onClick={() => abrirModal()}
               className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white"
               style={{ backgroundColor: cor }}>
-              + Adicionar servico
+              + Adicionar serviço
             </button>
           </div>
         ) : filtrados.map(s => {
@@ -232,10 +265,13 @@ export default function ServicosPage() {
                       <span className="text-sm font-bold" style={{ color: cor }}>R$ {s.preco.toFixed(2).replace('.', ',')}</span>
                     </div>
                     <div className="flex items-center gap-1 text-gray-400">
-                      <Clock size={13} /><span className="text-xs">{s.duracao_minutos} min</span>
+                      <Clock size={13} />
+                      <span className="text-xs">{formatarDuracao(s.duracao_minutos)}</span>
                     </div>
                     {s.sessoes > 1 && (
-                      <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: cor }}>{s.sessoes} sessoes</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: cor }}>
+                        {s.sessoes} sessões
+                      </span>
                     )}
                   </div>
                 </div>
@@ -246,27 +282,32 @@ export default function ServicosPage() {
                     <input type="file" accept="image/*" className="hidden"
                       onChange={e => { if (e.target.files?.[0]) uploadFoto(s.id, e.target.files[0]) }} />
                   </label>
-                  <button onClick={() => abrirModal(s)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"><Edit2 size={14} className="text-gray-500" /></button>
-                  <button onClick={() => excluir(s.id)} className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center"><Trash2 size={14} className="text-red-400" /></button>
+                  <button onClick={() => abrirModal(s)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                    <Edit2 size={14} className="text-gray-500" />
+                  </button>
+                  <button onClick={() => excluir(s.id)} className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+                    <Trash2 size={14} className="text-red-400" />
+                  </button>
                 </div>
               </div>
 
               {s.descricao && (
                 <div>
                   <button onClick={() => setExpandido(aberto ? null : s.id)} className="text-sm font-medium" style={{ color: cor }}>
-                    {aberto ? 'Ocultar descricao' : 'Ver descricao'}
+                    {aberto ? 'Ocultar descrição' : 'Ver descrição'}
                   </button>
                   {aberto && <p className="text-sm text-gray-500 mt-2 leading-relaxed">{s.descricao}</p>}
                 </div>
               )}
 
-              {s.comissao_percentual > 0 && <p className="text-xs text-gray-400">Comissao: {s.comissao_percentual}%</p>}
+              {s.comissao_percentual > 0 && <p className="text-xs text-gray-400">Comissão: {s.comissao_percentual}%</p>}
               {uploadando && <p className="text-xs text-center" style={{ color: cor }}>Enviando foto...</p>}
             </div>
           )
         })}
       </div>
 
+      {/* Modal categorias */}
       {modalCategorias && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
@@ -274,27 +315,21 @@ export default function ServicosPage() {
               <h3 className="font-bold text-gray-900 text-lg">Categorias</h3>
               <button onClick={() => setModalCategorias(false)}><X size={20} className="text-gray-400" /></button>
             </div>
-
             <div className="flex gap-2">
               <input className="input-field flex-1" placeholder="Nova categoria"
                 value={novaCategoria} onChange={e => setNovaCategoria(e.target.value)} />
-              <button onClick={adicionarCategoria}
-                className="px-4 rounded-xl text-white font-medium" style={{ backgroundColor: cor }}>
+              <button onClick={adicionarCategoria} className="px-4 rounded-xl text-white font-medium" style={{ backgroundColor: cor }}>
                 <Plus size={18} />
               </button>
             </div>
-
             <div className="flex flex-col gap-2">
               {categorias.map(cat => (
                 <div key={cat.id} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
                   {editandoCategoria?.id === cat.id ? (
-                    <input
-                      className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none"
-                      defaultValue={cat.nome}
-                      autoFocus
+                    <input className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none"
+                      defaultValue={cat.nome} autoFocus
                       onKeyDown={e => { if (e.key === 'Enter') editarCategoria(cat, (e.target as HTMLInputElement).value) }}
-                      onBlur={e => editarCategoria(cat, e.target.value)}
-                    />
+                      onBlur={e => editarCategoria(cat, e.target.value)} />
                   ) : (
                     <p className="flex-1 text-sm text-gray-700">{cat.nome}</p>
                   )}
@@ -311,10 +346,11 @@ export default function ServicosPage() {
         </div>
       )}
 
+      {/* Modal serviço */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-            <h3 className="font-bold text-gray-900 text-lg">{editando ? 'Editar Servico' : 'Novo Servico'}</h3>
+            <h3 className="font-bold text-gray-900 text-lg">{editando ? 'Editar Serviço' : 'Novo Serviço'}</h3>
 
             {erroSalvar && (
               <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -323,13 +359,14 @@ export default function ServicosPage() {
             )}
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do servico *</label>
-              <input className="input-field" placeholder="Ex: Corte Feminino" value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do serviço *</label>
+              <input className="input-field" placeholder="Ex: Corte Feminino"
+                value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Categoria</label>
               {categorias.length === 0 ? (
-                <p className="text-xs text-red-500">Nenhuma categoria cadastrada. Crie uma categoria primeiro.</p>
+                <p className="text-xs text-red-500">Nenhuma categoria. Crie uma categoria primeiro.</p>
               ) : (
                 <select className="input-field" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}>
                   {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
@@ -337,21 +374,45 @@ export default function ServicosPage() {
               )}
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Descricao do servico</label>
-              <textarea className="input-field resize-none" rows={4} placeholder="Descreva o servico, cuidados necessarios, contraindicacoes..." value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição do serviço</label>
+              <textarea className="input-field resize-none" rows={4}
+                placeholder="Descreva o serviço, cuidados, contraindicações..."
+                value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-sm font-medium text-gray-700 mb-1 block">Preco (R$) *</label><input className="input-field" type="number" placeholder="0,00" value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} /></div>
-              <div><label className="text-sm font-medium text-gray-700 mb-1 block">Duracao (min)</label><input className="input-field" type="number" value={form.duracao_minutos} onChange={e => setForm(p => ({ ...p, duracao_minutos: parseInt(e.target.value) }))} /></div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Preço (R$) *</label>
+                <input className="input-field" type="number" placeholder="0,00"
+                  value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Duração (min)</label>
+                <input className="input-field" type="number"
+                  value={form.duracao_minutos} onChange={e => setForm(p => ({ ...p, duracao_minutos: parseInt(e.target.value) }))} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-sm font-medium text-gray-700 mb-1 block">Sessoes</label><input className="input-field" type="number" min="1" value={form.sessoes} onChange={e => setForm(p => ({ ...p, sessoes: parseInt(e.target.value) }))} /></div>
-              <div><label className="text-sm font-medium text-gray-700 mb-1 block">Comissao %</label><input className="input-field" type="number" placeholder="0" value={form.comissao_percentual} onChange={e => setForm(p => ({ ...p, comissao_percentual: e.target.value }))} /></div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Sessões</label>
+                <input className="input-field" type="number" min="1"
+                  value={form.sessoes} onChange={e => setForm(p => ({ ...p, sessoes: parseInt(e.target.value) }))} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Comissão %</label>
+                <input className="input-field" type="number" placeholder="0"
+                  value={form.comissao_percentual} onChange={e => setForm(p => ({ ...p, comissao_percentual: e.target.value }))} />
+              </div>
             </div>
-            <div><label className="text-sm font-medium text-gray-700 mb-1 block">Custo material (R$)</label><input className="input-field" type="number" placeholder="0,00" value={form.custo_material} onChange={e => setForm(p => ({ ...p, custo_material: e.target.value }))} /></div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Custo material (R$)</label>
+              <input className="input-field" type="number" placeholder="0,00"
+                value={form.custo_material} onChange={e => setForm(p => ({ ...p, custo_material: e.target.value }))} />
+            </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={handleSalvar} disabled={salvando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>{salvando ? 'Salvando...' : 'Salvar'}</button>
+              <button onClick={handleSalvar} disabled={salvando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>
+                {salvando ? 'Salvando...' : 'Salvar'}
+              </button>
             </div>
           </div>
         </div>
