@@ -3,18 +3,16 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Bell, CheckCircle, XCircle, Calendar, Send, Trash2, RotateCcw, Inbox } from 'lucide-react'
+import { ArrowLeft, Bell, CheckCircle, XCircle, Calendar, Send, Trash2, CheckSquare, Square } from 'lucide-react'
 
 export default function NotificacoesPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [notificacoes, setNotificacoes] = useState<any[]>([]) // enviadas pelo dono
-  const [recebidas, setRecebidas] = useState<any[]>([]) // recebidas pelo dono, não excluídas
-  const [recebidasExcluidas, setRecebidasExcluidas] = useState<any[]>([]) // recebidas pelo dono, excluídas
+  const [notificacoes, setNotificacoes] = useState<any[]>([])
   const [confirmacoes, setConfirmacoes] = useState<any[]>([])
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
-  const [aba, setAba] = useState<'notif' | 'recebidas' | 'confirmacoes' | 'solicitacoes' | 'excluidas'>('recebidas')
+  const [aba, setAba] = useState<'notif' | 'confirmacoes' | 'solicitacoes'>('notif')
   const [modalNotif, setModalNotif] = useState(false)
   const [titulo, setTitulo] = useState('')
   const [mensagem, setMensagem] = useState('')
@@ -24,40 +22,34 @@ export default function NotificacoesPage() {
   const [modalConfirm, setModalConfirm] = useState<any>(null)
   const [oQueFez, setOQueFez] = useState('')
   const [horariosLivres, setHorariosLivres] = useState<string[]>(['', '', ''])
-  const [excluindo, setExcluindo] = useState('')
+
+  // Seleção para exclusão
+  const [modoSelecao, setModoSelecao] = useState(false)
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set())
+  const [excluindo, setExcluindo] = useState(false)
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
   }, [loading])
 
+  // Sair do modo seleção ao trocar aba
+  useEffect(() => {
+    setModoSelecao(false)
+    setSelecionadas(new Set())
+  }, [aba])
+
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    // Notificações enviadas pelo dono (apenas histórico, sem exclusão)
     const { data: notifs } = await supabase.from('notificacoes').select('*')
       .eq('salao_id', profile!.salao_id!)
       .eq('remetente_id', profile!.id)
       .order('created_at', { ascending: false })
     setNotificacoes(notifs || [])
 
-    // Notificações recebidas pelo dono, ainda não excluídas
-    const { data: receb } = await supabase.from('notificacoes').select('*')
-      .eq('salao_id', profile!.salao_id!)
-      .eq('destinatario_id', profile!.id)
-      .eq('excluida', false)
-      .order('created_at', { ascending: false })
-    setRecebidas(receb || [])
-
-    // Notificações recebidas pelo dono, excluídas
-    const { data: recebExc } = await supabase.from('notificacoes').select('*')
-      .eq('salao_id', profile!.salao_id!)
-      .eq('destinatario_id', profile!.id)
-      .eq('excluida', true)
-      .order('created_at', { ascending: false })
-    setRecebidasExcluidas(recebExc || [])
-
-    const { data: clis } = await supabase.from('clientes').select('id, nome').eq('salao_id', profile!.salao_id!).order('nome')
+    const { data: clis } = await supabase.from('clientes').select('id, nome')
+      .eq('salao_id', profile!.salao_id!).order('nome')
     setClientes(clis || [])
 
     const hoje = new Date()
@@ -78,29 +70,43 @@ export default function NotificacoesPage() {
     setSolicitacoes(sols || [])
   }
 
-  async function excluirNotificacao(id: string) {
-    setExcluindo(id)
-    const { error } = await supabase.from('notificacoes')
-      .update({ excluida: true })
-      .eq('id', id)
-    if (error) {
-      alert('Erro ao excluir: ' + error.message)
-      setExcluindo('')
-      return
-    }
-    setExcluindo('')
-    carregarDados()
+  function toggleSelecao(id: string) {
+    setSelecionadas(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
   }
 
-  async function restaurarNotificacao(id: string) {
-    const { error } = await supabase.from('notificacoes')
-      .update({ excluida: false })
-      .eq('id', id)
-    if (error) {
-      alert('Erro ao restaurar: ' + error.message)
-      return
+  function selecionarTodas() {
+    const itensAtuais = aba === 'notif' ? notificacoes : solicitacoes
+    if (selecionadas.size === itensAtuais.length) {
+      setSelecionadas(new Set())
+    } else {
+      setSelecionadas(new Set(itensAtuais.map(n => n.id)))
     }
-    carregarDados()
+  }
+
+  async function excluirSelecionadas() {
+    if (selecionadas.size === 0) return
+    setExcluindo(true)
+    const ids = Array.from(selecionadas)
+
+    if (aba === 'notif') {
+      await supabase.from('notificacoes').delete().in('id', ids)
+    } else if (aba === 'solicitacoes') {
+      await supabase.from('solicitacoes_agendamento').delete().in('id', ids)
+    }
+
+    setSelecionadas(new Set())
+    setModoSelecao(false)
+    setExcluindo(false)
+    await carregarDados()
+  }
+
+  async function excluirUma(id: string, tabela: 'notificacoes' | 'solicitacoes_agendamento') {
+    await supabase.from(tabela).delete().eq('id', id)
+    await carregarDados()
   }
 
   async function enviarNotificacao() {
@@ -111,13 +117,14 @@ export default function NotificacoesPage() {
       : clientes
 
     for (const c of destinatarios) {
-      const { data: prof } = await supabase.from('profiles').select('id').eq('salao_id', profile!.salao_id!).eq('role', 'cliente').eq('id', c.id).single()
+      const { data: prof } = await supabase.from('profiles').select('id')
+        .eq('salao_id', profile!.salao_id!).eq('role', 'cliente').eq('id', c.id).single()
       if (prof) {
         await supabase.from('notificacoes').insert({
           salao_id: profile!.salao_id,
           remetente_id: profile!.id,
           destinatario_id: prof.id,
-          titulo, mensagem, tipo: 'personalizada', lida: false, excluida: false
+          titulo, mensagem, tipo: 'personalizada', lida: false
         })
       }
     }
@@ -173,8 +180,7 @@ export default function NotificacoesPage() {
       titulo: 'Horários sugeridos para ' + solicitacao.servicos?.nome,
       mensagem: 'Escolha um dos horários disponíveis para confirmar seu agendamento.',
       tipo: 'horario_sugerido',
-      referencia_id: solicitacao.id,
-      excluida: false
+      referencia_id: solicitacao.id
     })
     setHorariosLivres(['', '', '']); carregarDados()
   }
@@ -197,7 +203,7 @@ export default function NotificacoesPage() {
           destinatario_id: ag.clientes.profile_id,
           titulo: 'Lembrete de agendamento',
           mensagem: `Olá ${ag.clientes.nome}! Você tem ${ag.servicos?.nome} amanhã às ${hora}. Te esperamos!`,
-          tipo: 'lembrete', lida: false, excluida: false
+          tipo: 'lembrete', lida: false
         })
       }
     }
@@ -206,63 +212,60 @@ export default function NotificacoesPage() {
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-
-  function CardNotificacao({ n, action }: { n: any; action?: 'excluir' | 'restaurar' }) {
-    return (
-      <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-2">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="font-semibold text-gray-900 text-sm">{n.titulo}</p>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{n.tipo}</span>
-            </div>
-            <p className="text-sm text-gray-500 mt-0.5">{n.mensagem}</p>
-            <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleDateString('pt-BR')}</p>
-          </div>
-          {action === 'restaurar' && (
-            <button onClick={() => restaurarNotificacao(n.id)}
-              className="p-2 rounded-xl bg-green-50 text-green-500 shrink-0"
-              title="Restaurar">
-              <RotateCcw size={15} />
-            </button>
-          )}
-          {action === 'excluir' && (
-            <button onClick={() => excluirNotificacao(n.id)}
-              disabled={excluindo === n.id}
-              className="p-2 rounded-xl bg-red-50 text-red-400 shrink-0 disabled:opacity-40"
-              title="Excluir">
-              <Trash2 size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const itensAtuais = aba === 'notif' ? notificacoes : aba === 'solicitacoes' ? solicitacoes : []
+  const podeSelecionar = aba === 'notif' || aba === 'solicitacoes'
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-8">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1">Notificações</h1>
-        <button onClick={() => setModalNotif(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-full text-white text-sm font-medium"
-          style={{ backgroundColor: cor }}>
-          <Send size={14} />Enviar
-        </button>
+
+        {/* Botões do header */}
+        {podeSelecionar && itensAtuais.length > 0 && !modoSelecao && (
+          <button onClick={() => setModoSelecao(true)}
+            className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+            <CheckSquare size={17} className="text-gray-500" />
+          </button>
+        )}
+        {modoSelecao && (
+          <div className="flex items-center gap-2">
+            <button onClick={selecionarTodas}
+              className="text-xs font-medium px-3 py-1.5 rounded-full border"
+              style={{ borderColor: cor, color: cor }}>
+              {selecionadas.size === itensAtuais.length ? 'Desmarcar' : 'Todas'}
+            </button>
+            {selecionadas.size > 0 && (
+              <button onClick={excluirSelecionadas} disabled={excluindo}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-white text-xs font-medium bg-red-500">
+                <Trash2 size={13} />
+                {excluindo ? '...' : `Excluir (${selecionadas.size})`}
+              </button>
+            )}
+            <button onClick={() => { setModoSelecao(false); setSelecionadas(new Set()) }}
+              className="text-xs text-gray-400 font-medium px-2">
+              Cancelar
+            </button>
+          </div>
+        )}
+        {!modoSelecao && (
+          <button onClick={() => setModalNotif(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-full text-white text-sm font-medium"
+            style={{ backgroundColor: cor }}>
+            <Send size={14} />Enviar
+          </button>
+        )}
       </div>
 
       {/* Abas */}
-      <div className="flex bg-white border-b border-gray-100 overflow-x-auto no-scrollbar">
+      <div className="flex bg-white border-b border-gray-100">
         {[
-          { key: 'recebidas', label: `Recebidas (${recebidas.length})` },
+          { key: 'notif', label: 'Enviadas' },
           { key: 'confirmacoes', label: `Confirmar (${confirmacoes.length})` },
           { key: 'solicitacoes', label: `Pedidos (${solicitacoes.length})` },
-          { key: 'notif', label: 'Enviadas' },
-          { key: 'excluidas', label: `Excluídas (${recebidasExcluidas.length})` },
         ].map(t => (
           <button key={t.key} onClick={() => setAba(t.key as any)}
-            className={'flex-1 py-3 text-xs font-medium whitespace-nowrap px-2 transition-all ' +
-              (aba === t.key ? 'border-b-2' : 'text-gray-400')}
+            className={'flex-1 py-3 text-xs font-medium transition-all ' + (aba === t.key ? 'border-b-2' : 'text-gray-400')}
             style={aba === t.key ? { color: cor, borderColor: cor } : {}}>
             {t.label}
           </button>
@@ -271,38 +274,64 @@ export default function NotificacoesPage() {
 
       <div className="px-4 py-4 flex flex-col gap-3">
 
-        {/* Aba Recebidas (com opção de excluir) */}
-        {aba === 'recebidas' && (
+        {/* Aba Enviadas */}
+        {aba === 'notif' && (
           <>
-            <button onClick={enviarLembrete}
-              className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 active:scale-95 transition-all">
-              <Bell size={20} style={{ color: cor }} />
-              <div className="flex-1 text-left">
-                <p className="font-semibold text-gray-900 text-sm">Enviar lembretes de amanhã</p>
-                <p className="text-xs text-gray-400">Notifica todos os clientes com agendamento amanhã</p>
-              </div>
-            </button>
+            {!modoSelecao && (
+              <button onClick={enviarLembrete}
+                className="card flex items-center gap-3 active:scale-95 transition-all">
+                <Bell size={20} style={{ color: cor }} />
+                <div className="flex-1 text-left">
+                  <p className="font-semibold text-gray-900 text-sm">Enviar lembretes de amanhã</p>
+                  <p className="text-xs text-gray-400">Notifica todos os clientes com agendamento amanhã</p>
+                </div>
+              </button>
+            )}
 
-            {recebidas.length === 0 ? (
-              <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
-                <Inbox size={36} className="text-gray-300 mx-auto mb-2" />
-                <p className="text-gray-400 text-sm">Nenhuma notificação recebida</p>
+            {notificacoes.length === 0 ? (
+              <div className="card text-center py-10">
+                <Bell size={36} className="text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-400">Nenhuma notificação enviada</p>
               </div>
-            ) : recebidas.map(n => (
-              <CardNotificacao key={n.id} n={n} action="excluir" />
+            ) : notificacoes.map(n => (
+              <div key={n.id}
+                className={'card flex items-start gap-3 ' + (modoSelecao ? 'cursor-pointer' : '')}
+                onClick={() => modoSelecao && toggleSelecao(n.id)}>
+                {modoSelecao && (
+                  <div className="shrink-0 mt-0.5">
+                    {selecionadas.has(n.id)
+                      ? <CheckSquare size={20} style={{ color: cor }} />
+                      : <Square size={20} className="text-gray-300" />}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <p className="font-semibold text-gray-900 text-sm">{n.titulo}</p>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 shrink-0 ml-2">{n.tipo}</span>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-0.5">{n.mensagem}</p>
+                  <p className="text-xs text-gray-400 mt-1">{new Date(n.created_at).toLocaleDateString('pt-BR')}</p>
+                </div>
+                {!modoSelecao && (
+                  <button onClick={() => excluirUma(n.id, 'notificacoes')}
+                    className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                    <Trash2 size={13} className="text-red-400" />
+                  </button>
+                )}
+              </div>
             ))}
           </>
         )}
 
-        {/* Aba Confirmar atendimento */}
+        {/* Aba Confirmações */}
         {aba === 'confirmacoes' && (
           confirmacoes.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+            <div className="card text-center py-10">
               <CheckCircle size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">Nenhum atendimento para confirmar</p>
+              <p className="text-gray-400">Nenhum atendimento para confirmar</p>
             </div>
           ) : confirmacoes.map(ag => (
-            <div key={ag.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+            <div key={ag.id} className="card flex flex-col gap-3">
               <div>
                 <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
                 <p className="text-sm text-gray-500">{ag.servicos?.nome}</p>
@@ -324,64 +353,55 @@ export default function NotificacoesPage() {
           ))
         )}
 
-        {/* Aba Pedidos/Solicitações */}
+        {/* Aba Pedidos */}
         {aba === 'solicitacoes' && (
           solicitacoes.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+            <div className="card text-center py-10">
               <Calendar size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">Nenhuma solicitação pendente</p>
+              <p className="text-gray-400">Nenhuma solicitação pendente</p>
             </div>
           ) : solicitacoes.map(sol => (
-            <div key={sol.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-3">
-              <div>
-                <p className="font-bold text-gray-900">{sol.clientes?.nome}</p>
-                <p className="text-sm text-gray-500">Quer agendar: {sol.servicos?.nome}</p>
-                <p className="text-xs text-gray-400">{new Date(sol.created_at).toLocaleDateString('pt-BR')}</p>
-              </div>
-              <p className="text-sm font-medium text-gray-700">Sugerir horários livres:</p>
-              {horariosLivres.map((h, i) => (
-                <input key={i} className="input-field" type="datetime-local"
-                  value={h} onChange={e => { const n = [...horariosLivres]; n[i] = e.target.value; setHorariosLivres(n) }} />
-              ))}
-              <button onClick={() => sugerirHorarios(sol)}
-                className="w-full py-2.5 rounded-xl text-white text-sm font-medium"
-                style={{ backgroundColor: cor }}>
-                Enviar sugestão de horários
-              </button>
+            <div key={sol.id}
+              className={'card flex flex-col gap-3 ' + (modoSelecao ? 'cursor-pointer' : '')}
+              onClick={() => modoSelecao && toggleSelecao(sol.id)}>
+              {modoSelecao && (
+                <div className="flex items-center gap-2">
+                  {selecionadas.has(sol.id)
+                    ? <CheckSquare size={20} style={{ color: cor }} />
+                    : <Square size={20} className="text-gray-300" />}
+                  <p className="font-bold text-gray-900">{sol.clientes?.nome}</p>
+                </div>
+              )}
+              {!modoSelecao && (
+                <>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-bold text-gray-900">{sol.clientes?.nome}</p>
+                      <p className="text-sm text-gray-500">Quer agendar: {sol.servicos?.nome}</p>
+                      <p className="text-xs text-gray-400">{new Date(sol.created_at).toLocaleDateString('pt-BR')}</p>
+                    </div>
+                    <button onClick={() => excluirUma(sol.id, 'solicitacoes_agendamento')}
+                      className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                      <Trash2 size={13} className="text-red-400" />
+                    </button>
+                  </div>
+                  <p className="text-sm font-medium text-gray-700">Sugerir horários livres:</p>
+                  {horariosLivres.map((h, i) => (
+                    <input key={i} className="input-field" type="datetime-local"
+                      value={h} onChange={e => { const n = [...horariosLivres]; n[i] = e.target.value; setHorariosLivres(n) }} />
+                  ))}
+                  <button onClick={() => sugerirHorarios(sol)}
+                    className="w-full py-2.5 rounded-xl text-white text-sm font-medium"
+                    style={{ backgroundColor: cor }}>
+                    Enviar sugestão de horários
+                  </button>
+                </>
+              )}
+              {modoSelecao && (
+                <p className="text-sm text-gray-500 ml-7">Quer agendar: {sol.servicos?.nome}</p>
+              )}
             </div>
           ))
-        )}
-
-        {/* Aba Enviadas (somente histórico, sem exclusão) */}
-        {aba === 'notif' && (
-          notificacoes.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
-              <Bell size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400 text-sm">Nenhuma notificação enviada</p>
-            </div>
-          ) : notificacoes.map(n => (
-            <CardNotificacao key={n.id} n={n} />
-          ))
-        )}
-
-        {/* Aba Excluídas (recebidas excluídas) */}
-        {aba === 'excluidas' && (
-          recebidasExcluidas.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
-              <Trash2 size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400 text-sm font-medium">Nenhuma notificação excluída</p>
-              <p className="text-gray-300 text-xs mt-1">Notificações recebidas excluídas aparecem aqui</p>
-            </div>
-          ) : (
-            <>
-              <p className="text-xs text-gray-400 text-center">
-                Toque em <RotateCcw size={11} className="inline" /> para restaurar uma notificação
-              </p>
-              {recebidasExcluidas.map(n => (
-                <CardNotificacao key={n.id} n={n} action="restaurar" />
-              ))}
-            </>
-          )
         )}
       </div>
 
@@ -399,20 +419,14 @@ export default function NotificacoesPage() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Título</label>
-              <input className="input-field" placeholder="Ex: Promoção especial!"
-                value={titulo} onChange={e => setTitulo(e.target.value)} />
+              <input className="input-field" placeholder="Ex: Promoção especial!" value={titulo} onChange={e => setTitulo(e.target.value)} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Mensagem</label>
-              <textarea className="input-field resize-none" rows={4}
-                placeholder="Digite sua mensagem..."
-                value={mensagem} onChange={e => setMensagem(e.target.value)} />
+              <textarea className="input-field resize-none" rows={4} placeholder="Digite sua mensagem..." value={mensagem} onChange={e => setMensagem(e.target.value)} />
             </div>
             <div className="flex gap-3">
-              <button onClick={() => setModalNotif(false)}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
-                Cancelar
-              </button>
+              <button onClick={() => setModalNotif(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
               <button onClick={enviarNotificacao} disabled={!titulo || !mensagem || enviando}
                 className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-50"
                 style={{ backgroundColor: cor }}>
@@ -434,9 +448,7 @@ export default function NotificacoesPage() {
               value={oQueFez} onChange={e => setOQueFez(e.target.value)} />
             <div className="flex gap-3">
               <button onClick={() => { setModalConfirm(null); setOQueFez('') }}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
-                Cancelar
-              </button>
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
               <button onClick={() => confirmarAtendimento(modalConfirm, true)} disabled={!oQueFez}
                 className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-50"
                 style={{ backgroundColor: cor }}>
