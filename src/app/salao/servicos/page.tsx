@@ -296,7 +296,7 @@ export default function ServicosPage() {
                   <button onClick={() => setExpandido(aberto ? null : s.id)} className="text-sm font-medium" style={{ color: cor }}>
                     {aberto ? 'Ocultar descrição' : 'Ver descrição'}
                   </button>
-                  {aberto && <p className="text-sm text-gray-500 mt-2 leading-relaxed">{s.descricao}</p>}
+                  {aberto && <p className="text-sm text-gray-500 mt-2 leading-relaxed whitespace-pre-line">{s.descricao}</p>}
                 </div>
               )}
 
@@ -378,6 +378,18 @@ export default function ServicosPage() {
               <textarea className="input-field resize-none" rows={4}
                 placeholder="Descreva o serviço, cuidados, contraindicações..."
                 value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
+              <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+                <p className="text-xs text-blue-700 font-semibold">💡 Dica: crie um link explicativo</p>
+                <p className="text-xs text-blue-600 mt-1 leading-relaxed">
+                  Escreva <code className="bg-white px-1 py-0.5 rounded text-blue-700">[[texto do link|explicação completa]]</code> em
+                  qualquer parte do texto. Pro cliente aparece só o texto antes do "|", sublinhado e clicável —
+                  ao tocar, abre uma página explicando o assunto.
+                </p>
+                <p className="text-xs text-blue-500 mt-1.5 italic leading-relaxed">
+                  Ex: Retirada feita com navalha. [[Por que não usamos ácido?|O ácido pode causar queimaduras em peles
+                  sensíveis, feridas ou calos. A navalha permite controle visual total do procedimento.]]
+                </p>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
