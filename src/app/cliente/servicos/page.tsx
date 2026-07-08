@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Clock, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, ShoppingCart, X, Plus, Minus } from 'lucide-react'
+import { ArrowLeft, Clock, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, ShoppingCart, X, Plus, Minus, Sparkles } from 'lucide-react'
 
 function formatarDuracao(minutos: number): string {
   if (minutos < 60) return `${minutos} min`
@@ -31,6 +31,105 @@ function AvisoServicos({ cor, texto }: { cor: string; texto?: string | null }) {
   )
 }
 
+// Regex que identifica [[texto do link|explicação completa]] dentro da descrição
+const REGEX_LINK_EXPLICATIVO = /\[\[(.+?)\|(.+?)\]\]/g
+
+// Renderiza a descrição trocando os trechos [[texto|explicação]] por um
+// link clicável, que abre o modal de explicação com o conteúdo completo.
+function DescricaoComLinks({
+  texto, cor, onAbrirExplicacao,
+}: {
+  texto: string
+  cor: string
+  onAbrirExplicacao: (titulo: string, conteudo: string) => void
+}) {
+  const partes: React.ReactNode[] = []
+  let ultimoIndex = 0
+  let chave = 0
+  const regex = new RegExp(REGEX_LINK_EXPLICATIVO)
+  let match: RegExpExecArray | null
+
+  while ((match = regex.exec(texto)) !== null) {
+    if (match.index > ultimoIndex) partes.push(texto.slice(ultimoIndex, match.index))
+    const linkTexto = match[1]
+    const explicacao = match[2]
+    partes.push(
+      <button
+        key={chave++}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onAbrirExplicacao(linkTexto, explicacao) }}
+        className="font-semibold underline underline-offset-2 decoration-2 inline"
+        style={{ color: cor }}
+      >
+        {linkTexto}
+      </button>
+    )
+    ultimoIndex = regex.lastIndex
+  }
+  if (ultimoIndex < texto.length) partes.push(texto.slice(ultimoIndex))
+
+  return <>{partes}</>
+}
+
+// Modal "cartão explicativo" — mesmo estilo visual da página Quem Somos:
+// cabeçalho com gradiente na cor do salão, círculos decorativos, ícone e
+// botão de fechar com tom positivo.
+function ModalExplicacao({
+  aberto, onClose, titulo, texto, cor,
+}: {
+  aberto: boolean
+  onClose: () => void
+  titulo: string
+  texto: string
+  cor: string
+}) {
+  if (!aberto) return null
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-end" onClick={onClose}>
+      <div
+        className="bg-white w-full rounded-t-3xl overflow-hidden max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="relative px-6 pt-8 pb-9 overflow-hidden shrink-0"
+          style={{ background: `linear-gradient(135deg, ${cor} 0%, ${cor}bb 100%)` }}
+        >
+          <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-10 bg-white" />
+          <div className="absolute -bottom-10 -left-6 w-28 h-28 rounded-full opacity-10 bg-white" />
+
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
+          >
+            <X size={16} className="text-white" />
+          </button>
+
+          <div className="relative flex flex-col items-center text-center gap-3 pt-2">
+            <div className="w-14 h-14 rounded-2xl bg-white/20 border-2 border-white/30 flex items-center justify-center text-2xl">
+              💡
+            </div>
+            <h3 className="text-white font-bold text-lg leading-snug px-6">{titulo}</h3>
+          </div>
+        </div>
+
+        <div className="px-6 py-6 overflow-y-auto">
+          <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-line">{texto}</p>
+        </div>
+
+        <div className="px-6 pb-6 pt-1 shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2"
+            style={{ backgroundColor: cor }}
+          >
+            <Sparkles size={15} />Entendi
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type ItemCarrinho = {
   id: string
   nome: string
@@ -51,6 +150,9 @@ export default function ClienteServicosPage() {
   const [expandido, setExpandido] = useState<string | null>(null)
   const [descExpandida, setDescExpandida] = useState<Set<string>>(new Set())
   const [carregando, setCarregando] = useState(true)
+
+  // Modal de explicação (link [[texto|explicação]] dentro da descrição)
+  const [explicacaoAberta, setExplicacaoAberta] = useState<{ titulo: string; conteudo: string } | null>(null)
 
   // Carrinho
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([])
@@ -149,6 +251,10 @@ export default function ClienteServicosPage() {
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
+  }
+
+  function abrirExplicacao(titulo: string, conteudo: string) {
+    setExplicacaoAberta({ titulo, conteudo })
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -261,11 +367,11 @@ export default function ClienteServicosPage() {
                 </button>
               </div>
 
-              {/* Descrição — sempre 2 linhas + ler mais */}
+              {/* Descrição — sempre 2 linhas + ler mais, com suporte a [[link|explicação]] */}
               {s.descricao && (
                 <div>
                   <p className={`text-sm text-gray-500 leading-relaxed ${!descAberta && descLonga ? 'line-clamp-2' : ''}`}>
-                    {s.descricao}
+                    <DescricaoComLinks texto={s.descricao} cor={cor} onAbrirExplicacao={abrirExplicacao} />
                   </p>
                   {descLonga && (
                     <button onClick={() => toggleDesc(s.id)}
@@ -444,6 +550,15 @@ export default function ClienteServicosPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de explicação (links [[texto|explicação]] da descrição) */}
+      <ModalExplicacao
+        aberto={!!explicacaoAberta}
+        onClose={() => setExplicacaoAberta(null)}
+        titulo={explicacaoAberta?.titulo || ''}
+        texto={explicacaoAberta?.conteudo || ''}
+        cor={cor}
+      />
     </div>
   )
 }
