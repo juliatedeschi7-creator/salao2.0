@@ -26,16 +26,28 @@ export default function QuemSomosClientePage() {
   }, [loading, profile])
 
   async function carregarDados() {
-    // busca o salão pelo profile do cliente
-    const { data: cli } = await supabase
-      .from('clientes')
-      .select('*, saloes(*)')
-      .eq('profile_id', profile!.id)
-      .maybeSingle()
+    let salaoId: string | undefined
 
-    if (cli?.saloes) setSalao(cli.saloes)
+    const ehDonoOuFuncionario = profile!.role === 'dono_salao' || profile!.role === 'funcionario'
 
-    const salaoId = cli?.saloes?.id
+    if (ehDonoOuFuncionario) {
+      // dona/funcionário pré-visualizando: usa o salao_id do próprio profile,
+      // já que ela não tem registro na tabela clientes
+      if (profile!.salao_id) {
+        const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id).single()
+        if (sal) { setSalao(sal); salaoId = sal.id }
+      }
+    } else {
+      // cliente de verdade: busca o salão pelo vínculo em clientes
+      const { data: cli } = await supabase
+        .from('clientes')
+        .select('*, saloes(*)')
+        .eq('profile_id', profile!.id)
+        .maybeSingle()
+
+      if (cli?.saloes) { setSalao(cli.saloes); salaoId = cli.saloes.id }
+    }
+
     if (salaoId) {
       const { data } = await supabase.from('quem_somos').select('*').eq('salao_id', salaoId).maybeSingle()
       setDados(data)
