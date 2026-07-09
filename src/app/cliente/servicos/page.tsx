@@ -247,7 +247,6 @@ export default function ClienteServicosPage() {
           <h1 className="font-bold text-white text-lg">Serviços e Pacotes</h1>
         </div>
         <div className="flex items-center gap-2">
-          </button>
           {totalItens > 0 && (
             <button onClick={() => setModalCarrinho(true)}
               className="relative w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
