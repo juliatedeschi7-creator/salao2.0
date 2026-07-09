@@ -247,9 +247,6 @@ export default function ClienteServicosPage() {
           <h1 className="font-bold text-white text-lg">Serviços e Pacotes</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => router.push('/cliente/faq')}
-            className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-            <FileText size={18} className="text-white" />
           </button>
           {totalItens > 0 && (
             <button onClick={() => setModalCarrinho(true)}
