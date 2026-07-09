@@ -75,7 +75,7 @@ export default function ClientePage() {
     { icon: Scissors, label: 'Serviços', sub: 'Valores e opções', href: '/cliente/servicos', badge: null },
     mostrarPacotes ? { icon: Package, label: 'Meus pacotes', sub: 'Datas e sessões', href: '/cliente/pacotes', badge: pacotesAtivos > 0 ? pacotesAtivos : null } : null,
     mostrarQuestionarios ? { icon: ClipboardList, label: 'Questionários', sub: 'Dados de saúde', href: '/cliente/anamnese', badge: null } : null,
-    { icon: Clock, label: 'Funcionamento', sub: 'Dias e horários', href: '/cliente/horarios', badge: null },
+{ icon: Clock, label: 'Horários', sub: 'Vagas e funcionamento', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
 
 if (loading || !cliente || !salao) {
