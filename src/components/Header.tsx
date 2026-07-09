@@ -39,6 +39,7 @@ const MENU_DONO = [
   { icon: Heart, label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros' },
   { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
 { icon: Clock, label: 'Horários', href: '/salao/horarios', grupo: 'Outros' },
+{ icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' }
 ]
 
 const MENU_ADMIN = [
