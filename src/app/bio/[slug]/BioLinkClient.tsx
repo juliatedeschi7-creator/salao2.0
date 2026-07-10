@@ -77,8 +77,20 @@ export default function BioLinkClient({ salao }: Props) {
             {salao.logo_url ? (
               <img src={salao.logo_url} alt={salao.nome} className="w-full h-full object-cover" />
             ) : (
-              <img src="/logo.png" alt="Organiza Salão" className="w-16 h-16 object-contain"
-                style={{ filter: `brightness(0) saturate(100%) hue-rotate(300deg)` }} />
+              <div
+                className="w-16 h-16"
+                style={{
+                  backgroundColor: cor,
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                }}
+              />
             )}
           </div>
 
