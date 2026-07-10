@@ -154,7 +154,7 @@ export default function ClienteServicosPage() {
       supabase.from('servicos').select('*').eq('salao_id', salaoId).eq('ativo', true).order('categoria'),
       supabase.from('depoimentos').select('*, clientes(nome)').eq('salao_id', salaoId).eq('publico', true).order('created_at', { ascending: false }),
       supabase.from('fotos_servicos').select('*').eq('salao_id', salaoId),
-      supabase.from('pacotes').select('*').eq('salao_id', salaoId).eq('ativo', true).order('preco'),
+      supabase.from('pacotes').select('*').eq('salao_id', salaoId).eq('status', 'ativo').order('preco'),
       supabase.from('cliente_pacotes').select('*, pacotes(nome, descricao, regras)').eq('cliente_id', cli.id).order('data_compra', { ascending: false }),
     ])
     setServicos(srvsRes.data || [])
