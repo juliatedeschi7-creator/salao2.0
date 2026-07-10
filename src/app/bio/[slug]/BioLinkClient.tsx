@@ -1,5 +1,4 @@
 'use client'
-// src/app/bio/[slug]/BioLinkClient.tsx
 import { useState } from 'react'
 import { Heart, Scissors, Calendar, Star, Instagram, Phone, UserPlus, LogIn, Package, ChevronRight } from 'lucide-react'
 
