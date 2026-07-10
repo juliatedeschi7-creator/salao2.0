@@ -170,13 +170,6 @@ export default function BioLinkClient({ salao }: Props) {
             </a>
           ))}
         </div>
-
-        {/* Rodapé */}
-        <div className="mt-12 flex flex-col items-center gap-1">
-          <img src="/logo.png" alt="Organiza Salão" className="w-8 h-8 object-contain opacity-60" />
-          <p className="text-white/70 text-xs">Powered by Organiza Salão</p>
-        </div>
-      </div>
     </>
   )
 }
