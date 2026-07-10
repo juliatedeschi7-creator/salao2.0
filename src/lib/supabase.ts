@@ -3,25 +3,12 @@ import { createBrowserClient } from '@supabase/ssr'
 export function createClient() {
   return createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      // IMPORTANTE: sem isso, o @supabase/ssr grava o cookie de sessão
-      // sem "maxAge" — vira um cookie de sessão do navegador (dura até
-      // a "sessão de navegação" acabar). No iOS, quando o app vai pro
-      // background, o sistema costuma matar o processo do WKWebView do
-      // PWA pra liberar memória, e isso conta como fim da sessão pro
-      // WebKit — apagando o cookie. Ao reabrir, a sessão já não existe
-      // mais de verdade (não é um bug no useAuth, o cookie mesmo sumiu).
-      //
-      // Definindo maxAge explícito, o cookie persiste em disco e
-      // sobrevive ao app ser fechado/kilado pelo sistema.
-      cookieOptions: {
-        maxAge: 60 * 60 * 24 * 100, // 100 dias
-        sameSite: 'lax',
-        secure: true,
-        path: '/',
-      },
-    }
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    // Sem "auth" customizado: o @supabase/ssr já persiste a sessão em
+    // cookies e faz refresh automático por padrão. Cookies são muito
+    // mais estáveis que localStorage em PWA instalado (iOS pode limpar
+    // o localStorage do modo standalone quando o app fica em segundo
+    // plano ou com pouca memória).
   )
 }
 
