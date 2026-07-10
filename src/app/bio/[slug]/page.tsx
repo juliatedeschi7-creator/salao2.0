@@ -1,5 +1,3 @@
-// src/app/bio/[slug]/page.tsx
-// Página pública de bio link — acessível em /bio/maria-magnolia
 import { createClient } from '@supabase/supabase-js'
 import BioLinkClient from './BioLinkClient'
 
