@@ -1,8 +1,9 @@
 'use client'
 import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Bell } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
+import { registrarPush } from '@/lib/push'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -14,6 +15,7 @@ function LoginForm() {
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
+  const [lembrarEReceber, setLembrarEReceber] = useState(true)
 
   useEffect(() => {
     async function buscarSalao() {
@@ -53,6 +55,14 @@ function LoginForm() {
       }
     } else if (prof.role === 'funcionario') destino = '/funcionario'
     else destino = '/cliente'
+
+    // Ativa push em segundo plano se a pessoa deixou o checkbox marcado.
+    // Não bloqueia nem falha o login se o navegador negar a permissão —
+    // é best-effort, roda em paralelo com o redirecionamento.
+    if (lembrarEReceber) {
+      registrarPush(data.user.id, prof.salao_id || undefined).catch(() => {})
+    }
+
     await new Promise(resolve => setTimeout(resolve, 500))
     window.location.href = destino
   }
@@ -149,6 +159,23 @@ function LoginForm() {
               </button>
             </div>
           </div>
+
+          <button type="button" onClick={() => setLembrarEReceber(v => !v)}
+            className="flex items-center gap-3 text-left">
+            <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors"
+              style={{ borderColor: lembrarEReceber ? cor : '#d1d5db', backgroundColor: lembrarEReceber ? cor : 'transparent' }}>
+              {lembrarEReceber && (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path d="M2 6L4.5 8.5L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+            <span className="text-sm text-gray-600 flex items-center gap-1.5">
+              <Bell size={14} className="text-gray-400 shrink-0" />
+              Lembrar meu acesso e receber notificações
+            </span>
+          </button>
+
           {erro && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <p className="text-red-600 text-sm text-center">{erro}</p>
