@@ -27,6 +27,7 @@ export default function ClienteHorariosPage() {
   const [reservando, setReservando] = useState<string | null>(null)
   const [reservados, setReservados] = useState<Set<string>>(new Set())
   const [carregando, setCarregando] = useState(true)
+  const [aba, setAba] = useState<'vagas' | 'funcionamento'>('vagas')
 
   useEffect(() => {
     if (!loading && profile) carregarDados()
@@ -55,11 +56,9 @@ export default function ClienteHorariosPage() {
   async function reservarHorario(horario: any) {
     if (reservados.has(horario.id) || reservando === horario.id) return
     setReservando(horario.id)
-
     await supabase.from('horarios_vagos').update({
       reservado: true, cliente_id: cliente.id
     }).eq('id', horario.id)
-
     await supabase.from('notificacoes').insert({
       salao_id: salao.id,
       remetente_id: profile!.id,
@@ -68,7 +67,6 @@ export default function ClienteHorariosPage() {
       mensagem: `${cliente.nome} reservou o horário de ${formatarDataHora(horario.data_hora)}.`,
       tipo: 'horario'
     })
-
     setReservados(prev => new Set(Array.from(prev).concat(horario.id)))
     setVagos(prev => prev.filter(h => h.id !== horario.id))
     setReservando(null)
@@ -106,49 +104,56 @@ export default function ClienteHorariosPage() {
     gruposVagos[dia].push(h)
   })
 
-  const temHorariosFuncionamento = Object.values(horarios).some((h: any) => h?.ativo)
   const aberto = hojeAberto()
 
   if (loading || carregando) return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    <div className="min-h-screen bg-gray-50">
+      <div className="px-4 pt-12 pb-6 flex items-center gap-3" style={{ backgroundColor: cor }}>
+        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-white" /></button>
+        <h1 className="font-bold text-white text-lg">Horários</h1>
+      </div>
+      <div className="px-4 py-4 flex flex-col gap-3">
+        {[1,2,3].map(i => <div key={i} className="bg-white rounded-2xl p-4 animate-pulse h-20" />)}
+      </div>
     </div>
   )
 
   return (
-    <div className="min-h-screen pb-10" style={{ backgroundColor: '#f0f0f5' }}>
-      <div className="px-4 pt-12 pb-6" style={{ backgroundColor: cor }}>
-        <button onClick={() => router.back()} className="mb-4 flex items-center gap-2 text-white/80">
-          <ArrowLeft size={20} />
-          <span className="text-sm">Voltar</span>
-        </button>
+    <div className="min-h-screen bg-gray-50 pb-8">
+      {/* Header igual ao de serviços */}
+      <div className="px-4 pt-12 pb-4 flex items-center justify-between" style={{ backgroundColor: cor }}>
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center">
-            <Clock size={22} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-white text-xl font-bold">Horários</h1>
-            <p className="text-white/70 text-sm">Vagas e funcionamento</p>
-          </div>
+          <button onClick={() => router.back()}><ArrowLeft size={22} className="text-white" /></button>
+          <h1 className="font-bold text-white text-lg">Horários</h1>
         </div>
       </div>
 
-      <div className="px-4 -mt-3 flex flex-col gap-5 pb-6">
+      {/* Abas igual ao de serviços/pacotes */}
+      <div className="bg-white border-b border-gray-100 flex">
+        <button onClick={() => setAba('vagas')}
+          className={'flex-1 py-3 text-sm font-semibold transition-all ' + (aba === 'vagas' ? 'border-b-2' : 'text-gray-400')}
+          style={aba === 'vagas' ? { color: cor, borderColor: cor } : {}}>
+          Vagas {vagos.length > 0 && `(${vagos.length})`}
+        </button>
+        <button onClick={() => setAba('funcionamento')}
+          className={'flex-1 py-3 text-sm font-semibold transition-all ' + (aba === 'funcionamento' ? 'border-b-2' : 'text-gray-400')}
+          style={aba === 'funcionamento' ? { color: cor, borderColor: cor } : {}}>
+          Funcionamento
+        </button>
+      </div>
 
-        {/* ── SEÇÃO 1: VAGAS DISPONÍVEIS ── */}
-        <div className="flex flex-col gap-3">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1 pt-2">
-            Horários disponíveis para reservar
-          </p>
+      <div className="px-4 py-4 flex flex-col gap-4">
 
-          {vagos.length === 0 ? (
-            <div className="bg-white rounded-2xl p-6 text-center shadow-sm flex flex-col items-center gap-2">
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center"
+        {/* ABA VAGAS */}
+        {aba === 'vagas' && (
+          vagos.length === 0 ? (
+            <div className="bg-white rounded-2xl p-8 text-center shadow-sm flex flex-col items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
                 style={{ backgroundColor: `${cor}15` }}>
                 <Clock size={20} style={{ color: cor }} />
               </div>
               <p className="text-gray-500 text-sm font-medium">Nenhuma vaga disponível agora</p>
-              <p className="text-gray-400 text-xs text-center">
+              <p className="text-gray-400 text-xs text-center leading-relaxed">
                 Quando o salão liberar horários, eles aparecem aqui para você reservar
               </p>
             </div>
@@ -160,7 +165,7 @@ export default function ClienteHorariosPage() {
                   const jaReservado = reservados.has(h.id)
                   return (
                     <div key={h.id} className="bg-white rounded-2xl px-4 py-3.5 shadow-sm flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+                      <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
                         style={{ backgroundColor: `${cor}15` }}>
                         <span className="font-bold text-sm" style={{ color: cor }}>
                           {new Date(h.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -183,9 +188,7 @@ export default function ClienteHorariosPage() {
                           <span className="text-xs font-semibold">Reservado!</span>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => reservarHorario(h)}
-                          disabled={reservando === h.id}
+                        <button onClick={() => reservarHorario(h)} disabled={reservando === h.id}
                           className="px-4 py-2 rounded-xl text-white text-sm font-bold shrink-0 active:scale-95 transition-all"
                           style={{ backgroundColor: cor }}>
                           {reservando === h.id
@@ -198,16 +201,13 @@ export default function ClienteHorariosPage() {
                 })}
               </div>
             ))
-          )}
-        </div>
+          )
+        )}
 
-        {/* ── SEÇÃO 2: HORÁRIO DE FUNCIONAMENTO ── */}
-        {temHorariosFuncionamento && (
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">
-              Horário de funcionamento
-            </p>
-
+        {/* ABA FUNCIONAMENTO */}
+        {aba === 'funcionamento' && (
+          <>
+            {/* Status hoje */}
             {hojeH && (
               <div className={'rounded-2xl px-4 py-3.5 flex items-center gap-3 shadow-sm ' +
                 (aberto ? 'bg-green-50 border border-green-100' : 'bg-white border border-gray-100')}>
@@ -230,6 +230,7 @@ export default function ClienteHorariosPage() {
               </div>
             )}
 
+            {/* Tabela semanal */}
             <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
               {DIAS.map(({ key, label, abrev }, i) => {
                 const h = horarios[key]
@@ -278,7 +279,7 @@ export default function ClienteHorariosPage() {
                 Falar no WhatsApp
               </a>
             )}
-          </div>
+          </>
         )}
       </div>
     </div>
