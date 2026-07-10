@@ -32,11 +32,15 @@ export default function PacotesPage() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
+    // Corrigido: filtra por "ativo" (boolean), mesma coluna que a tela do
+    // cliente usa. Antes filtrava por "status" = 'ativo', que é uma coluna
+    // diferente e nunca era preenchida ao salvar — por isso os pacotes
+    // nunca apareciam pras clientes.
     const { data: pacs } = await supabase
       .from('pacotes')
       .select('*, pacote_itens(*, servicos(nome, preco))')
       .eq('salao_id', profile!.salao_id!)
-      .eq('status', 'ativo')
+      .eq('ativo', true)
       .order('created_at', { ascending: false })
     setPacotes(pacs || [])
 
@@ -89,16 +93,22 @@ export default function PacotesPage() {
     if (!form.nome || !form.preco || itens.length === 0) return
     setSalvando(true)
 
+    const totalSessoes = itens.reduce((acc, i) => acc + i.quantidade, 0)
+
     const dados = {
       salao_id: profile!.salao_id,
       nome: form.nome,
       descricao: form.descricao || null,
-      sessoes: itens.reduce((acc, i) => acc + i.quantidade, 0),
+      // Renomeado de "sessoes" para "sessoes_inclusas" — é o nome de coluna
+      // que a tela do cliente lê para mostrar "X sessões" no card do pacote.
+      sessoes_inclusas: totalSessoes,
       preco: parseFloat(form.preco),
       validade_dias: form.validade_dias ? parseInt(form.validade_dias) : null,
       regras: form.regras || null,
       categoria: form.categoria || null,
-      status: 'ativo',
+      // Corrigido: "ativo" boolean em vez de "status" texto, para bater
+      // com a coluna que a tela do cliente filtra.
+      ativo: true,
       criado_por: profile!.id,
     }
 
@@ -123,7 +133,8 @@ export default function PacotesPage() {
   }
 
   async function excluir(id: string) {
-    await supabase.from('pacotes').update({ status: 'inativo' }).eq('id', id)
+    // Corrigido: desativa via "ativo: false" (mesma coluna usada na listagem)
+    await supabase.from('pacotes').update({ ativo: false }).eq('id', id)
     carregarDados()
   }
 
