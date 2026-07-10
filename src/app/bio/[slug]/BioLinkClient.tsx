@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { Heart, Scissors, Calendar, Star, Instagram, Phone, UserPlus, LogIn, Package, ChevronRight } from 'lucide-react'
+import { Heart, Scissors, Calendar, Star, Phone, UserPlus, LogIn, Package, ChevronRight } from 'lucide-react'
 
 interface Props {
   salao: {
@@ -50,15 +50,8 @@ export default function BioLinkClient({ salao }: Props) {
     },
   ]
 
+  // Só WhatsApp por enquanto (Instagram removido a pedido)
   const botoesExtras = [
-    salao.instagram ? {
-      id: 'instagram',
-      icon: Instagram,
-      titulo: 'Instagram',
-      sub: `@${salao.instagram.replace('@', '')}`,
-      href: `https://instagram.com/${salao.instagram.replace('@', '')}`,
-      externo: true,
-    } : null,
     salao.telefone ? {
       id: 'whatsapp',
       icon: Phone,
@@ -72,8 +65,10 @@ export default function BioLinkClient({ salao }: Props) {
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />
+      {/* Gradiente não vai mais até branco puro — evita que os cards
+          translúcidos "sumam" na parte de baixo da tela */}
       <div className="min-h-screen flex flex-col items-center pb-12"
-        style={{ background: `linear-gradient(160deg, ${cor} 0%, ${corSec} 45%, #ffffff 100%)` }}>
+        style={{ background: `linear-gradient(180deg, ${cor} 0%, ${corSec} 100%)` }}>
 
         {/* Header */}
         <div className="w-full flex flex-col items-center px-6 pt-16 pb-8">
@@ -103,7 +98,7 @@ export default function BioLinkClient({ salao }: Props) {
             <p className="text-white font-bold text-sm mt-1 text-center">{nomeSecundario}</p>
           )}
           {salao.descricao && (
-            <p className="text-white/80 text-sm mt-3 text-center leading-relaxed max-w-xs">
+            <p className="text-white/90 text-sm mt-3 text-center leading-relaxed max-w-xs">
               {salao.descricao}
             </p>
           )}
@@ -115,59 +110,59 @@ export default function BioLinkClient({ salao }: Props) {
             <button key={b.id}
               onClick={() => navegar(b.href, b.id)}
               disabled={loading === b.id}
-              className={`w-full rounded-2xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg ${
-                b.estilo === 'primario' ? 'bg-white' : 'bg-white/20 backdrop-blur border border-white/40'
-              }`}>
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                b.estilo === 'primario' ? '' : 'bg-white/20'
+              className={`w-full rounded-2xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg bg-white ${
+                b.estilo === 'secundario' ? 'border-2' : ''
               }`}
-                style={b.estilo === 'primario' ? { backgroundColor: `${cor}15` } : {}}>
+              style={b.estilo === 'secundario' ? { borderColor: cor } : {}}>
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${cor}15` }}>
                 {loading === b.id
                   ? <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
-                  : <b.icon size={22} style={{ color: b.estilo === 'primario' ? cor : 'white' }} />
+                  : <b.icon size={22} style={{ color: cor }} />
                 }
               </div>
               <div className="flex-1 text-left">
-                <p className={`font-bold text-base ${b.estilo === 'primario' ? 'text-gray-900' : 'text-white'}`}>
+                <p className="font-bold text-base text-gray-900">
                   {b.titulo}
                 </p>
-                <p className={`text-xs mt-0.5 ${b.estilo === 'primario' ? 'text-gray-400' : 'text-white/70'}`}>
+                <p className="text-xs mt-0.5 text-gray-400">
                   {b.sub}
                 </p>
               </div>
-              <ChevronRight size={18} className={b.estilo === 'primario' ? 'text-gray-300' : 'text-white/50'} />
+              <ChevronRight size={18} className="text-gray-300" />
             </button>
           ))}
 
           {/* Divisor */}
           {botoesExtras.length > 0 && (
             <div className="flex items-center gap-3 my-1">
-              <div className="flex-1 h-px bg-white/30" />
-              <span className="text-white/50 text-xs">mais</span>
-              <div className="flex-1 h-px bg-white/30" />
+              <div className="flex-1 h-px bg-white/40" />
+              <span className="text-white/70 text-xs">mais</span>
+              <div className="flex-1 h-px bg-white/40" />
             </div>
           )}
 
-          {/* Botões extras */}
+          {/* Botões extras (WhatsApp) */}
           {botoesExtras.map((b: any) => (
             <a key={b.id} href={b.href} target="_blank" rel="noopener noreferrer"
-              className="w-full bg-white/15 backdrop-blur border border-white/30 rounded-2xl px-5 py-3.5 flex items-center gap-4 active:scale-[0.98] transition-all">
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                <b.icon size={18} className="text-white" />
+              className="w-full bg-white rounded-2xl px-5 py-3.5 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${cor}15` }}>
+                <b.icon size={18} style={{ color: cor }} />
               </div>
               <div className="flex-1 text-left">
-                <p className="font-semibold text-white text-sm">{b.titulo}</p>
-                <p className="text-white/60 text-xs mt-0.5">{b.sub}</p>
+                <p className="font-semibold text-gray-900 text-sm">{b.titulo}</p>
+                <p className="text-gray-400 text-xs mt-0.5">{b.sub}</p>
               </div>
-              <ChevronRight size={16} className="text-white/40" />
+              <ChevronRight size={16} className="text-gray-300" />
             </a>
           ))}
         </div>
 
         {/* Rodapé */}
         <div className="mt-12 flex flex-col items-center gap-1">
-          <img src="/logo.png" alt="Organiza Salão" className="w-8 h-8 object-contain opacity-40" />
-          <p className="text-white/40 text-xs">Powered by Organiza Salão</p>
+          <img src="/logo.png" alt="Organiza Salão" className="w-8 h-8 object-contain opacity-60" />
+          <p className="text-white/70 text-xs">Powered by Organiza Salão</p>
         </div>
       </div>
     </>
