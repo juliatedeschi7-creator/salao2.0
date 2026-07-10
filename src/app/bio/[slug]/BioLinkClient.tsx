@@ -119,20 +119,29 @@ export default function BioLinkClient({ salao }: Props) {
         {/* Botões principais */}
         <div className="w-full max-w-sm px-5 flex flex-col gap-3">
           {botoesPrincipais.map(b => (
-            <button key={b.id}
+            <button
+              key={b.id}
               onClick={() => navegar(b.href, b.id)}
               disabled={loading === b.id}
               className={`w-full rounded-2xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg bg-white ${
                 b.estilo === 'secundario' ? 'border-2' : ''
               }`}
-              style={b.estilo === 'secundario' ? { borderColor: cor } : {}}>
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: `${cor}15` }}>
-                {loading === b.id
-                  ? <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
-                  : <b.icon size={22} style={{ color: cor }} />
-                }
+              style={b.estilo === 'secundario' ? { borderColor: cor } : {}}
+            >
+              <div
+                className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${cor}15` }}
+              >
+                {loading === b.id ? (
+                  <div
+                    className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
+                    style={{ borderColor: cor }}
+                  />
+                ) : (
+                  <b.icon size={22} style={{ color: cor }} />
+                )}
               </div>
+
               <div className="flex-1 text-left">
                 <p className="font-bold text-base text-gray-900">
                   {b.titulo}
@@ -141,6 +150,7 @@ export default function BioLinkClient({ salao }: Props) {
                   {b.sub}
                 </p>
               </div>
+
               <ChevronRight size={18} className="text-gray-300" />
             </button>
           ))}
@@ -156,20 +166,34 @@ export default function BioLinkClient({ salao }: Props) {
 
           {/* Botões extras (WhatsApp) */}
           {botoesExtras.map((b: any) => (
-            <a key={b.id} href={b.href} target="_blank" rel="noopener noreferrer"
-              className="w-full bg-white rounded-2xl px-5 py-3.5 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: `${cor}15` }}>
+            <a
+              key={b.id}
+              href={b.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full bg-white rounded-2xl px-5 py-3.5 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg"
+            >
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${cor}15` }}
+              >
                 <b.icon size={18} style={{ color: cor }} />
               </div>
+
               <div className="flex-1 text-left">
-                <p className="font-semibold text-gray-900 text-sm">{b.titulo}</p>
-                <p className="text-gray-400 text-xs mt-0.5">{b.sub}</p>
+                <p className="font-semibold text-gray-900 text-sm">
+                  {b.titulo}
+                </p>
+                <p className="text-gray-400 text-xs mt-0.5">
+                  {b.sub}
+                </p>
               </div>
+
               <ChevronRight size={16} className="text-gray-300" />
             </a>
           ))}
         </div>
+      </div>
     </>
   )
 }
