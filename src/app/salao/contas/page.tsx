@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, DollarSign, CheckCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { temAcessoTotal } from '@/lib/permissoes'
+import { ArrowLeft, Plus, DollarSign, Check, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react'
 
 export default function ContasPage() {
   const { profile, loading } = useAuth()
@@ -15,93 +16,97 @@ export default function ContasPage() {
   const [modal, setModal] = useState(false)
   const [modalPagamento, setModalPagamento] = useState<any>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
-  const [form, setForm] = useState({ cliente_id: '', descricao: '', valor: '', parcelas: '1' })
-  const [pagForm, setPagForm] = useState({
-    valor: '', forma: 'pix', data: new Date().toISOString().split('T')[0]
-  })
   const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const [form, setForm] = useState({
+    cliente_id: '', descricao: '', valor_total: '', tipo: 'debito'
+  })
+  const [formPagamento, setFormPagamento] = useState({
+    meio_pagamento: 'pix',
+    data_pagamento: new Date().toISOString().split('T')[0]
+  })
 
   useEffect(() => {
-    if (!loading && profile?.salao_id) carregarDados()
-  }, [loading])
+    if (loading) return
+    if (!profile) return
+    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (profile.salao_id) carregarDados()
+  }, [loading, profile])
 
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
-
-    const { data: clis } = await supabase.from('clientes').select('id, nome')
-      .eq('salao_id', profile!.salao_id!).order('nome')
+    const { data: clis } = await supabase.from('clientes').select('id, nome').eq('salao_id', profile!.salao_id!).order('nome')
     setClientes(clis || [])
-
-    const { data: cnts } = await supabase
-      .from('contas_clientes')
+    const { data: cnts } = await supabase.from('contas_clientes')
       .select('*, clientes(nome)')
       .eq('salao_id', profile!.salao_id!)
       .order('created_at', { ascending: false })
     setContas(cnts || [])
   }
 
-  async function criarConta() {
-    if (!form.cliente_id || !form.descricao || !form.valor) return
+  async function salvar() {
+    setErro('')
+    if (!form.cliente_id || !form.valor_total || !form.descricao) {
+      setErro('Preencha todos os campos.')
+      return
+    }
     setSalvando(true)
     const { error } = await supabase.from('contas_clientes').insert({
       salao_id: profile!.salao_id,
       cliente_id: form.cliente_id,
       descricao: form.descricao,
-      valor_total: parseFloat(form.valor),
+      valor_total: parseFloat(form.valor_total),
       valor_pago: 0,
-      parcelas: parseInt(form.parcelas),
-      status: 'aberta'
+      status: 'aberta',
+      tipo: form.tipo
     })
-    if (error) { alert('Erro ao salvar: ' + error.message); setSalvando(false); return }
-    setModal(false)
-    setSalvando(false)
-    setForm({ cliente_id: '', descricao: '', valor: '', parcelas: '1' })
+    if (error) { setErro('Erro ao salvar: ' + error.message); setSalvando(false); return }
+    setModal(false); setSalvando(false)
+    setForm({ cliente_id: '', descricao: '', valor_total: '', tipo: 'debito' })
     carregarDados()
   }
 
-  async function registrarPagamento() {
-    if (!pagForm.valor || !modalPagamento) return
+  async function registrarPagamento(conta: any) {
     setSalvando(true)
-    const valorPagamento = parseFloat(pagForm.valor)
-    const novoValorPago = (modalPagamento.valor_pago || 0) + valorPagamento
-    const quitada = novoValorPago >= modalPagamento.valor_total
-
-    const { error } = await supabase.from('contas_clientes').update({
-      valor_pago: novoValorPago,
-      status: quitada ? 'paga' : 'aberta',
-      ultimo_pagamento: new Date().toISOString(),
-      forma_pagamento: pagForm.forma
-    }).eq('id', modalPagamento.id)
-
-    if (error) { alert('Erro ao registrar: ' + error.message); setSalvando(false); return }
+    await supabase.from('contas_clientes').update({
+      valor_pago: conta.valor_total,
+      status: 'paga',
+      meio_pagamento: formPagamento.meio_pagamento,
+      data_pagamento: formPagamento.data_pagamento
+    }).eq('id', conta.id)
     setModalPagamento(null)
     setSalvando(false)
-    setPagForm({ valor: '', forma: 'pix', data: new Date().toISOString().split('T')[0] })
     carregarDados()
   }
 
-  async function marcarComoPaga(id: string, valorTotal: number) {
-    await supabase.from('contas_clientes').update({
-      valor_pago: valorTotal,
-      status: 'paga',
-      ultimo_pagamento: new Date().toISOString(),
-    }).eq('id', id)
+  async function excluir(id: string) {
+    await supabase.from('contas_clientes').delete().eq('id', id)
     carregarDados()
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const fmt = (v: number) => `R$ ${Number(v).toFixed(2).replace('.', ',')}`
 
-  const filtradas = contas.filter(c =>
-    filtro === 'todas' ? true :
-    filtro === 'abertas' ? c.status === 'aberta' :
-    c.status === 'paga'
-  )
+  const filtradas = contas.filter(c => {
+    if (filtro === 'abertas') return c.status === 'aberta'
+    if (filtro === 'pagas') return c.status === 'paga'
+    return true
+  })
 
-  const totalAberto = contas
-    .filter(c => c.status === 'aberta')
+  const totalDebitoAberto = contas
+    .filter(c => c.status === 'aberta' && c.tipo !== 'credito')
     .reduce((acc, c) => acc + (c.valor_total - c.valor_pago), 0)
+
+  const totalCreditoAberto = contas
+    .filter(c => c.status === 'aberta' && c.tipo === 'credito')
+    .reduce((acc, c) => acc + (c.valor_total - c.valor_pago), 0)
+
+  const meioPagamentoLabel: Record<string, string> = {
+    pix: 'Pix', dinheiro: 'Dinheiro',
+    cartao_credito: 'Cartão de crédito',
+    cartao_debito: 'Cartão de débito',
+    transferencia: 'Transferência'
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-8">
@@ -115,131 +120,107 @@ export default function ContasPage() {
         </button>
       </div>
 
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {totalAberto > 0 && (
-          <div className="card border-l-4" style={{ borderColor: cor }}>
-            <p className="text-xs text-gray-400">Total em aberto</p>
-            <p className="text-2xl font-bold" style={{ color: cor }}>{fmt(totalAberto)}</p>
-          </div>
-        )}
-
-        <div className="flex gap-2">
-          {(['abertas', 'pagas', 'todas'] as const).map(f => (
-            <button key={f} onClick={() => setFiltro(f)}
-              className={'px-4 py-2 rounded-full text-sm font-medium transition-all ' +
-                (filtro === f ? 'text-white' : 'bg-white text-gray-500')}
-              style={filtro === f ? { backgroundColor: cor } : {}}>
-              {f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ))}
+      {(totalDebitoAberto > 0 || totalCreditoAberto > 0) && (
+        <div className="px-4 mt-4 grid grid-cols-2 gap-3">
+          {totalDebitoAberto > 0 && (
+            <div className="card flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <TrendingDown size={14} className="text-red-400" />
+                <p className="text-xs text-gray-500">Clientes devem</p>
+              </div>
+              <p className="font-bold text-lg text-red-500">
+                R$ {totalDebitoAberto.toFixed(2).replace('.', ',')}
+              </p>
+            </div>
+          )}
+          {totalCreditoAberto > 0 && (
+            <div className="card flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <TrendingUp size={14} className="text-green-500" />
+                <p className="text-xs text-gray-500">Salão deve</p>
+              </div>
+              <p className="font-bold text-lg text-green-600">
+                R$ {totalCreditoAberto.toFixed(2).replace('.', ',')}
+              </p>
+            </div>
+          )}
         </div>
+      )}
 
+      <div className="px-4 mt-4 flex gap-2">
+        {(['abertas', 'pagas', 'todas'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)}
+            className="px-4 py-2 rounded-full text-sm font-medium transition-all"
+            style={filtro === f
+              ? { backgroundColor: cor, color: 'white' }
+              : { backgroundColor: 'white', color: '#6b7280' }}>
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      <div className="px-4 py-4 flex flex-col gap-3">
         {filtradas.length === 0 ? (
           <div className="card text-center py-10">
             <DollarSign size={36} className="text-gray-300 mx-auto mb-2" />
             <p className="text-gray-400">Nenhuma conta encontrada</p>
           </div>
         ) : filtradas.map(c => {
-          const saldo = c.valor_total - c.valor_pago
-          const progresso = c.valor_total > 0 ? (c.valor_pago / c.valor_total) * 100 : 0
-          const paga = c.status === 'paga'
-          const aberta = expandido === c.id
-
+          const isCredito = c.tipo === 'credito'
           return (
-            <div key={c.id} className="card flex flex-col gap-3">
+            <div key={c.id} className={'card flex flex-col gap-2 border-l-4 ' + (isCredito ? 'border-green-400' : 'border-red-300')}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <p className="font-bold text-gray-900">{c.clientes?.nome}</p>
-                  <p className="text-sm text-gray-500">{c.descricao}</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 ml-2">
-                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
-                    (paga ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500')}>
-                    {paga ? 'Paga' : 'Em aberto'}
-                  </span>
-                  <button onClick={() => setExpandido(aberta ? null : c.id)}>
-                    {aberta
-                      ? <ChevronUp size={16} className="text-gray-400" />
-                      : <ChevronDown size={16} className="text-gray-400" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Barra de progresso */}
-              <div>
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Pago: {fmt(c.valor_pago)}</span>
-                  <span>Total: {fmt(c.valor_total)}</span>
-                </div>
-                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full transition-all"
-                    style={{ width: `${Math.min(progresso, 100)}%`, backgroundColor: paga ? '#22c55e' : cor }} />
-                </div>
-              </div>
-
-              {/* Ações */}
-              {!paga && (
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-bold text-red-500">Falta: {fmt(saldo)}</p>
-                  <div className="flex gap-2">
-                    {saldo === c.valor_total && (
-                      <button
-                        onClick={() => marcarComoPaga(c.id, c.valor_total)}
-                        className="px-3 py-2 rounded-xl border-2 text-xs font-medium"
-                        style={{ borderColor: cor, color: cor }}>
-                        Quitar
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setModalPagamento(c)
-                        setPagForm({
-                          valor: saldo.toFixed(2),
-                          forma: 'pix',
-                          data: new Date().toISOString().split('T')[0]
-                        })
-                      }}
-                      className="px-4 py-2 rounded-xl text-white text-sm font-medium"
-                      style={{ backgroundColor: cor }}>
-                      Lançar pagamento
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-gray-900">{c.clientes?.nome}</p>
+                    <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (isCredito ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500')}>
+                      {isCredito ? '✓ Crédito (salão deve)' : '↓ Débito (cliente deve)'}
+                    </span>
                   </div>
+                  <p className="text-sm text-gray-500 mt-0.5">{c.descricao}</p>
+                </div>
+                <button onClick={() => setExpandido(expandido === c.id ? null : c.id)}>
+                  {expandido === c.id
+                    ? <ChevronUp size={16} className="text-gray-400" />
+                    : <ChevronDown size={16} className="text-gray-400" />}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <p className={'font-bold text-lg ' + (isCredito ? 'text-green-600' : 'text-red-500')}>
+                  {isCredito ? '+' : '-'} R$ {Number(c.valor_total).toFixed(2).replace('.', ',')}
+                </p>
+                <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
+                  (c.status === 'paga' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
+                  {c.status === 'paga' ? 'Quitada' : 'Em aberto'}
+                </span>
+              </div>
+
+              {c.status === 'paga' && (
+                <div className="text-xs text-gray-400 flex gap-3">
+                  {c.meio_pagamento && <span>💳 {meioPagamentoLabel[c.meio_pagamento] || c.meio_pagamento}</span>}
+                  {c.data_pagamento && <span>📅 {new Date(c.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
                 </div>
               )}
 
-              {/* Detalhes expandidos */}
-              {aberta && (
-                <div className="border-t border-gray-50 pt-3 flex flex-col gap-1.5">
-                  {c.parcelas > 1 && (
-                    <p className="text-xs text-gray-400">{c.parcelas} parcelas</p>
-                  )}
-                  {c.ultimo_pagamento && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                      <Clock size={11} />
-                      <span>
-                        Último pagamento: {new Date(c.ultimo_pagamento).toLocaleDateString('pt-BR')}
-                        {c.forma_pagamento && ` via ${c.forma_pagamento}`}
-                      </span>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-300">
-                    Criada em {new Date(c.created_at).toLocaleDateString('pt-BR')}
-                  </p>
-                  {paga && (
+              {expandido === c.id && (
+                <div className="flex gap-2 pt-1 border-t border-gray-100">
+                  {c.status === 'aberta' && (
                     <button
-                      onClick={async () => {
-                        await supabase.from('contas_clientes').update({
-                          status: 'aberta',
-                          valor_pago: 0,
-                          ultimo_pagamento: null,
-                          forma_pagamento: null
-                        }).eq('id', c.id)
-                        carregarDados()
+                      onClick={() => {
+                        setModalPagamento(c)
+                        setFormPagamento({ meio_pagamento: 'pix', data_pagamento: new Date().toISOString().split('T')[0] })
                       }}
-                      className="text-xs text-gray-400 underline text-left mt-1">
-                      Reabrir conta
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
+                      style={{ backgroundColor: cor }}>
+                      <Check size={14} />
+                      {isCredito ? 'Registrar devolução' : 'Registrar pagamento'}
                     </button>
                   )}
+                  <button onClick={() => excluir(c.id)}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
+                    <X size={14} />Excluir
+                  </button>
                 </div>
               )}
             </div>
@@ -247,43 +228,67 @@ export default function ContasPage() {
         })}
       </div>
 
-      {/* Modal nova conta */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
-            <h3 className="font-bold text-gray-900 text-lg">Nova Conta</h3>
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+            <h3 className="font-bold text-gray-900 text-lg">Nova conta</h3>
+            {erro && <p className="text-red-500 text-sm bg-red-50 rounded-xl px-3 py-2">{erro}</p>}
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Tipo de lançamento</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setForm(p => ({ ...p, tipo: 'debito' }))}
+                  className="py-3 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1"
+                  style={form.tipo === 'debito'
+                    ? { borderColor: '#ef4444', backgroundColor: '#fef2f2', color: '#ef4444' }
+                    : { borderColor: '#e5e7eb', color: '#9ca3af' }}>
+                  <TrendingDown size={18} />
+                  <span>Débito</span>
+                  <span className="text-xs font-normal opacity-70">Cliente deve ao salão</span>
+                </button>
+                <button onClick={() => setForm(p => ({ ...p, tipo: 'credito' }))}
+                  className="py-3 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1"
+                  style={form.tipo === 'credito'
+                    ? { borderColor: '#22c55e', backgroundColor: '#f0fdf4', color: '#22c55e' }
+                    : { borderColor: '#e5e7eb', color: '#9ca3af' }}>
+                  <TrendingUp size={18} />
+                  <span>Crédito</span>
+                  <span className="text-xs font-normal opacity-70">Salão deve à cliente</span>
+                </button>
+              </div>
+            </div>
+
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Cliente</label>
               <select className="input-field" value={form.cliente_id}
                 onChange={e => setForm(p => ({ ...p, cliente_id: e.target.value }))}>
-                <option value="">Selecione...</option>
+                <option value="">Selecione a cliente...</option>
                 {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </select>
             </div>
+
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição</label>
-              <input className="input-field" placeholder="Ex: Luzes + hidratação"
-                value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
+              <input className="input-field"
+                placeholder={form.tipo === 'credito' ? 'Ex: Troco de R$50, adiantamento' : 'Ex: Serviços de julho'}
+                value={form.descricao}
+                onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Valor total (R$)</label>
-                <input className="input-field" type="number"
-                  value={form.valor} onChange={e => setForm(p => ({ ...p, valor: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Parcelas</label>
-                <input className="input-field" type="number" min="1"
-                  value={form.parcelas} onChange={e => setForm(p => ({ ...p, parcelas: e.target.value }))} />
-              </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor (R$)</label>
+              <input className="input-field" type="number" placeholder="0,00"
+                value={form.valor_total}
+                onChange={e => setForm(p => ({ ...p, valor_total: e.target.value }))} />
             </div>
+
             <div className="flex gap-3">
-              <button onClick={() => setModal(false)}
+              <button onClick={() => { setModal(false); setErro('') }}
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
                 Cancelar
               </button>
-              <button onClick={criarConta} disabled={salvando || !form.cliente_id || !form.descricao || !form.valor}
-                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-50"
+              <button onClick={salvar} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
                 style={{ backgroundColor: cor }}>
                 {salvando ? 'Salvando...' : 'Salvar'}
               </button>
@@ -292,45 +297,46 @@ export default function ContasPage() {
         </div>
       )}
 
-      {/* Modal lançar pagamento */}
       {modalPagamento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
-            <h3 className="font-bold text-gray-900 text-lg">Lançar Pagamento</h3>
-            <div className="bg-gray-50 rounded-xl px-4 py-3">
-              <p className="font-semibold text-gray-900">{modalPagamento.clientes?.nome}</p>
-              <p className="text-sm text-gray-500">{modalPagamento.descricao}</p>
-              <p className="text-xs text-gray-400 mt-1">
-                Falta: {fmt(modalPagamento.valor_total - modalPagamento.valor_pago)}
-              </p>
-            </div>
+            <h3 className="font-bold text-gray-900 text-lg">
+              {modalPagamento.tipo === 'credito' ? 'Registrar devolução' : 'Registrar pagamento'}
+            </h3>
+            <p className="text-sm text-gray-500">
+              {modalPagamento.clientes?.nome} — R$ {Number(modalPagamento.valor_total).toFixed(2).replace('.', ',')}
+            </p>
+
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor recebido (R$)</label>
-              <input className="input-field" type="number"
-                value={pagForm.valor} onChange={e => setPagForm(p => ({ ...p, valor: e.target.value }))} />
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                {modalPagamento.tipo === 'credito' ? 'Como devolveu' : 'Meio de pagamento'}
+              </label>
+              <select className="input-field" value={formPagamento.meio_pagamento}
+                onChange={e => setFormPagamento(p => ({ ...p, meio_pagamento: e.target.value }))}>
+                <option value="pix">Pix</option>
+                <option value="dinheiro">Dinheiro</option>
+                <option value="cartao_credito">Cartão de crédito</option>
+                <option value="cartao_debito">Cartão de débito</option>
+                <option value="transferencia">Transferência</option>
+              </select>
             </div>
+
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Forma de pagamento</label>
-              <div className="flex gap-2">
-                {['pix', 'dinheiro', 'cartao'].map(f => (
-                  <button key={f} onClick={() => setPagForm(p => ({ ...p, forma: f }))}
-                    className={'flex-1 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ' +
-                      (pagForm.forma === f ? 'text-white border-transparent' : 'border-gray-200 text-gray-500')}
-                    style={pagForm.forma === f ? { backgroundColor: cor, borderColor: cor } : {}}>
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
-              </div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Data</label>
+              <input className="input-field" type="date" value={formPagamento.data_pagamento}
+                onChange={e => setFormPagamento(p => ({ ...p, data_pagamento: e.target.value }))}
+                style={{ colorScheme: 'light' }} />
             </div>
+
             <div className="flex gap-3">
               <button onClick={() => setModalPagamento(null)}
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
                 Cancelar
               </button>
-              <button onClick={registrarPagamento} disabled={salvando || !pagForm.valor}
-                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-50"
+              <button onClick={() => registrarPagamento(modalPagamento)} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
                 style={{ backgroundColor: cor }}>
-                {salvando ? 'Registrando...' : 'Confirmar'}
+                {salvando ? 'Salvando...' : 'Confirmar'}
               </button>
             </div>
           </div>
