@@ -73,26 +73,13 @@ export default function BioLinkClient({ salao }: Props) {
         {/* Header */}
         <div className="w-full flex flex-col items-center px-6 pt-16 pb-8">
           {/* Logo */}
-          <div className="w-24 h-24 rounded-3xl bg-white shadow-xl flex items-center justify-center mb-5 overflow-hidden">
-            {salao.logo_url ? (
-              <img src={salao.logo_url} alt={salao.nome} className="w-full h-full object-cover" />
-            ) : (
-              <div
-                className="w-16 h-16"
-                style={{
-                  backgroundColor: cor,
-                  WebkitMaskImage: 'url(/logo.png)',
-                  maskImage: 'url(/logo.png)',
-                  WebkitMaskSize: 'contain',
-                  maskSize: 'contain',
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskPosition: 'center',
-                  maskPosition: 'center',
-                }}
-              />
-            )}
-          </div>
+{salao.logo_url ? (
+  <img src={salao.logo_url} alt={salao.nome}
+    className="w-24 h-24 object-contain mb-5" />
+) : (
+  <img src="/logo.png" alt={salao.nome}
+    className="w-24 h-24 object-contain mb-5" />
+)}
 
           {/* Nome em cursiva */}
           <h1 style={{
