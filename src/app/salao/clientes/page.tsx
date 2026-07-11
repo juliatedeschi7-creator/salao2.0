@@ -18,6 +18,14 @@ export default function ClientesPage() {
   const [modalQR, setModalQR] = useState(false)
   const [modalIOS, setModalIOS] = useState(false)
   const [aprovando, setAprovando] = useState<string | null>(null)
+  // Fallback fixo pro build/SSR, onde "window" não existe. É substituído
+  // pela origem real assim que o componente monta no navegador.
+  const [origem, setOrigem] = useState('https://organize-seusalao.vercel.app')
+
+  useEffect(() => {
+    // Só roda no navegador — aqui "window" já existe com segurança
+    setOrigem(window.location.origin)
+  }, [])
 
   useEffect(() => {
     if (loading) return
@@ -73,11 +81,10 @@ export default function ClientesPage() {
   }
 
   function copiarLink(tipo: 'cadastro' | 'login') {
-    const base = window.location.origin
     const slug = salao?.slug
     const link = tipo === 'cadastro'
-      ? `${base}/cadastro?salao=${slug}`
-      : `${base}/login?salao=${slug}`
+      ? `${origem}/cadastro?salao=${slug}`
+      : `${origem}/login?salao=${slug}`
     navigator.clipboard.writeText(link)
     setCopiado(tipo)
     setTimeout(() => setCopiado(''), 2000)
@@ -90,7 +97,7 @@ export default function ClientesPage() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
   const slug = salao?.slug || ''
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${window?.location?.origin || 'https://organize-seusalao.vercel.app'}/cadastro?salao=${slug}`)}`
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${origem}/cadastro?salao=${slug}`)}`
 
   const clientesFiltrados = clientes.filter(c =>
     c.nome?.toLowerCase().includes(busca.toLowerCase()) ||
