@@ -165,21 +165,31 @@ export default function NotificacoesDonoPage() {
       .eq('id', agendamento.id).single()
 
     if ((clienteInfo?.clientes as any)?.profile_id) {
-      const { data: pacoteAtivo } = await supabase.from('cliente_pacotes')
-        .select('*').eq('cliente_id', clienteInfo.cliente_id)
-        .eq('status', 'ativo').gt('sessoes_usadas', -1)
-        .lt('sessoes_usadas', supabase.from('cliente_pacotes').select('sessoes_total') as any)
-        .maybeSingle()
+      // Busca pacotes ativos da cliente. Removida a comparação quebrada
+      // (.lt('sessoes_usadas', <query builder>)) que passava um objeto de
+      // query como valor de comparação — isso não funciona no PostgREST,
+      // a checagem de "ainda tem sessão sobrando" é feita em JS abaixo.
+      // Trocado .maybeSingle() por lista + pega o primeiro elegível, pra
+      // não quebrar quando a cliente tem mais de um pacote ativo ao mesmo
+      // tempo (maybeSingle() dá erro se vier mais de uma linha).
+      const { data: pacotesAtivos } = await supabase.from('cliente_pacotes')
+        .select('*')
+        .eq('cliente_id', clienteInfo.cliente_id)
+        .eq('status', 'ativo')
 
-      if (pacoteAtivo && pacoteAtivo.sessoes_usadas < pacoteAtivo.sessoes_total) {
+      const pacoteAtivo = (pacotesAtivos || []).find(
+        (p: any) => p.sessoes_usadas < p.sessoes_total
+      )
+
+      if (pacoteAtivo) {
         const novasUsadas = pacoteAtivo.sessoes_usadas + 1
         const novoStatus = novasUsadas >= pacoteAtivo.sessoes_total ? 'concluido' : 'ativo'
         await supabase.from('cliente_pacotes').update({ sessoes_usadas: novasUsadas, status: novoStatus }).eq('id', pacoteAtivo.id)
         await supabase.from('sessoes_pacote').insert({
           cliente_pacote_id: pacoteAtivo.id,
-          data_sessao: new Date().toISOString(),
+          data_sessao: new Date().toISOString().slice(0, 10),
           servico_realizado: servicoRealizado,
-          registrado_por: profile!.id
+          profissional_id: profile!.id
         })
       }
     }
