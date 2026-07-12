@@ -14,6 +14,7 @@ export default function ClientePage() {
   const [pacotesAtivos, setPacotesAtivos] = useState(0)
   const [notifCount, setNotifCount] = useState(0)
   const [contratosCount, setContratosCount] = useState(0)
+  const [contasCount, setContasCount] = useState(0)
 
   useEffect(() => {
     if (!loading && profile) carregarDados()
@@ -48,6 +49,11 @@ export default function ClientePage() {
       .from('contratos').select('*', { count: 'exact', head: true })
       .eq('cliente_id', cli?.id)
     setContratosCount(contratos || 0)
+
+    const { count: contas } = await supabase
+      .from('contas_clientes').select('*', { count: 'exact', head: true })
+      .eq('cliente_id', cli?.id)
+    setContasCount(contas || 0)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -223,6 +229,22 @@ if (loading || !cliente || !salao) {
             <div className="flex-1">
               <p className="font-bold text-gray-900 text-sm">Contratos e termos</p>
               <p className="text-gray-400 text-xs mt-0.5">Documentos para assinar</p>
+            </div>
+            <ChevronRight size={16} className="text-gray-300 shrink-0" />
+          </button>
+        )}
+
+        {/* Minhas Contas — só aparece se a cliente tiver algum lançamento */}
+        {contasCount > 0 && (
+          <button onClick={() => router.push('/cliente/contas')}
+            className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `${cor}15` }}>
+              <Wallet size={20} style={{ color: cor }} />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-gray-900 text-sm">Minhas Contas</p>
+              <p className="text-gray-400 text-xs mt-0.5">Débitos e créditos com o salão</p>
             </div>
             <ChevronRight size={16} className="text-gray-300 shrink-0" />
           </button>
