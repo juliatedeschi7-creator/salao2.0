@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Package } from 'lucide-react'
+import { ArrowLeft, Package, ChevronDown, ChevronUp } from 'lucide-react'
 
 export default function MeusPacotesPage() {
   const { profile, loading } = useAuth()
@@ -11,6 +11,8 @@ export default function MeusPacotesPage() {
   const [salao, setSalao] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
   const [meusPacotes, setMeusPacotes] = useState<any[]>([])
+  const [sessoes, setSessoes] = useState<Record<string, any[]>>({})
+  const [expandido, setExpandido] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
@@ -30,6 +32,21 @@ export default function MeusPacotesPage() {
       .eq('cliente_id', cli.id)
       .order('data_compra', { ascending: false })
     setMeusPacotes(pacs || [])
+
+    if (pacs && pacs.length > 0) {
+      const ids = pacs.map((p: any) => p.id)
+      const { data: sess } = await supabase.from('sessoes_pacote')
+        .select('*')
+        .in('cliente_pacote_id', ids)
+        .order('data_sessao', { ascending: false })
+      const agrupado: Record<string, any[]> = {}
+      ;(sess || []).forEach((s: any) => {
+        if (!agrupado[s.cliente_pacote_id]) agrupado[s.cliente_pacote_id] = []
+        agrupado[s.cliente_pacote_id].push(s)
+      })
+      setSessoes(agrupado)
+    }
+
     setCarregando(false)
   }
 
@@ -111,13 +128,15 @@ export default function MeusPacotesPage() {
         ) : meusPacotes.map(mp => {
           const progresso = mp.sessoes_total > 0 ? (mp.sessoes_usadas / mp.sessoes_total) * 100 : 0
           const restantes = mp.sessoes_total - mp.sessoes_usadas
+          const historico = sessoes[mp.id] || []
+          const aberto = expandido === mp.id
 
           return (
             <div key={mp.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-3">
               {/* Cabeçalho */}
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-bold text-gray-900">{mp.pacotes?.nome}</p>
+                  <p className="font-bold text-gray-900">{mp.pacotes?.nome || 'Pacote'}</p>
                   {mp.pacotes?.categoria && (
                     <p className="text-xs text-gray-400 mt-0.5">{mp.pacotes.categoria}</p>
                   )}
@@ -165,6 +184,31 @@ export default function MeusPacotesPage() {
                 <p className="text-xs text-gray-400 leading-relaxed border-t border-gray-50 pt-2">
                   {mp.pacotes.descricao}
                 </p>
+              )}
+
+              {/* Histórico de sessões */}
+              {historico.length > 0 && (
+                <div className="border-t border-gray-50 pt-2">
+                  <button onClick={() => setExpandido(aberto ? null : mp.id)}
+                    className="w-full flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-500">
+                      Histórico de sessões ({historico.length})
+                    </p>
+                    {aberto ? <ChevronUp size={14} className="text-gray-400" /> : <ChevronDown size={14} className="text-gray-400" />}
+                  </button>
+                  {aberto && (
+                    <div className="flex flex-col gap-1.5 mt-2">
+                      {historico.map(s => (
+                        <div key={s.id} className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2">
+                          <span className="shrink-0 font-medium text-gray-600">
+                            {new Date(s.data_sessao).toLocaleDateString('pt-BR')}
+                          </span>
+                          <span className="flex-1 text-right truncate ml-2">{s.servico_realizado}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )
