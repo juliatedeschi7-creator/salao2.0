@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, DollarSign, CheckCircle, AlertCircle, Clock } from 'lucide-react'
+import { ArrowLeft, DollarSign, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
 const meioPagamentoLabel: Record<string, string> = {
   pix: 'Pix', dinheiro: 'Dinheiro',
@@ -18,7 +18,9 @@ export default function ContaClientePage() {
   const [salao, setSalao] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
   const [contas, setContas] = useState<any[]>([])
+  const [pagamentos, setPagamentos] = useState<Record<string, any[]>>({})
   const [filtro, setFiltro] = useState<'abertas' | 'pagas' | 'todas'>('abertas')
+  const [expandido, setExpandido] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
@@ -45,6 +47,21 @@ export default function ContaClientePage() {
       .order('created_at', { ascending: false })
 
     setContas(cnts || [])
+
+    if (cnts && cnts.length > 0) {
+      const ids = cnts.map((c: any) => c.id)
+      const { data: pags } = await supabase.from('pagamentos_conta')
+        .select('*')
+        .in('conta_id', ids)
+        .order('data_pagamento', { ascending: true })
+      const agrupado: Record<string, any[]> = {}
+      ;(pags || []).forEach((p: any) => {
+        if (!agrupado[p.conta_id]) agrupado[p.conta_id] = []
+        agrupado[p.conta_id].push(p)
+      })
+      setPagamentos(agrupado)
+    }
+
     setCarregando(false)
   }
 
@@ -141,6 +158,8 @@ export default function ContaClientePage() {
           const progresso = c.valor > 0 ? (valorPago / c.valor) * 100 : 0
           const paga = c.status === 'pago'
           const isCredito = c.tipo === 'credito'
+          const historico = pagamentos[c.id] || []
+          const aberto = expandido === c.id
 
           return (
             <div key={c.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-3">
@@ -160,12 +179,19 @@ export default function ContaClientePage() {
                     )}
                   </div>
                 </div>
-                <span className={'text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ml-2 flex items-center gap-1 ' +
-                  (paga ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500')}>
-                  {paga
-                    ? <><CheckCircle size={11} />Pago</>
-                    : <><AlertCircle size={11} />Em aberto</>}
-                </span>
+                <div className="flex items-center gap-2 shrink-0 ml-2">
+                  <span className={'text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1 ' +
+                    (paga ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500')}>
+                    {paga
+                      ? <><CheckCircle size={11} />Pago</>
+                      : <><AlertCircle size={11} />Em aberto</>}
+                  </span>
+                  {historico.length > 0 && (
+                    <button onClick={() => setExpandido(aberto ? null : c.id)}>
+                      {aberto ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Barra de progresso */}
@@ -186,13 +212,19 @@ export default function ContaClientePage() {
                 </div>
               )}
 
-              {c.ultimo_pagamento && (
-                <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                  <Clock size={11} />
-                  <span>
-                    Último pagamento: {new Date(c.ultimo_pagamento).toLocaleDateString('pt-BR')}
-                    {c.meio_pagamento && ` via ${meioPagamentoLabel[c.meio_pagamento] || c.meio_pagamento}`}
-                  </span>
+              {aberto && historico.length > 0 && (
+                <div className="flex flex-col gap-1.5 pt-2 border-t border-gray-100">
+                  {historico.map(p => (
+                    <div key={p.id} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">
+                        {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                      <span className="font-medium text-green-600">
+                        {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
+                        {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
