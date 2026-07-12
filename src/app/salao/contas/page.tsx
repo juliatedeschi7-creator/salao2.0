@@ -18,10 +18,12 @@ export default function ContasPage() {
   const [expandido, setExpandido] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
+  const [erroPagamento, setErroPagamento] = useState('')
   const [form, setForm] = useState({
     cliente_id: '', descricao: '', valor: '', tipo: 'debito'
   })
   const [formPagamento, setFormPagamento] = useState({
+    valor: '',
     meio_pagamento: 'pix',
     data_pagamento: new Date().toISOString().split('T')[0]
   })
@@ -67,14 +69,39 @@ export default function ContasPage() {
     carregarDados()
   }
 
+  function abrirModalPagamento(conta: any) {
+    const restante = Number(conta.valor) - Number(conta.valor_pago || 0)
+    setModalPagamento(conta)
+    setErroPagamento('')
+    setFormPagamento({
+      valor: restante.toFixed(2),
+      meio_pagamento: 'pix',
+      data_pagamento: new Date().toISOString().split('T')[0]
+    })
+  }
+
   async function registrarPagamento(conta: any) {
+    setErroPagamento('')
+    const valorPagoAgora = parseFloat(formPagamento.valor)
+    if (!valorPagoAgora || valorPagoAgora <= 0) {
+      setErroPagamento('Informe um valor válido.')
+      return
+    }
     setSalvando(true)
-    await supabase.from('contas_clientes').update({
-      valor_pago: conta.valor,
-      status: 'pago',
+    const jaPago = Number(conta.valor_pago || 0)
+    const novoValorPago = jaPago + valorPagoAgora
+    const quitado = novoValorPago >= Number(conta.valor)
+
+    const { error } = await supabase.from('contas_clientes').update({
+      valor_pago: novoValorPago,
+      status: quitado ? 'pago' : 'pendente',
       meio_pagamento: formPagamento.meio_pagamento,
-      data_pagamento: formPagamento.data_pagamento
+      data_pagamento: formPagamento.data_pagamento,
+      ultimo_pagamento: new Date().toISOString()
     }).eq('id', conta.id)
+
+    if (error) { setErroPagamento('Erro ao registrar: ' + error.message); setSalvando(false); return }
+
     setModalPagamento(null)
     setSalvando(false)
     carregarDados()
@@ -167,6 +194,9 @@ export default function ContasPage() {
           </div>
         ) : filtradas.map(c => {
           const isCredito = c.tipo === 'credito'
+          const valorPago = Number(c.valor_pago || 0)
+          const restante = Number(c.valor) - valorPago
+          const temPagamentoParcial = c.status === 'pendente' && valorPago > 0
           return (
             <div key={c.id} className={'card flex flex-col gap-2 border-l-4 ' + (isCredito ? 'border-green-400' : 'border-red-300')}>
               <div className="flex items-start justify-between">
@@ -196,6 +226,12 @@ export default function ContasPage() {
                 </span>
               </div>
 
+              {temPagamentoParcial && (
+                <p className="text-xs text-gray-500">
+                  Pago até agora: R$ {valorPago.toFixed(2).replace('.', ',')} · Restante: R$ {restante.toFixed(2).replace('.', ',')}
+                </p>
+              )}
+
               {c.status === 'pago' && (
                 <div className="text-xs text-gray-400 flex gap-3">
                   {c.meio_pagamento && <span>💳 {meioPagamentoLabel[c.meio_pagamento] || c.meio_pagamento}</span>}
@@ -207,10 +243,7 @@ export default function ContasPage() {
                 <div className="flex gap-2 pt-1 border-t border-gray-100">
                   {c.status === 'pendente' && (
                     <button
-                      onClick={() => {
-                        setModalPagamento(c)
-                        setFormPagamento({ meio_pagamento: 'pix', data_pagamento: new Date().toISOString().split('T')[0] })
-                      }}
+                      onClick={() => abrirModalPagamento(c)}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
                       style={{ backgroundColor: cor }}>
                       <Check size={14} />
@@ -304,8 +337,23 @@ export default function ContasPage() {
               {modalPagamento.tipo === 'credito' ? 'Registrar devolução' : 'Registrar pagamento'}
             </h3>
             <p className="text-sm text-gray-500">
-              {modalPagamento.clientes?.nome} — R$ {Number(modalPagamento.valor).toFixed(2).replace('.', ',')}
+              {modalPagamento.clientes?.nome} — total R$ {Number(modalPagamento.valor).toFixed(2).replace('.', ',')}
+              {Number(modalPagamento.valor_pago || 0) > 0 && (
+                <> · já pago R$ {Number(modalPagamento.valor_pago).toFixed(2).replace('.', ',')}</>
+              )}
             </p>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                {modalPagamento.tipo === 'credito' ? 'Valor devolvido agora' : 'Valor pago agora'}
+              </label>
+              <input className="input-field" type="number" step="0.01" min="0.01"
+                value={formPagamento.valor}
+                onChange={e => setFormPagamento(p => ({ ...p, valor: e.target.value }))} />
+              <p className="text-xs text-gray-400 mt-1">
+                Preenchido com o valor restante — pode editar pra registrar um pagamento parcial.
+              </p>
+            </div>
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
@@ -327,6 +375,12 @@ export default function ContasPage() {
                 onChange={e => setFormPagamento(p => ({ ...p, data_pagamento: e.target.value }))}
                 style={{ colorScheme: 'light' }} />
             </div>
+
+            {erroPagamento && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm">{erroPagamento}</p>
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button onClick={() => setModalPagamento(null)}
