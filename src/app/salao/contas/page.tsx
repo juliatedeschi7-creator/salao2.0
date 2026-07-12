@@ -6,12 +6,24 @@ import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Plus, DollarSign, Check, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react'
 
+const meioPagamentoLabel: Record<string, string> = {
+  pix: 'Pix', dinheiro: 'Dinheiro',
+  cartao_credito: 'Cartão de crédito',
+  cartao_debito: 'Cartão de débito',
+  transferencia: 'Transferência'
+}
+
+function fmt(v: number) {
+  return `R$ ${Number(v).toFixed(2).replace('.', ',')}`
+}
+
 export default function ContasPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [contas, setContas] = useState<any[]>([])
   const [clientes, setClientes] = useState<any[]>([])
+  const [pagamentos, setPagamentos] = useState<Record<string, any[]>>({})
   const [filtro, setFiltro] = useState<'abertas' | 'pagas' | 'todas'>('abertas')
   const [modal, setModal] = useState(false)
   const [modalPagamento, setModalPagamento] = useState<any>(null)
@@ -45,6 +57,22 @@ export default function ContasPage() {
       .eq('salao_id', profile!.salao_id!)
       .order('created_at', { ascending: false })
     setContas(cnts || [])
+
+    if (cnts && cnts.length > 0) {
+      const ids = cnts.map((c: any) => c.id)
+      const { data: pags } = await supabase.from('pagamentos_conta')
+        .select('*')
+        .in('conta_id', ids)
+        .order('data_pagamento', { ascending: true })
+      const agrupado: Record<string, any[]> = {}
+      ;(pags || []).forEach((p: any) => {
+        if (!agrupado[p.conta_id]) agrupado[p.conta_id] = []
+        agrupado[p.conta_id].push(p)
+      })
+      setPagamentos(agrupado)
+    } else {
+      setPagamentos({})
+    }
   }
 
   async function salvar() {
@@ -102,6 +130,20 @@ export default function ContasPage() {
 
     if (error) { setErroPagamento('Erro ao registrar: ' + error.message); setSalvando(false); return }
 
+    const { error: errHist } = await supabase.from('pagamentos_conta').insert({
+      conta_id: conta.id,
+      valor: valorPagoAgora,
+      meio_pagamento: formPagamento.meio_pagamento,
+      data_pagamento: formPagamento.data_pagamento,
+      criado_por: profile!.id
+    })
+    if (errHist) {
+      setErroPagamento('Pagamento registrado, mas houve erro no histórico: ' + errHist.message)
+      setSalvando(false)
+      carregarDados()
+      return
+    }
+
     setModalPagamento(null)
     setSalvando(false)
     carregarDados()
@@ -128,13 +170,6 @@ export default function ContasPage() {
     .filter(c => c.status === 'pendente' && c.tipo === 'credito')
     .reduce((acc, c) => acc + (c.valor - c.valor_pago), 0)
 
-  const meioPagamentoLabel: Record<string, string> = {
-    pix: 'Pix', dinheiro: 'Dinheiro',
-    cartao_credito: 'Cartão de crédito',
-    cartao_debito: 'Cartão de débito',
-    transferencia: 'Transferência'
-  }
-
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-8">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
@@ -155,9 +190,7 @@ export default function ContasPage() {
                 <TrendingDown size={14} className="text-red-400" />
                 <p className="text-xs text-gray-500">Clientes devem</p>
               </div>
-              <p className="font-bold text-lg text-red-500">
-                R$ {totalDebitoAberto.toFixed(2).replace('.', ',')}
-              </p>
+              <p className="font-bold text-lg text-red-500">{fmt(totalDebitoAberto)}</p>
             </div>
           )}
           {totalCreditoAberto > 0 && (
@@ -166,9 +199,7 @@ export default function ContasPage() {
                 <TrendingUp size={14} className="text-green-500" />
                 <p className="text-xs text-gray-500">Salão deve</p>
               </div>
-              <p className="font-bold text-lg text-green-600">
-                R$ {totalCreditoAberto.toFixed(2).replace('.', ',')}
-              </p>
+              <p className="font-bold text-lg text-green-600">{fmt(totalCreditoAberto)}</p>
             </div>
           )}
         </div>
@@ -197,6 +228,8 @@ export default function ContasPage() {
           const valorPago = Number(c.valor_pago || 0)
           const restante = Number(c.valor) - valorPago
           const temPagamentoParcial = c.status === 'pendente' && valorPago > 0
+          const historico = pagamentos[c.id] || []
+
           return (
             <div key={c.id} className={'card flex flex-col gap-2 border-l-4 ' + (isCredito ? 'border-green-400' : 'border-red-300')}>
               <div className="flex items-start justify-between">
@@ -218,7 +251,7 @@ export default function ContasPage() {
 
               <div className="flex items-center justify-between">
                 <p className={'font-bold text-lg ' + (isCredito ? 'text-green-600' : 'text-red-500')}>
-                  {isCredito ? '+' : '-'} R$ {Number(c.valor).toFixed(2).replace('.', ',')}
+                  {isCredito ? '+' : '-'} {fmt(c.valor)}
                 </p>
                 <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
                   (c.status === 'pago' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
@@ -228,32 +261,49 @@ export default function ContasPage() {
 
               {temPagamentoParcial && (
                 <p className="text-xs text-gray-500">
-                  Pago até agora: R$ {valorPago.toFixed(2).replace('.', ',')} · Restante: R$ {restante.toFixed(2).replace('.', ',')}
+                  Pago até agora: {fmt(valorPago)} · Restante: {fmt(restante)}
                 </p>
               )}
 
-              {c.status === 'pago' && (
-                <div className="text-xs text-gray-400 flex gap-3">
-                  {c.meio_pagamento && <span>💳 {meioPagamentoLabel[c.meio_pagamento] || c.meio_pagamento}</span>}
-                  {c.data_pagamento && <span>📅 {new Date(c.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
-                </div>
-              )}
-
               {expandido === c.id && (
-                <div className="flex gap-2 pt-1 border-t border-gray-100">
-                  {c.status === 'pendente' && (
-                    <button
-                      onClick={() => abrirModalPagamento(c)}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
-                      style={{ backgroundColor: cor }}>
-                      <Check size={14} />
-                      {isCredito ? 'Registrar devolução' : 'Registrar pagamento'}
+                <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">
+                        {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                      <span className="font-medium text-gray-700">
+                        {isCredito ? 'Lançamento (crédito)' : 'Lançamento (débito)'}: {fmt(c.valor)}
+                      </span>
+                    </div>
+                    {historico.map(p => (
+                      <div key={p.id} className="flex items-center justify-between text-xs">
+                        <span className="text-gray-400">
+                          {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </span>
+                        <span className="font-medium text-green-600">
+                          {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
+                          {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2 pt-1 border-t border-gray-100 mt-1">
+                    {c.status === 'pendente' && (
+                      <button
+                        onClick={() => abrirModalPagamento(c)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
+                        style={{ backgroundColor: cor }}>
+                        <Check size={14} />
+                        {isCredito ? 'Registrar devolução' : 'Registrar pagamento'}
+                      </button>
+                    )}
+                    <button onClick={() => excluir(c.id)}
+                      className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
+                      <X size={14} />Excluir
                     </button>
-                  )}
-                  <button onClick={() => excluir(c.id)}
-                    className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
-                    <X size={14} />Excluir
-                  </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -337,9 +387,9 @@ export default function ContasPage() {
               {modalPagamento.tipo === 'credito' ? 'Registrar devolução' : 'Registrar pagamento'}
             </h3>
             <p className="text-sm text-gray-500">
-              {modalPagamento.clientes?.nome} — total R$ {Number(modalPagamento.valor).toFixed(2).replace('.', ',')}
+              {modalPagamento.clientes?.nome} — total {fmt(modalPagamento.valor)}
               {Number(modalPagamento.valor_pago || 0) > 0 && (
-                <> · já pago R$ {Number(modalPagamento.valor_pago).toFixed(2).replace('.', ',')}</>
+                <> · já pago {fmt(modalPagamento.valor_pago)}</>
               )}
             </p>
 
