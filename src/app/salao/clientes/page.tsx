@@ -59,7 +59,12 @@ export default function ClientesPage() {
 
   async function aprovarCliente(cliente: any) {
     setAprovando(cliente.id)
-    await supabase.from('profiles').update({ aprovado: true }).eq('id', cliente.profile_id)
+    const { error } = await supabase.from('profiles').update({ aprovado: true }).eq('id', cliente.profile_id)
+    if (error) {
+      alert('Erro ao aprovar: ' + error.message)
+      setAprovando(null)
+      return
+    }
     await supabase.from('notificacoes').insert({
       salao_id: profile!.salao_id,
       remetente_id: profile!.id,
@@ -74,7 +79,12 @@ export default function ClientesPage() {
 
   async function rejeitarCliente(cliente: any) {
     setAprovando(cliente.id)
-    await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', cliente.profile_id)
+    const { error } = await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', cliente.profile_id)
+    if (error) {
+      alert('Erro ao recusar: ' + error.message)
+      setAprovando(null)
+      return
+    }
     await supabase.from('clientes').update({ profile_id: null }).eq('id', cliente.id)
     setAprovando(null)
     carregarDados()
