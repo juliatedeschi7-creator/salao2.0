@@ -115,9 +115,9 @@ export default function PacotesClientesPage() {
 
     const { error: errSess } = await supabase.from('sessoes_pacote').insert({
       cliente_pacote_id: modalSessao.id,
-      data_sessao: new Date(sessaoData + 'T12:00:00').toISOString(),
+      data_sessao: sessaoData,
       servico_realizado: sessaoDescricao.trim(),
-      registrado_por: profile!.id
+      profissional_id: profile!.id
     })
     if (errSess) {
       setErroSessao('Erro ao salvar sessão: ' + errSess.message)
@@ -219,8 +219,9 @@ export default function PacotesClientesPage() {
       const { error: errSess } = await supabase.from('sessoes_pacote').insert(
         sessoesAntigo.map(s => ({
           cliente_pacote_id: novo.id,
-          data_sessao: new Date(s.data + 'T12:00:00').toISOString(),
+          data_sessao: s.data,
           servico_realizado: s.descricao,
+          profissional_id: profile!.id,
         }))
       )
       if (errSess) {
@@ -293,7 +294,7 @@ export default function PacotesClientesPage() {
                     <p className="text-xs font-medium text-gray-500 mb-2">Historico de sessoes</p>
                     {sessoesDoPacote.map(s => (
                       <div key={s.id} className="flex items-center justify-between text-xs text-gray-500 py-1 gap-2">
-                        <span className="shrink-0">{new Date(s.data_sessao).toLocaleDateString('pt-BR')}</span>
+                        <span className="shrink-0">{new Date(s.data_sessao + 'T12:00:00').toLocaleDateString('pt-BR')}</span>
                         <span className="flex-1 truncate">{s.servico_realizado}</span>
                         <button onClick={() => removerSessaoRegistrada(p, s)} className="shrink-0">
                           <X size={12} className="text-gray-300" />
