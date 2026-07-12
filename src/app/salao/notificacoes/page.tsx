@@ -195,6 +195,38 @@ export default function NotificacoesDonoPage() {
     carregarDados()
   }
 
+async function removerHorarioIndividual(solicitacao: any, horarioRemover: string) {
+  const novosHorarios = solicitacao.horarios_sugeridos.filter((h: string) => h !== horarioRemover)
+
+  if (novosHorarios.length === 0) {
+    // Se removeu o último, volta para pendente
+    await cancelarSugestao(solicitacao)
+    return
+  }
+
+  await supabase.from('solicitacoes_agendamento').update({
+    horarios_sugeridos: novosHorarios
+  }).eq('id', solicitacao.id)
+
+  // Avisa a cliente que um horário saiu mas ainda tem outros
+  const { data: clienteProfile } = await supabase.from('clientes')
+    .select('profile_id').eq('id', solicitacao.cliente_id).single()
+
+  if (clienteProfile?.profile_id) {
+    await supabase.from('notificacoes').insert({
+      salao_id: profile!.salao_id,
+      remetente_id: profile!.id,
+      destinatario_id: clienteProfile.profile_id,
+      titulo: '⚠️ Um horário foi removido',
+      mensagem: `Um dos horários sugeridos para ${solicitacao.servicos?.nome} não está mais disponível. Os outros ainda estão disponíveis para você escolher!`,
+      tipo: 'horario_sugerido',
+      referencia_id: solicitacao.id
+    })
+  }
+
+  carregarDados()
+}
+
   async function restaurarNotificacao(id: string) {
     await supabase.from('notificacoes').update({ excluida: false }).eq('id', id)
     carregarDados()
@@ -259,16 +291,22 @@ export default function NotificacoesDonoPage() {
                 </span>
               </div>
 
-              {s.status === 'horario_sugerido' && s.horarios_sugeridos && (
-                <div className="bg-blue-50 rounded-xl p-3">
-                  <p className="text-xs font-medium text-blue-700 mb-1">Horários sugeridos:</p>
-                  {s.horarios_sugeridos.map((h: string, i: number) => (
-                    <p key={i} className="text-xs text-blue-600">
-                      {new Date(h).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  ))}
-                </div>
-              )}
+{s.status === 'horario_sugerido' && s.horarios_sugeridos && (
+  <div className="bg-blue-50 rounded-xl p-3 flex flex-col gap-2">
+    <p className="text-xs font-medium text-blue-700">Horários sugeridos — toque no ✕ para remover um:</p>
+    {s.horarios_sugeridos.map((h: string, i: number) => (
+      <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
+        <p className="text-xs text-blue-600 font-medium">
+          {new Date(h).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+        </p>
+        <button onClick={() => removerHorarioIndividual(s, h)}
+          className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center ml-2 shrink-0">
+          <X size={12} className="text-red-500" />
+        </button>
+      </div>
+    ))}
+  </div>
+)}
 
               <div className="flex gap-2 flex-wrap">
                 {s.status === 'pendente' && (
