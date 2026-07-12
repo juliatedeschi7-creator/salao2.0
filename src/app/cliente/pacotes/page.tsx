@@ -201,7 +201,7 @@ export default function MeusPacotesPage() {
                       {historico.map(s => (
                         <div key={s.id} className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2">
                           <span className="shrink-0 font-medium text-gray-600">
-                            {new Date(s.data_sessao).toLocaleDateString('pt-BR')}
+                            {new Date(s.data_sessao + 'T12:00:00').toLocaleDateString('pt-BR')}
                           </span>
                           <span className="flex-1 text-right truncate ml-2">{s.servico_realizado}</span>
                         </div>
