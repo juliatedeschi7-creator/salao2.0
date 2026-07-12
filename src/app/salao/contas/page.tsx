@@ -58,7 +58,7 @@ export default function ContasPage() {
       descricao: form.descricao,
       valor: parseFloat(form.valor),
       valor_pago: 0,
-      status: 'aberta',
+      status: 'pendente',
       tipo: form.tipo
     })
     if (error) { setErro('Erro ao salvar: ' + error.message); setSalvando(false); return }
@@ -71,7 +71,7 @@ export default function ContasPage() {
     setSalvando(true)
     await supabase.from('contas_clientes').update({
       valor_pago: conta.valor,
-      status: 'paga',
+      status: 'pago',
       meio_pagamento: formPagamento.meio_pagamento,
       data_pagamento: formPagamento.data_pagamento
     }).eq('id', conta.id)
@@ -88,17 +88,17 @@ export default function ContasPage() {
   const cor = salao?.cor_primaria || '#E91E8C'
 
   const filtradas = contas.filter(c => {
-    if (filtro === 'abertas') return c.status === 'aberta'
-    if (filtro === 'pagas') return c.status === 'paga'
+    if (filtro === 'abertas') return c.status === 'pendente'
+    if (filtro === 'pagas') return c.status === 'pago'
     return true
   })
 
   const totalDebitoAberto = contas
-    .filter(c => c.status === 'aberta' && c.tipo !== 'credito')
+    .filter(c => c.status === 'pendente' && c.tipo !== 'credito')
     .reduce((acc, c) => acc + (c.valor - c.valor_pago), 0)
 
   const totalCreditoAberto = contas
-    .filter(c => c.status === 'aberta' && c.tipo === 'credito')
+    .filter(c => c.status === 'pendente' && c.tipo === 'credito')
     .reduce((acc, c) => acc + (c.valor - c.valor_pago), 0)
 
   const meioPagamentoLabel: Record<string, string> = {
@@ -191,12 +191,12 @@ export default function ContasPage() {
                   {isCredito ? '+' : '-'} R$ {Number(c.valor).toFixed(2).replace('.', ',')}
                 </p>
                 <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
-                  (c.status === 'paga' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
-                  {c.status === 'paga' ? 'Quitada' : 'Em aberto'}
+                  (c.status === 'pago' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
+                  {c.status === 'pago' ? 'Quitada' : 'Em aberto'}
                 </span>
               </div>
 
-              {c.status === 'paga' && (
+              {c.status === 'pago' && (
                 <div className="text-xs text-gray-400 flex gap-3">
                   {c.meio_pagamento && <span>💳 {meioPagamentoLabel[c.meio_pagamento] || c.meio_pagamento}</span>}
                   {c.data_pagamento && <span>📅 {new Date(c.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
@@ -205,7 +205,7 @@ export default function ContasPage() {
 
               {expandido === c.id && (
                 <div className="flex gap-2 pt-1 border-t border-gray-100">
-                  {c.status === 'aberta' && (
+                  {c.status === 'pendente' && (
                     <button
                       onClick={() => {
                         setModalPagamento(c)
