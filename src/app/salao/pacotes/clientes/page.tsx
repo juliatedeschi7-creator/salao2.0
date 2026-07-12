@@ -36,6 +36,12 @@ export default function PacotesClientesPage() {
   const [novaSessaoData, setNovaSessaoData] = useState(hojeISO())
   const [novaSessaoDescricao, setNovaSessaoDescricao] = useState('')
 
+  // Adicionar sessão a um pacote já existente
+  const [modalSessao, setModalSessao] = useState<any>(null)
+  const [sessaoData, setSessaoData] = useState(hojeISO())
+  const [sessaoDescricao, setSessaoDescricao] = useState('')
+  const [erroSessao, setErroSessao] = useState('')
+
   useEffect(() => {
     if (loading) return
     if (!profile) return
@@ -93,6 +99,61 @@ export default function PacotesClientesPage() {
 
   function removerSessaoAntiga(i: number) {
     setSessoesAntigo(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  function abrirModalSessao(pacote: any) {
+    setModalSessao(pacote)
+    setSessaoData(hojeISO())
+    setSessaoDescricao('')
+    setErroSessao('')
+  }
+
+  async function adicionarSessaoAoPacote() {
+    if (!modalSessao || !sessaoData || !sessaoDescricao.trim()) return
+    setSalvando(true)
+    setErroSessao('')
+
+    const { error: errSess } = await supabase.from('sessoes_pacote').insert({
+      cliente_pacote_id: modalSessao.id,
+      data_sessao: new Date(sessaoData + 'T12:00:00').toISOString(),
+      servico_realizado: sessaoDescricao.trim(),
+      registrado_por: profile!.id
+    })
+    if (errSess) {
+      setErroSessao('Erro ao salvar sessão: ' + errSess.message)
+      setSalvando(false)
+      return
+    }
+
+    const novasUsadas = modalSessao.sessoes_usadas + 1
+    const novoStatus = novasUsadas >= modalSessao.sessoes_total ? 'concluido' : 'ativo'
+    const { error: errUp } = await supabase.from('cliente_pacotes')
+      .update({ sessoes_usadas: novasUsadas, status: novoStatus })
+      .eq('id', modalSessao.id)
+    if (errUp) {
+      setErroSessao('Sessão salva, mas houve erro ao atualizar o contador: ' + errUp.message)
+      setSalvando(false)
+      return
+    }
+
+    setModalSessao(null)
+    setSalvando(false)
+    selecionarCliente(clienteSelecionado)
+  }
+
+  async function removerSessaoRegistrada(pacote: any, sessao: any) {
+    if (!confirm('Remover essa sessão do histórico? Isso vai devolver uma sessão para o pacote.')) return
+    const { error: errDel } = await supabase.from('sessoes_pacote').delete().eq('id', sessao.id)
+    if (errDel) { alert('Erro ao remover: ' + errDel.message); return }
+
+    const novasUsadas = Math.max(0, pacote.sessoes_usadas - 1)
+    const novoStatus = novasUsadas >= pacote.sessoes_total ? 'concluido' : 'ativo'
+    const { error: errUp } = await supabase.from('cliente_pacotes')
+      .update({ sessoes_usadas: novasUsadas, status: novoStatus })
+      .eq('id', pacote.id)
+    if (errUp) { alert('Sessão removida, mas houve erro ao atualizar o contador: ' + errUp.message) }
+
+    selecionarCliente(clienteSelecionado)
   }
 
   async function venderPacote() {
@@ -209,6 +270,7 @@ export default function PacotesClientesPage() {
           ) : pacotesCliente.map(p => {
             const progresso = p.sessoes_total > 0 ? (p.sessoes_usadas / p.sessoes_total) * 100 : 0
             const sessoesDoPacote = sessoes.filter(s => s.cliente_pacote_id === p.id)
+            const podeAdicionar = p.sessoes_usadas < p.sessoes_total
             return (
               <div key={p.id} className="card flex flex-col gap-3">
                 <div className="flex items-start justify-between">
@@ -225,17 +287,30 @@ export default function PacotesClientesPage() {
                   </div>
                   <div className="h-2 bg-gray-100 rounded-full"><div className="h-2 rounded-full" style={{ width: progresso + '%', backgroundColor: cor }} /></div>
                 </div>
+
                 {sessoesDoPacote.length > 0 && (
                   <div className="border-t border-gray-100 pt-2">
                     <p className="text-xs font-medium text-gray-500 mb-2">Historico de sessoes</p>
                     {sessoesDoPacote.map(s => (
-                      <div key={s.id} className="flex justify-between text-xs text-gray-500 py-1">
-                        <span>{new Date(s.data_sessao).toLocaleDateString('pt-BR')}</span>
-                        <span>{s.servico_realizado}</span>
+                      <div key={s.id} className="flex items-center justify-between text-xs text-gray-500 py-1 gap-2">
+                        <span className="shrink-0">{new Date(s.data_sessao).toLocaleDateString('pt-BR')}</span>
+                        <span className="flex-1 truncate">{s.servico_realizado}</span>
+                        <button onClick={() => removerSessaoRegistrada(p, s)} className="shrink-0">
+                          <X size={12} className="text-gray-300" />
+                        </button>
                       </div>
                     ))}
                   </div>
                 )}
+
+                {podeAdicionar && (
+                  <button onClick={() => abrirModalSessao(p)}
+                    className="flex items-center justify-center gap-1.5 py-2 rounded-xl border-2 text-xs font-semibold"
+                    style={{ borderColor: cor, color: cor }}>
+                    <Plus size={13} />Adicionar sessão realizada
+                  </button>
+                )}
+
                 <p className="text-xs text-gray-400">Vendido por: {p.profiles?.nome || 'Nao informado'}</p>
                 {p.pacotes?.regras && (
                   <div className={'flex items-center gap-2 px-3 py-2 rounded-xl ' + (p.regras_confirmadas ? 'bg-green-50' : 'bg-yellow-50')}>
@@ -371,6 +446,42 @@ export default function PacotesClientesPage() {
               <div className="flex gap-3">
                 <button onClick={() => setModalAntigo(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
                 <button onClick={cadastrarAntigo} disabled={salvando || !formAntigo.nome} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>{salvando ? '...' : 'Cadastrar'}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Adicionar sessão a um pacote já existente */}
+        {modalSessao && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+            <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+              <h3 className="font-bold text-gray-900 text-lg">Adicionar sessão realizada</h3>
+              <p className="text-sm text-gray-500">{modalSessao.pacotes?.nome || modalSessao.observacoes || 'Pacote'}</p>
+
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">Data</label>
+                <input type="date" className="input-field" value={sessaoData}
+                  onChange={e => setSessaoData(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-1 block">O que foi feito</label>
+                <input className="input-field" placeholder="Ex: Manicure + Pedicure"
+                  value={sessaoDescricao} onChange={e => setSessaoDescricao(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && adicionarSessaoAoPacote()} />
+              </div>
+
+              {erroSessao && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <p className="text-red-600 text-sm">{erroSessao}</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={() => setModalSessao(null)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+                <button onClick={adicionarSessaoAoPacote} disabled={salvando || !sessaoDescricao.trim()}
+                  className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-50" style={{ backgroundColor: cor }}>
+                  {salvando ? '...' : 'Salvar'}
+                </button>
               </div>
             </div>
           </div>
