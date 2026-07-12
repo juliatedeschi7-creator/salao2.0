@@ -19,7 +19,7 @@ export default function ContasPage() {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [form, setForm] = useState({
-    cliente_id: '', descricao: '', valor_total: '', tipo: 'debito'
+    cliente_id: '', descricao: '', valor: '', tipo: 'debito'
   })
   const [formPagamento, setFormPagamento] = useState({
     meio_pagamento: 'pix',
@@ -47,7 +47,7 @@ export default function ContasPage() {
 
   async function salvar() {
     setErro('')
-    if (!form.cliente_id || !form.valor_total || !form.descricao) {
+    if (!form.cliente_id || !form.valor || !form.descricao) {
       setErro('Preencha todos os campos.')
       return
     }
@@ -56,21 +56,21 @@ export default function ContasPage() {
       salao_id: profile!.salao_id,
       cliente_id: form.cliente_id,
       descricao: form.descricao,
-      valor_total: parseFloat(form.valor_total),
+      valor: parseFloat(form.valor),
       valor_pago: 0,
       status: 'aberta',
       tipo: form.tipo
     })
     if (error) { setErro('Erro ao salvar: ' + error.message); setSalvando(false); return }
     setModal(false); setSalvando(false)
-    setForm({ cliente_id: '', descricao: '', valor_total: '', tipo: 'debito' })
+    setForm({ cliente_id: '', descricao: '', valor: '', tipo: 'debito' })
     carregarDados()
   }
 
   async function registrarPagamento(conta: any) {
     setSalvando(true)
     await supabase.from('contas_clientes').update({
-      valor_pago: conta.valor_total,
+      valor_pago: conta.valor,
       status: 'paga',
       meio_pagamento: formPagamento.meio_pagamento,
       data_pagamento: formPagamento.data_pagamento
@@ -95,11 +95,11 @@ export default function ContasPage() {
 
   const totalDebitoAberto = contas
     .filter(c => c.status === 'aberta' && c.tipo !== 'credito')
-    .reduce((acc, c) => acc + (c.valor_total - c.valor_pago), 0)
+    .reduce((acc, c) => acc + (c.valor - c.valor_pago), 0)
 
   const totalCreditoAberto = contas
     .filter(c => c.status === 'aberta' && c.tipo === 'credito')
-    .reduce((acc, c) => acc + (c.valor_total - c.valor_pago), 0)
+    .reduce((acc, c) => acc + (c.valor - c.valor_pago), 0)
 
   const meioPagamentoLabel: Record<string, string> = {
     pix: 'Pix', dinheiro: 'Dinheiro',
@@ -188,7 +188,7 @@ export default function ContasPage() {
 
               <div className="flex items-center justify-between">
                 <p className={'font-bold text-lg ' + (isCredito ? 'text-green-600' : 'text-red-500')}>
-                  {isCredito ? '+' : '-'} R$ {Number(c.valor_total).toFixed(2).replace('.', ',')}
+                  {isCredito ? '+' : '-'} R$ {Number(c.valor).toFixed(2).replace('.', ',')}
                 </p>
                 <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
                   (c.status === 'paga' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
@@ -278,8 +278,8 @@ export default function ContasPage() {
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Valor (R$)</label>
               <input className="input-field" type="number" placeholder="0,00"
-                value={form.valor_total}
-                onChange={e => setForm(p => ({ ...p, valor_total: e.target.value }))} />
+                value={form.valor}
+                onChange={e => setForm(p => ({ ...p, valor: e.target.value }))} />
             </div>
 
             <div className="flex gap-3">
@@ -304,7 +304,7 @@ export default function ContasPage() {
               {modalPagamento.tipo === 'credito' ? 'Registrar devolução' : 'Registrar pagamento'}
             </h3>
             <p className="text-sm text-gray-500">
-              {modalPagamento.clientes?.nome} — R$ {Number(modalPagamento.valor_total).toFixed(2).replace('.', ',')}
+              {modalPagamento.clientes?.nome} — R$ {Number(modalPagamento.valor).toFixed(2).replace('.', ',')}
             </p>
 
             <div>
