@@ -5,6 +5,13 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, DollarSign, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 
+const meioPagamentoLabel: Record<string, string> = {
+  pix: 'Pix', dinheiro: 'Dinheiro',
+  cartao_credito: 'Cartão de crédito',
+  cartao_debito: 'Cartão de débito',
+  transferencia: 'Transferência'
+}
+
 export default function ContaClientePage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
@@ -21,7 +28,6 @@ export default function ContaClientePage() {
   async function carregar() {
     setCarregando(true)
 
-    // Busca o cliente pelo profile_id (correto)
     const { data: cli } = await supabase
       .from('clientes')
       .select('*, saloes(*)')
@@ -32,7 +38,6 @@ export default function ContaClientePage() {
     setCliente(cli)
     setSalao(cli.saloes)
 
-    // Busca contas da tabela correta
     const { data: cnts } = await supabase
       .from('contas_clientes')
       .select('*')
@@ -44,18 +49,17 @@ export default function ContaClientePage() {
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const corSec = salao?.cor_secundaria || '#FCE4F3'
   const fmt = (v: number) => `R$ ${Number(v).toFixed(2).replace('.', ',')}`
 
   const filtradas = contas.filter(c =>
     filtro === 'todas' ? true :
-    filtro === 'abertas' ? c.status === 'aberta' :
-    c.status === 'paga'
+    filtro === 'abertas' ? c.status === 'pendente' :
+    c.status === 'pago'
   )
 
   const totalAberto = contas
-    .filter(c => c.status === 'aberta')
-    .reduce((acc, c) => acc + (c.valor_total - c.valor_pago), 0)
+    .filter(c => c.status === 'pendente')
+    .reduce((acc, c) => acc + (c.valor - (c.valor_pago || 0)), 0)
 
   const totalPago = contas
     .reduce((acc, c) => acc + (c.valor_pago || 0), 0)
@@ -132,20 +136,29 @@ export default function ContaClientePage() {
             </p>
           </div>
         ) : filtradas.map(c => {
-          const saldo = c.valor_total - c.valor_pago
-          const progresso = c.valor_total > 0 ? (c.valor_pago / c.valor_total) * 100 : 0
-          const paga = c.status === 'paga'
+          const valorPago = Number(c.valor_pago || 0)
+          const saldo = Number(c.valor) - valorPago
+          const progresso = c.valor > 0 ? (valorPago / c.valor) * 100 : 0
+          const paga = c.status === 'pago'
+          const isCredito = c.tipo === 'credito'
 
           return (
             <div key={c.id} className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-3">
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-gray-900">{c.descricao}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {new Date(c.created_at).toLocaleDateString('pt-BR', {
-                      day: '2-digit', month: 'long', year: 'numeric'
-                    })}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-xs text-gray-400">
+                      {new Date(c.created_at).toLocaleDateString('pt-BR', {
+                        day: '2-digit', month: 'long', year: 'numeric'
+                      })}
+                    </p>
+                    {isCredito && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">
+                        Crédito
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <span className={'text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ml-2 flex items-center gap-1 ' +
                   (paga ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500')}>
@@ -158,8 +171,8 @@ export default function ContaClientePage() {
               {/* Barra de progresso */}
               <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                  <span>Pago: {fmt(c.valor_pago)}</span>
-                  <span>Total: {fmt(c.valor_total)}</span>
+                  <span>Pago: {fmt(valorPago)}</span>
+                  <span>Total: {fmt(c.valor)}</span>
                 </div>
                 <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                   <div className="h-full rounded-full transition-all"
@@ -170,9 +183,6 @@ export default function ContaClientePage() {
               {!paga && (
                 <div className="flex items-center justify-between pt-1">
                   <p className="text-sm font-bold text-red-500">Falta: {fmt(saldo)}</p>
-                  {c.parcelas > 1 && (
-                    <span className="text-xs text-gray-400">{c.parcelas}x parcelas</span>
-                  )}
                 </div>
               )}
 
@@ -181,7 +191,7 @@ export default function ContaClientePage() {
                   <Clock size={11} />
                   <span>
                     Último pagamento: {new Date(c.ultimo_pagamento).toLocaleDateString('pt-BR')}
-                    {c.forma_pagamento && ` via ${c.forma_pagamento}`}
+                    {c.meio_pagamento && ` via ${meioPagamentoLabel[c.meio_pagamento] || c.meio_pagamento}`}
                   </span>
                 </div>
               )}
