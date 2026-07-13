@@ -16,6 +16,7 @@ type Grupo = {
   depoisId?: string
   agendamento_id?: string
   cliente_pacote_id?: string
+  visivel_cliente?: boolean
 }
 
 export default function ClientePerfilPage() {
