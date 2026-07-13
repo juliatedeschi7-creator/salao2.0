@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Search, ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, XCircle, Edit2, Trash2 } from 'lucide-react'
+import { ArrowLeft, Plus, Clock, CheckCircle, AlertCircle, XCircle, Edit2, Trash2, Gift } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import { Home, Calendar, Users, BarChart2, Settings } from 'lucide-react'
 
@@ -15,6 +15,7 @@ interface Agendamento {
   status: string
   valor: number
   cliente_id: string
+  servico_id: string
   clientes: { nome: string; profile_id: string }
   servicos: { nome: string; categoria: string }
   profiles: { nome: string }
@@ -25,6 +26,12 @@ interface HorarioDisponivel {
   data_hora: string
   duracao_minutos: number
   ocupado: boolean
+}
+
+interface Pacote {
+  id: string
+  nome: string
+  sessoes_restantes: number
 }
 
 export default function AgendaPage() {
@@ -41,6 +48,13 @@ export default function AgendaPage() {
   const [modalCancelamento, setModalCancelamento] = useState(false)
   const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<Agendamento | null>(null)
   const [cancelando, setCancelando] = useState(false)
+
+  // Estados para modal de pacote
+  const [modalPacote, setModalPacote] = useState(false)
+  const [agendamentoConcluindo, setAgendamentoConcluindo] = useState<Agendamento | null>(null)
+  const [pacotesDisponiveis, setPacotesDisponiveis] = useState<Pacote[]>([])
+  const [opcaoPacote, setOpcaoPacote] = useState<'pacote' | 'individual' | null>(null)
+  const [conclusao, setConlusao] = useState(false)
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
@@ -93,6 +107,88 @@ export default function AgendaPage() {
     setModalDisponivel(false)
     setNovoHorario('')
     carregarDados()
+  }
+
+  async function verificarPacotes(agendamento: Agendamento) {
+    // Buscar pacotes ativos do cliente para este serviço
+    const { data: pacotes } = await supabase
+      .from('pacotes_cliente')
+      .select('id, nome, sessoes_restantes')
+      .eq('cliente_id', agendamento.cliente_id)
+      .eq('servico_id', agendamento.servico_id)
+      .eq('ativo', true)
+      .gt('sessoes_restantes', 0)
+
+    return pacotes || []
+  }
+
+  async function marcarComoConcluido(agendamento: Agendamento) {
+    setAgendamentoConcluindo(agendamento)
+    
+    // Verificar se tem pacotes disponíveis
+    const pacotes = await verificarPacotes(agendamento)
+    setPacotesDisponiveis(pacotes)
+    
+    if (pacotes.length > 0) {
+      // Se tem pacotes, abre modal para perguntar
+      setModalPacote(true)
+      setOpcaoPacote(null)
+    } else {
+      // Se não tem pacotes, marca como concluído direto
+      await finalizarAtendimento(agendamento, 'individual')
+    }
+  }
+
+  async function finalizarAtendimento(agendamento: Agendamento, tipo: 'pacote' | 'individual') {
+    setConlusao(true)
+
+    try {
+      // Atualizar status do agendamento
+      await supabase
+        .from('agendamentos')
+        .update({ 
+          status: 'concluido', 
+          confirmado_por: profile?.id,
+          tipo_sessao: tipo // Registrar se foi pacote ou individual
+        })
+        .eq('id', agendamento.id)
+
+      // Se foi do pacote, descontar a sessão
+      if (tipo === 'pacote' && pacotesDisponiveis.length > 0) {
+        const pacote = pacotesDisponiveis[0]
+        const novasSessoes = pacote.sessoes_restantes - 1
+
+        await supabase
+          .from('pacotes_cliente')
+          .update({ 
+            sessoes_restantes: novasSessoes,
+            ultima_sessao_em: new Date().toISOString()
+          })
+          .eq('id', pacote.id)
+
+        // Registrar no histórico
+        await supabase
+          .from('historico_pacotes')
+          .insert({
+            pacote_id: pacote.id,
+            cliente_id: agendamento.cliente_id,
+            acao: 'sessao_utilizada',
+            sessoes_anteriores: pacote.sessoes_restantes,
+            sessoes_atuais: novasSessoes,
+            descricao: `Sessão utilizada: ${agendamento.servicos.nome}`,
+            registrado_por: profile?.id
+          })
+      }
+
+      setConlusao(false)
+      setModalPacote(false)
+      setAgendamentoConcluindo(null)
+      setOpcaoPacote(null)
+      carregarDados()
+    } catch (error) {
+      console.error('Erro ao finalizar atendimento:', error)
+      setConlusao(false)
+    }
   }
 
   async function alterarStatus(id: string, status: string) {
@@ -292,7 +388,7 @@ export default function AgendaPage() {
                   </div>
                 )}
                 {ag.status === 'confirmado' && (
-                  <button onClick={() => alterarStatus(ag.id, 'concluido')}
+                  <button onClick={() => marcarComoConcluido(ag)}
                     className="w-full py-2 rounded-xl text-sm font-medium text-white"
                     style={{ backgroundColor: cor }}>
                     ✓ Marcar como Concluído
@@ -371,6 +467,77 @@ export default function AgendaPage() {
                 Não, voltar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Pacote */}
+      {modalPacote && agendamentoConcluindo && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${cor}20` }}>
+                <Gift size={24} style={{ color: cor }} />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Cliente tem pacote!</h3>
+                <p className="text-sm text-gray-500">{agendamentoConcluindo.clientes?.nome}</p>
+              </div>
+            </div>
+
+            <p className="text-gray-600 text-sm mb-4">
+              {agendamentoConcluindo.clientes?.nome} possui pacote(s) disponível para {agendamentoConcluindo.servicos?.nome}. Como deseja registrar esta sessão?
+            </p>
+
+            <div className="space-y-3">
+              {pacotesDisponiveis.map(pacote => (
+                <button
+                  key={pacote.id}
+                  onClick={() => {
+                    setOpcaoPacote('pacote')
+                    finalizarAtendimento(agendamentoConcluindo, 'pacote')
+                  }}
+                  disabled={conclusao}
+                  className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
+                    opcaoPacote === 'pacote'
+                      ? 'border-green-500 bg-green-50'
+                      : 'border-gray-200 hover:border-green-200'
+                  }`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-semibold text-gray-900">{pacote.nome}</p>
+                      <p className="text-sm text-gray-500">{pacote.sessoes_restantes} sessão(ns) restante(s)</p>
+                    </div>
+                    <Gift size={18} className="text-green-600" />
+                  </div>
+                </button>
+              ))}
+
+              <button
+                onClick={() => {
+                  setOpcaoPacote('individual')
+                  finalizarAtendimento(agendamentoConcluindo, 'individual')
+                }}
+                disabled={conclusao}
+                className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
+                  opcaoPacote === 'individual'
+                    ? 'border-blue-500 bg-blue-50'
+                    : 'border-gray-200 hover:border-blue-200'
+                }`}>
+                <p className="font-semibold text-gray-900">Cobrar à parte (sem pacote)</p>
+                <p className="text-sm text-gray-500">Registrar como sessão individual</p>
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                setModalPacote(false)
+                setAgendamentoConcluindo(null)
+                setOpcaoPacote(null)
+              }}
+              className="w-full mt-4 py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl hover:bg-gray-200 transition-colors">
+              Cancelar
+            </button>
           </div>
         </div>
       )}
