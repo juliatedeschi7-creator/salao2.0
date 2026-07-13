@@ -169,12 +169,13 @@ export default function ClientePerfilPage() {
     carregarEvolucoes()
   }
 
-  async function alternarVisibilidade(g: Grupo) {
-    const ids = [g.antesId, g.depoisId].filter(Boolean)
-    const novoValor = !(g.antes || g.depois)
-    await supabase.from('evolucoes').update({ visivel_cliente: novoValor }).in('id', ids)
-    carregarEvolucoes()
-  }
+async function alternarVisibilidade(g: Grupo) {
+  await supabase
+    .from('evolucao_registros')
+    .update({ visivel_cliente: !g.visivel_cliente })
+    .eq('id', g.grupo_id)
+  carregarDados()
+}
 
   const cor = salao?.cor_primaria || '#E91E8C'
 
