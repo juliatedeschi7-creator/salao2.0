@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Search, ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, Plus, Search, ChevronLeft, ChevronRight, Clock, CheckCircle, AlertCircle, XCircle, Edit2, Trash2 } from 'lucide-react'
 import BottomNav from '@/components/BottomNav'
 import { Home, Calendar, Users, BarChart2, Settings } from 'lucide-react'
 
@@ -37,6 +37,9 @@ export default function AgendaPage() {
   const [modalDisponivel, setModalDisponivel] = useState(false)
   const [novoHorario, setNovoHorario] = useState('')
   const [novaDuracao, setNovaDuracao] = useState(60)
+  const [modalCancelamento, setModalCancelamento] = useState(false)
+  const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<string | null>(null)
+  const [cancelando, setCancelando] = useState(false)
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
@@ -93,6 +96,31 @@ export default function AgendaPage() {
 
   async function alterarStatus(id: string, status: string) {
     await supabase.from('agendamentos').update({ status, confirmado_por: profile?.id }).eq('id', id)
+    carregarDados()
+  }
+
+  async function cancelarAgendamento(id: string) {
+    setCancelando(true)
+    
+    const agendamento = agendamentos.find(ag => ag.id === id)
+    
+    await supabase.from('agendamentos').delete().eq('id', id)
+    
+    // Notificar cliente
+    if (agendamento?.clientes) {
+      await supabase.from('notificacoes').insert({
+        salao_id: profile!.salao_id,
+        remetente_id: profile!.id,
+        destinatario_id: agendamento.clientes?.profile_id,
+        titulo: '❌ Agendamento cancelado',
+        mensagem: `Seu agendamento foi cancelado.`,
+        tipo: 'lembrete'
+      })
+    }
+    
+    setCancelando(false)
+    setModalCancelamento(false)
+    setAgendamentoParaCancelar(null)
     carregarDados()
   }
 
@@ -216,7 +244,7 @@ export default function AgendaPage() {
             return (
               <div key={ag.id} className="card flex flex-col gap-3">
                 <div className="flex items-start justify-between">
-                  <div>
+                  <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
                       <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${st.cor}`}>
@@ -233,6 +261,21 @@ export default function AgendaPage() {
                         R$ {ag.valor.toFixed(2).replace('.', ',')}
                       </p>
                     )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => router.push(`/salao/agenda/editar/${ag.id}`)}
+                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
+                      <Edit2 size={16} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setAgendamentoParaCancelar(ag.id)
+                        setModalCancelamento(true)
+                      }}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
 
@@ -293,6 +336,40 @@ export default function AgendaPage() {
                 className="flex-1 py-3 rounded-2xl text-white font-medium"
                 style={{ backgroundColor: cor }}>
                 Liberar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cancelamento */}
+      {modalCancelamento && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                <AlertCircle size={24} className="text-red-500" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900">Cancelar agendamento?</h3>
+                <p className="text-sm text-gray-500">Esta ação não pode ser desfeita</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <button
+                onClick={() => agendamentoParaCancelar && cancelarAgendamento(agendamentoParaCancelar)}
+                disabled={cancelando}
+                className="w-full py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50">
+                {cancelando ? 'Cancelando...' : 'Sim, cancelar agendamento'}
+              </button>
+              <button
+                onClick={() => {
+                  setModalCancelamento(false)
+                  setAgendamentoParaCancelar(null)
+                }}
+                className="w-full py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl hover:bg-gray-200 transition-colors">
+                Não, voltar
               </button>
             </div>
           </div>
