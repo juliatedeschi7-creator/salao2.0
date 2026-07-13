@@ -47,10 +47,10 @@ export default function EditarAgendamentoPage() {
   }, [loading])
 
   useEffect(() => {
-    if (clientes.length > 0) {
+    if (clientes.length > 0 && servicos.length > 0 && profissionais.length > 0) {
       carregarAgendamento()
     }
-  }, [clientes])
+  }, [clientes, servicos, profissionais])
 
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*')
@@ -152,62 +152,76 @@ export default function EditarAgendamentoPage() {
     setSalvando(true)
     setErro('')
 
-    const dataHora = new Date(`${data}T${hora}:00`)
-    const primeiroServico = servicosSelecionados[0]
+    try {
+      const dataHora = new Date(`${data}T${hora}:00`)
+      const primeiroServico = servicosSelecionados[0]
 
-    const { error } = await supabase.from('agendamentos')
-      .update({
-        cliente_id: clienteSelecionado.id,
-        servico_id: primeiroServico,
-        servicos_ids: servicosSelecionados,
-        profissional_id: profissionaisSelecionados[0],
-        profissionais_ids: profissionaisSelecionados,
-        data_hora: dataHora.toISOString(),
-        duracao_minutos: duracaoTotal,
-        duracao_total_minutos: duracaoTotal,
-        valor: precoTotal,
-        observacoes: observacoes || null,
-        horario_fixo: horarioFixo,
-      })
-      .eq('id', agendamentoId)
+      const { error } = await supabase.from('agendamentos')
+        .update({
+          cliente_id: clienteSelecionado.id,
+          servico_id: primeiroServico,
+          servicos_ids: servicosSelecionados,
+          profissional_id: profissionaisSelecionados[0],
+          profissionais_ids: profissionaisSelecionados,
+          data_hora: dataHora.toISOString(),
+          duracao_minutos: duracaoTotal,
+          observacoes: observacoes || null,
+          horario_fixo: horarioFixo,
+        })
+        .eq('id', agendamentoId)
 
-    if (error) {
+      if (error) {
+        console.error('Erro Supabase:', error)
+        setErro(`Erro ao atualizar: ${error.message}`)
+        setSalvando(false)
+        return
+      }
+
+      setSucesso(true)
+      setSalvando(false)
+      setTimeout(() => router.push('/salao/agenda'), 1500)
+    } catch (err) {
+      console.error('Erro:', err)
       setErro('Erro ao atualizar agendamento.')
       setSalvando(false)
-      return
     }
-
-    setSucesso(true)
-    setSalvando(false)
-    setTimeout(() => router.push('/salao/agenda'), 1500)
   }
 
   async function handleExcluir() {
     setExcluindo(true)
     setErro('')
 
-    const { error } = await supabase.from('agendamentos')
-      .delete()
-      .eq('id', agendamentoId)
+    try {
+      const { error } = await supabase.from('agendamentos')
+        .delete()
+        .eq('id', agendamentoId)
 
-    if (error) {
+      if (error) {
+        console.error('Erro ao deletar:', error)
+        setErro('Erro ao excluir agendamento.')
+        setExcluindo(false)
+        return
+      }
+
+      // Notificar cliente sobre cancelamento
+      if (clienteSelecionado?.profile_id) {
+        await supabase.from('notificacoes').insert({
+          salao_id: profile!.salao_id,
+          remetente_id: profile!.id,
+          destinatario_id: clienteSelecionado.profile_id,
+          titulo: '❌ Agendamento cancelado',
+          mensagem: `Seu agendamento de ${servicosSelecionadosInfo.map(s => s.nome).join(', ')} foi cancelado.`,
+          tipo: 'lembrete'
+        })
+      }
+
+      setExcluindo(false)
+      router.push('/salao/agenda')
+    } catch (err) {
+      console.error('Erro:', err)
       setErro('Erro ao excluir agendamento.')
       setExcluindo(false)
-      return
     }
-
-    // Notificar cliente sobre cancelamento
-    await supabase.from('notificacoes').insert({
-      salao_id: profile!.salao_id,
-      remetente_id: profile!.id,
-      destinatario_id: clienteSelecionado?.profile_id,
-      titulo: '❌ Agendamento cancelado',
-      mensagem: `Seu agendamento de ${servicosSelecionadosInfo.map(s => s.nome).join(', ')} foi cancelado.`,
-      tipo: 'lembrete'
-    })
-
-    setExcluindo(false)
-    router.push('/salao/agenda')
   }
 
   const clientesFiltrados = clientes.filter(c =>
@@ -476,7 +490,7 @@ export default function EditarAgendamentoPage() {
       {/* Modal de Exclusão */}
       {mostrarModalExclusao && (
         <div className="fixed inset-0 bg-black/50 flex items-end z-50">
-          <div className="w-full bg-white rounded-t-3xl p-6 animate-slide-up">
+          <div className="w-full bg-white rounded-t-3xl p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
                 <AlertCircle size={24} className="text-red-500" />
