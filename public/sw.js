@@ -1,39 +1,29 @@
-self.addEventListener('push', function (event) {
-  if (!event.data) return;
+self.addEventListener('install', e => self.skipWaiting())
+self.addEventListener('activate', e => e.waitUntil(clients.claim()))
 
-  const data = event.data.json();
-
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: data.icon || '/logo.png',
-      badge: data.badge || '/logo.png',
-      data: {
-        url: data.url || '/'
-      }
-    })
-  );
-});
-
-self.addEventListener('push', function (event) {
-  if (!event.data) return
-  const data = event.data.json()
-
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'Nova notificação', {
+self.addEventListener('push', e => {
+  if (!e.data) return
+  const data = e.data.json()
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'Organiza Salão', {
       body: data.body || '',
-      icon: data.icon || '/logo.png',
+      icon: '/logo.png',
       badge: '/logo.png',
-      tag: data.tag || 'default',
-      data: { url: data.url || '/' },
       vibrate: [200, 100, 200],
+      data: { url: data.url || '/' },
+      actions: data.actions || []
     })
   )
 })
 
-      if (clients.openWindow) {
-        return clients.openWindow(url);
-      }
+self.addEventListener('notificationclick', e => {
+  e.notification.close()
+  const url = e.notification.data?.url || '/'
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+      const c = cs.find(c => c.url.includes(self.location.origin))
+      if (c) { c.focus(); c.navigate(url) }
+      else clients.openWindow(url)
     })
-  );
-});
+  )
+})
