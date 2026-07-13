@@ -14,7 +14,8 @@ interface Agendamento {
   duracao_minutos: number
   status: string
   valor: number
-  clientes: { nome: string }
+  cliente_id: string
+  clientes: { nome: string; profile_id: string }
   servicos: { nome: string; categoria: string }
   profiles: { nome: string }
 }
@@ -38,7 +39,7 @@ export default function AgendaPage() {
   const [novoHorario, setNovoHorario] = useState('')
   const [novaDuracao, setNovaDuracao] = useState(60)
   const [modalCancelamento, setModalCancelamento] = useState(false)
-  const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<string | null>(null)
+  const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<Agendamento | null>(null)
   const [cancelando, setCancelando] = useState(false)
 
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function AgendaPage() {
 
     const { data: ags } = await supabase
       .from('agendamentos')
-      .select('*, clientes(nome), servicos(nome, categoria), profiles!agendamentos_profissional_id_fkey(nome)')
+      .select('*, clientes(nome, profile_id), servicos(nome, categoria), profiles!agendamentos_profissional_id_fkey(nome)')
       .eq('salao_id', profile!.salao_id!)
       .gte('data_hora', inicio.toISOString())
       .lte('data_hora', fim.toISOString())
@@ -99,19 +100,17 @@ export default function AgendaPage() {
     carregarDados()
   }
 
-  async function cancelarAgendamento(id: string) {
+  async function cancelarAgendamento(agendamento: Agendamento) {
     setCancelando(true)
     
-    const agendamento = agendamentos.find(ag => ag.id === id)
-    
-    await supabase.from('agendamentos').delete().eq('id', id)
+    await supabase.from('agendamentos').delete().eq('id', agendamento.id)
     
     // Notificar cliente
-    if (agendamento?.clientes) {
+    if (agendamento?.clientes?.profile_id) {
       await supabase.from('notificacoes').insert({
         salao_id: profile!.salao_id,
         remetente_id: profile!.id,
-        destinatario_id: agendamento.clientes?.profile_id,
+        destinatario_id: agendamento.clientes.profile_id,
         titulo: '❌ Agendamento cancelado',
         mensagem: `Seu agendamento foi cancelado.`,
         tipo: 'lembrete'
@@ -270,7 +269,7 @@ export default function AgendaPage() {
                     </button>
                     <button
                       onClick={() => {
-                        setAgendamentoParaCancelar(ag.id)
+                        setAgendamentoParaCancelar(ag)
                         setModalCancelamento(true)
                       }}
                       className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
@@ -343,7 +342,7 @@ export default function AgendaPage() {
       )}
 
       {/* Modal de Cancelamento */}
-      {modalCancelamento && (
+      {modalCancelamento && agendamentoParaCancelar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6">
             <div className="flex items-center gap-3 mb-4">
@@ -358,7 +357,7 @@ export default function AgendaPage() {
 
             <div className="space-y-3">
               <button
-                onClick={() => agendamentoParaCancelar && cancelarAgendamento(agendamentoParaCancelar)}
+                onClick={() => cancelarAgendamento(agendamentoParaCancelar)}
                 disabled={cancelando}
                 className="w-full py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50">
                 {cancelando ? 'Cancelando...' : 'Sim, cancelar agendamento'}
