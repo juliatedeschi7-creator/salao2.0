@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Search, Plus, CheckCircle, X, Clock } from 'lucide-react'
+import { ArrowLeft, Search, Plus, CheckCircle, X, Clock, ChevronDown } from 'lucide-react'
 
 export default function NovoAgendamentoPage() {
   const { profile, loading } = useAuth()
@@ -24,6 +24,10 @@ export default function NovoAgendamentoPage() {
   const [salvando, setSalvando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
   const [erro, setErro] = useState('')
+  
+  // Filtro e busca de serviços
+  const [buscaServico, setBuscaServico] = useState('')
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
@@ -52,6 +56,16 @@ export default function NovoAgendamentoPage() {
   const servicosSelecionadosInfo = servicos.filter(s => servicosSelecionados.includes(s.id))
   const duracaoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0)
   const precoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + (s.preco || 0), 0)
+
+  // Filtrar serviços por categoria e busca
+  const servicosFiltrados = servicos.filter(s => {
+    const matchCategoria = !categoriaFiltro || s.categoria === categoriaFiltro
+    const matchBusca = s.nome.toLowerCase().includes(buscaServico.toLowerCase())
+    return matchCategoria && matchBusca
+  })
+
+  // Obter categorias únicas
+  const categorias = [...new Set(servicos.map(s => s.categoria).filter(Boolean))].sort()
 
   function toggleServico(id: string) {
     setServicosSelecionados(prev =>
@@ -229,41 +243,91 @@ export default function NovoAgendamentoPage() {
           )}
         </div>
 
-        {/* Serviços - Multi-seleção */}
+        {/* Serviços - Multi-seleção com Filtro e Busca */}
         <div>
           <label className="text-sm font-medium text-gray-700 mb-1.5 block">
             SERVIÇOS ({servicosSelecionados.length} selecionado{servicosSelecionados.length !== 1 ? 's' : ''})
           </label>
-          <div className="space-y-2">
-            {servicos.map(s => {
-              const selecionado = servicosSelecionados.includes(s.id)
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => toggleServico(s.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left"
-                  style={selecionado
-                    ? { borderColor: cor, backgroundColor: `${cor}10` }
-                    : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
-                  <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
-                    style={selecionado
-                      ? { borderColor: cor, backgroundColor: cor }
-                      : { borderColor: '#d1d5db' }}>
-                    {selecionado && <CheckCircle size={12} className="text-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900">{s.nome}</p>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <Clock size={12} />
-                      <span>{s.duracao_minutos} min</span>
-                      <span>•</span>
-                      <span>R$ {s.preco.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
+          
+          {/* Busca de Serviços */}
+          <div className="relative mb-3">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input 
+              type="text"
+              className="input-field pl-10 text-sm"
+              placeholder="Buscar serviço..."
+              value={buscaServico}
+              onChange={e => setBuscaServico(e.target.value)}
+            />
           </div>
+
+          {/* Filtro por Categoria */}
+          {categorias.length > 0 && (
+            <div className="mb-3 flex gap-2 flex-wrap">
+              <button
+                onClick={() => setCategoriaFiltro(null)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                  categoriaFiltro === null
+                    ? 'bg-gray-900 text-white'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Todas
+              </button>
+              {categorias.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setCategoriaFiltro(cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    categoriaFiltro === cat
+                      ? 'text-white'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:border-gray-300'
+                  }`}
+                  style={categoriaFiltro === cat ? { backgroundColor: cor } : {}}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Lista de Serviços Filtrados */}
+          <div className="space-y-2">
+            {servicosFiltrados.length > 0 ? (
+              servicosFiltrados.map(s => {
+                const selecionado = servicosSelecionados.includes(s.id)
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => toggleServico(s.id)}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left"
+                    style={selecionado
+                      ? { borderColor: cor, backgroundColor: `${cor}10` }
+                      : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
+                    <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
+                      style={selecionado
+                        ? { borderColor: cor, backgroundColor: cor }
+                        : { borderColor: '#d1d5db' }}>
+                      {selecionado && <CheckCircle size={12} className="text-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">{s.nome}</p>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        {s.categoria && <span className="px-1.5 py-0.5 bg-gray-100 rounded">{s.categoria}</span>}
+                        <Clock size={12} />
+                        <span>{s.duracao_minutos} min</span>
+                        <span>•</span>
+                        <span>R$ {s.preco.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })
+            ) : (
+              <p className="text-center text-gray-400 text-sm py-4">Nenhum serviço encontrado</p>
+            )}
+          </div>
+
           {servicosSelecionados.length > 0 && (
             <div className="mt-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
               <p className="text-xs text-gray-600 mb-1">Resumo:</p>
