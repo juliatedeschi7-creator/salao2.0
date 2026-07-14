@@ -12,6 +12,7 @@ export default function SalaoPage() {
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
+  const [todosServicos, setTodosServicos] = useState<any[]>([])
   const [pendentesConfirmacao, setPendentesConfirmacao] = useState(0)
   const [notifNaoLidas, setNotifNaoLidas] = useState(0)
   const [carregando, setCarregando] = useState(true)
@@ -31,6 +32,10 @@ export default function SalaoPage() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile.salao_id).single()
     if (sal?.pausado) { await supabase.auth.signOut(); router.push('/login'); return }
     setSalao(sal)
+
+    const { data: srv } = await supabase.from('servicos').select('id, nome')
+      .eq('salao_id', profile.salao_id)
+    setTodosServicos(srv || [])
 
     const hoje = new Date()
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
@@ -53,6 +58,14 @@ export default function SalaoPage() {
       .eq('destinatario_id', profile.id).eq('lida', false)
     setNotifNaoLidas(count || 0)
     setCarregando(false)
+  }
+
+  function nomesServicosDoAgendamento(ag: any) {
+    const ids = ag.servicos_ids?.length ? ag.servicos_ids : [ag.servico_id]
+    const nomes = ids
+      .map((id: string) => todosServicos.find(s => s.id === id)?.nome)
+      .filter(Boolean)
+    return nomes.length > 0 ? nomes : [ag.servicos?.nome].filter(Boolean)
   }
 
   const navItems = [
@@ -91,7 +104,7 @@ export default function SalaoPage() {
         </h1>
 
         {pendentesConfirmacao > 0 && (
-          <button onClick={() => router.push('/salao/notificacoes')}
+          <button onClick={() => router.push('/salao/agenda')}
             className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl px-4 py-3 flex items-center gap-3 active:scale-95 transition-all">
             <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
               <Bell size={20} className="text-yellow-600" />
@@ -142,6 +155,7 @@ export default function SalaoPage() {
           const horaAg = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
           const horaFim = new Date(new Date(ag.data_hora).getTime() + (ag.duracao_minutos || 60) * 60000)
             .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          const nomesServicos = nomesServicosDoAgendamento(ag)
           return (
             <button key={ag.id} onClick={() => router.push('/salao/agenda')}
               className="card text-left flex items-start gap-3 active:scale-95 transition-all">
@@ -153,12 +167,19 @@ export default function SalaoPage() {
               <div className="flex-1">
                 <div className="flex items-start justify-between">
                   <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
-                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ' + st.cor}>
+                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 shrink-0 ml-2 ' + st.cor}>
                     <StatusIcon size={10} />{st.label}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-0.5">{ag.servicos?.nome}</p>
-                <p className="text-xs text-gray-400">Prof: {ag.profiles?.nome}</p>
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {nomesServicos.map((nome: string, i: number) => (
+                    <li key={i} className="text-sm text-gray-500 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: cor }} />
+                      {nome}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-xs text-gray-400 mt-1">Prof: {ag.profiles?.nome}</p>
               </div>
             </button>
           )
