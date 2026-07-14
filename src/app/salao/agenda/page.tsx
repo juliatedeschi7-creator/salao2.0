@@ -16,6 +16,8 @@ interface Agendamento {
   valor: number
   cliente_id: string
   servico_id: string
+  servicos_ids: string[] | null
+  observacoes: string | null
   clientes: { nome: string; profile_id: string }
   servicos: { nome: string; categoria: string }
   profiles: { nome: string }
@@ -28,10 +30,15 @@ interface HorarioDisponivel {
   ocupado: boolean
 }
 
-interface Pacote {
-  id: string
+// Uma "cobertura" = um serviço do atendimento + as opções de pacote que
+// podem cobrir ele + a escolha atual do dono (id de um cliente_pacote, ou
+// 'individual' se for cobrar à parte)
+interface Cobertura {
+  servico_id: string
   nome: string
-  sessoes_restantes: number
+  preco: number
+  opcoes: { cliente_pacote_id: string; nome: string; restantes: number }[]
+  escolha: string
 }
 
 export default function AgendaPage() {
@@ -41,6 +48,7 @@ export default function AgendaPage() {
   const [dataSelecionada, setDataSelecionada] = useState(new Date())
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
   const [horarios, setHorarios] = useState<HorarioDisponivel[]>([])
+  const [todosServicos, setTodosServicos] = useState<any[]>([])
   const [visualizacao, setVisualizacao] = useState<'semana' | 'mes'>('semana')
   const [modalDisponivel, setModalDisponivel] = useState(false)
   const [novoHorario, setNovoHorario] = useState('')
@@ -49,12 +57,13 @@ export default function AgendaPage() {
   const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<Agendamento | null>(null)
   const [cancelando, setCancelando] = useState(false)
 
-  // Estados para modal de pacote
+  // Conclusão de atendimento com checagem de pacote por serviço
   const [modalPacote, setModalPacote] = useState(false)
   const [agendamentoConcluindo, setAgendamentoConcluindo] = useState<Agendamento | null>(null)
-  const [pacotesDisponiveis, setPacotesDisponiveis] = useState<Pacote[]>([])
-  const [opcaoPacote, setOpcaoPacote] = useState<'pacote' | 'individual' | null>(null)
-  const [conclusao, setConlusao] = useState(false)
+  const [coberturas, setCoberturas] = useState<Cobertura[]>([])
+  const [obsAtendimento, setObsAtendimento] = useState('')
+  const [salvandoConclusao, setSalvandoConclusao] = useState(false)
+  const [erroConclusao, setErroConclusao] = useState('')
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
@@ -64,6 +73,10 @@ export default function AgendaPage() {
     const { data: sal } = await supabase.from('saloes').select('*')
       .eq('id', profile!.salao_id!).single()
     setSalao(sal)
+
+    const { data: srv } = await supabase.from('servicos').select('*')
+      .eq('salao_id', profile!.salao_id!).eq('ativo', true)
+    setTodosServicos(srv || [])
 
     const inicio = new Date(dataSelecionada)
     inicio.setHours(0, 0, 0, 0)
@@ -109,85 +122,148 @@ export default function AgendaPage() {
     carregarDados()
   }
 
-  async function verificarPacotes(agendamento: Agendamento) {
-    // Buscar pacotes ativos do cliente para este serviço
-    const { data: pacotes } = await supabase
-      .from('pacotes_cliente')
-      .select('id, nome, sessoes_restantes')
-      .eq('cliente_id', agendamento.cliente_id)
-      .eq('servico_id', agendamento.servico_id)
-      .eq('ativo', true)
-      .gt('sessoes_restantes', 0)
+  function nomesServicosDoAgendamento(ag: Agendamento) {
+    const ids = ag.servicos_ids?.length ? ag.servicos_ids : [ag.servico_id]
+    return ids
+      .map(id => todosServicos.find(s => s.id === id)?.nome || ag.servicos?.nome)
+      .filter(Boolean)
+      .join(', ')
+  }
 
-    return pacotes || []
+  // Pra cada serviço do atendimento, descobre quais pacotes ativos da
+  // cliente cobrem ele. Pacotes "modelo" (pacote_id preenchido) só cobrem
+  // se o serviço estiver em pacote_itens; pacotes de cadastro manual
+  // (pacote_id nulo, ex: "Pacote Antigo") não têm essa granularidade e
+  // são tratados como cobrindo qualquer serviço.
+  async function verificarCoberturas(agendamento: Agendamento): Promise<Cobertura[]> {
+    const idsServicos = agendamento.servicos_ids?.length ? agendamento.servicos_ids : [agendamento.servico_id]
+
+    const { data: pacotesAtivos } = await supabase
+      .from('cliente_pacotes')
+      .select('*, pacotes(nome)')
+      .eq('cliente_id', agendamento.cliente_id)
+      .eq('status', 'ativo')
+
+    const elegiveis = (pacotesAtivos || []).filter((p: any) => p.sessoes_usadas < p.sessoes_total)
+
+    const pacoteIdsModelados = elegiveis.filter((p: any) => p.pacote_id).map((p: any) => p.pacote_id)
+    let itensPorPacote: Record<string, string[]> = {}
+    if (pacoteIdsModelados.length > 0) {
+      const { data: itens } = await supabase
+        .from('pacote_itens')
+        .select('pacote_id, servico_id')
+        .in('pacote_id', pacoteIdsModelados)
+      ;(itens || []).forEach((i: any) => {
+        if (!itensPorPacote[i.pacote_id]) itensPorPacote[i.pacote_id] = []
+        itensPorPacote[i.pacote_id].push(i.servico_id)
+      })
+    }
+
+    return idsServicos.map((servicoId: string) => {
+      const servico = todosServicos.find(s => s.id === servicoId)
+      const opcoes = elegiveis
+        .filter((p: any) => !p.pacote_id || (itensPorPacote[p.pacote_id] || []).includes(servicoId))
+        .map((p: any) => ({
+          cliente_pacote_id: p.id,
+          nome: p.pacotes?.nome || p.observacoes || 'Pacote',
+          restantes: p.sessoes_total - p.sessoes_usadas
+        }))
+      return {
+        servico_id: servicoId,
+        nome: servico?.nome || agendamento.servicos?.nome || 'Serviço',
+        preco: servico?.preco || 0,
+        opcoes,
+        escolha: opcoes.length > 0 ? opcoes[0].cliente_pacote_id : 'individual'
+      }
+    })
   }
 
   async function marcarComoConcluido(agendamento: Agendamento) {
     setAgendamentoConcluindo(agendamento)
-    
-    // Verificar se tem pacotes disponíveis
-    const pacotes = await verificarPacotes(agendamento)
-    setPacotesDisponiveis(pacotes)
-    
-    if (pacotes.length > 0) {
-      // Se tem pacotes, abre modal para perguntar
+    setErroConclusao('')
+    setObsAtendimento(agendamento.observacoes || '')
+    const cob = await verificarCoberturas(agendamento)
+    const temCobertura = cob.some(c => c.opcoes.length > 0)
+    setCoberturas(cob)
+
+    if (temCobertura) {
       setModalPacote(true)
-      setOpcaoPacote(null)
     } else {
-      // Se não tem pacotes, marca como concluído direto
-      await finalizarAtendimento(agendamento, 'individual')
+      await finalizarAtendimento(agendamento, cob, agendamento.observacoes || '')
     }
   }
 
-  async function finalizarAtendimento(agendamento: Agendamento, tipo: 'pacote' | 'individual') {
-    setConlusao(true)
+  function atualizarEscolha(servicoId: string, valor: string) {
+    setCoberturas(prev => prev.map(c => c.servico_id === servicoId ? { ...c, escolha: valor } : c))
+  }
+
+  async function finalizarAtendimento(agendamento: Agendamento, coberturasFinal: Cobertura[], observacoesFinal: string) {
+    setSalvandoConclusao(true)
+    setErroConclusao('')
 
     try {
-      // Atualizar status do agendamento
-      await supabase
-        .from('agendamentos')
-        .update({ 
-          status: 'concluido', 
-          confirmado_por: profile?.id,
-          tipo_sessao: tipo // Registrar se foi pacote ou individual
-        })
-        .eq('id', agendamento.id)
+      let valorCobrado = 0
+      const pacotesUsados = new Set<string>()
 
-      // Se foi do pacote, descontar a sessão
-      if (tipo === 'pacote' && pacotesDisponiveis.length > 0) {
-        const pacote = pacotesDisponiveis[0]
-        const novasSessoes = pacote.sessoes_restantes - 1
-
-        await supabase
-          .from('pacotes_cliente')
-          .update({ 
-            sessoes_restantes: novasSessoes,
-            ultima_sessao_em: new Date().toISOString()
-          })
-          .eq('id', pacote.id)
-
-        // Registrar no histórico
-        await supabase
-          .from('historico_pacotes')
-          .insert({
-            pacote_id: pacote.id,
-            cliente_id: agendamento.cliente_id,
-            acao: 'sessao_utilizada',
-            sessoes_anteriores: pacote.sessoes_restantes,
-            sessoes_atuais: novasSessoes,
-            descricao: `Sessão utilizada: ${agendamento.servicos.nome}`,
-            registrado_por: profile?.id
-          })
+      for (const cob of coberturasFinal) {
+        if (cob.escolha === 'individual') {
+          valorCobrado += cob.preco
+        } else {
+          pacotesUsados.add(cob.escolha)
+        }
       }
 
-      setConlusao(false)
+      // Uma sessão descontada por pacote usado (não por serviço) — o
+      // sistema conta sessão como "visita", igual já funciona em todo
+      // o resto do app.
+      for (const pacoteId of Array.from(pacotesUsados)) {
+        const { data: pac, error: errBusca } = await supabase
+          .from('cliente_pacotes').select('*').eq('id', pacoteId).single()
+        if (errBusca || !pac) throw errBusca || new Error('Pacote não encontrado')
+
+        const servicosDessePacote = coberturasFinal
+          .filter(c => c.escolha === pacoteId)
+          .map(c => c.nome)
+          .join(', ')
+
+        const novasUsadas = pac.sessoes_usadas + 1
+        const novoStatus = novasUsadas >= pac.sessoes_total ? 'concluido' : 'ativo'
+
+        const { error: errUp } = await supabase.from('cliente_pacotes')
+          .update({ sessoes_usadas: novasUsadas, status: novoStatus })
+          .eq('id', pacoteId)
+        if (errUp) throw errUp
+
+        const { error: errSess } = await supabase.from('sessoes_pacote').insert({
+          cliente_pacote_id: pacoteId,
+          data_sessao: new Date().toISOString().slice(0, 10),
+          servico_realizado: servicosDessePacote,
+          profissional_id: profile!.id
+        })
+        if (errSess) throw errSess
+      }
+
+      const pacoteIdUnico = pacotesUsados.size === 1 ? Array.from(pacotesUsados)[0] : null
+      const tipoCobranca = pacotesUsados.size === 0 ? 'avulso' : valorCobrado > 0 ? 'misto' : 'pacote'
+
+      const { error: errAg } = await supabase.from('agendamentos').update({
+        status: 'concluido',
+        confirmado_por: profile!.id,
+        valor: valorCobrado,
+        tipo_cobranca: tipoCobranca,
+        cliente_pacote_id: pacoteIdUnico,
+        observacoes: observacoesFinal || null
+      }).eq('id', agendamento.id)
+      if (errAg) throw errAg
+
+      setSalvandoConclusao(false)
       setModalPacote(false)
       setAgendamentoConcluindo(null)
-      setOpcaoPacote(null)
+      setCoberturas([])
       carregarDados()
-    } catch (error) {
-      console.error('Erro ao finalizar atendimento:', error)
-      setConlusao(false)
+    } catch (e: any) {
+      setErroConclusao('Erro ao concluir: ' + (e.message || 'tente novamente'))
+      setSalvandoConclusao(false)
     }
   }
 
@@ -198,10 +274,9 @@ export default function AgendaPage() {
 
   async function cancelarAgendamento(agendamento: Agendamento) {
     setCancelando(true)
-    
+
     await supabase.from('agendamentos').delete().eq('id', agendamento.id)
-    
-    // Notificar cliente
+
     if (agendamento?.clientes?.profile_id) {
       await supabase.from('notificacoes').insert({
         salao_id: profile!.salao_id,
@@ -212,7 +287,7 @@ export default function AgendaPage() {
         tipo: 'lembrete'
       })
     }
-    
+
     setCancelando(false)
     setModalCancelamento(false)
     setAgendamentoParaCancelar(null)
@@ -248,6 +323,10 @@ export default function AgendaPage() {
     cancelado: { cor: 'text-red-500 bg-red-50', label: 'CANCELADO' },
     aguardando_confirmacao: { cor: 'text-blue-600 bg-blue-50', label: 'AGUARDANDO' },
   }
+
+  const valorTotalPreview = coberturas
+    .filter(c => c.escolha === 'individual')
+    .reduce((acc, c) => acc + c.preco, 0)
 
   return (
     <div className="min-h-screen bg-[#f8f4f6] pb-20">
@@ -335,6 +414,7 @@ export default function AgendaPage() {
             const hora = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
             const horaFim = new Date(new Date(ag.data_hora).getTime() + ag.duracao_minutos * 60000)
               .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+            const nomesServicos = nomesServicosDoAgendamento(ag)
 
             return (
               <div key={ag.id} className="card flex flex-col gap-3">
@@ -346,14 +426,14 @@ export default function AgendaPage() {
                         {st.label}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-500">{ag.servicos?.nome}</p>
+                    <p className="text-sm text-gray-500">{nomesServicos}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       <Clock size={10} className="inline mr-1" />
                       {hora} - {horaFim} • Prof: {ag.profiles?.nome}
                     </p>
-                    {ag.valor && (
+                    {ag.valor != null && (
                       <p className="text-sm font-medium mt-1" style={{ color: cor }}>
-                        R$ {ag.valor.toFixed(2).replace('.', ',')}
+                        R$ {Number(ag.valor).toFixed(2).replace('.', ',')}
                       </p>
                     )}
                   </div>
@@ -471,73 +551,94 @@ export default function AgendaPage() {
         </div>
       )}
 
-      {/* Modal de Pacote */}
+      {/* Modal de conclusão com checagem de pacote por serviço */}
       {modalPacote && agendamentoConcluindo && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `${cor}20` }}>
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: `${cor}20` }}>
                 <Gift size={24} style={{ color: cor }} />
               </div>
               <div>
-                <h3 className="font-bold text-gray-900">Cliente tem pacote!</h3>
+                <h3 className="font-bold text-gray-900">Concluir atendimento</h3>
                 <p className="text-sm text-gray-500">{agendamentoConcluindo.clientes?.nome}</p>
               </div>
             </div>
 
-            <p className="text-gray-600 text-sm mb-4">
-              {agendamentoConcluindo.clientes?.nome} possui pacote(s) disponível para {agendamentoConcluindo.servicos?.nome}. Como deseja registrar esta sessão?
+            <p className="text-gray-500 text-sm">
+              Escolha, pra cada serviço, se vai descontar de um pacote ativo ou cobrar à parte:
             </p>
 
-            <div className="space-y-3">
-              {pacotesDisponiveis.map(pacote => (
-                <button
-                  key={pacote.id}
-                  onClick={() => {
-                    setOpcaoPacote('pacote')
-                    finalizarAtendimento(agendamentoConcluindo, 'pacote')
-                  }}
-                  disabled={conclusao}
-                  className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
-                    opcaoPacote === 'pacote'
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 hover:border-green-200'
-                  }`}>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900">{pacote.nome}</p>
-                      <p className="text-sm text-gray-500">{pacote.sessoes_restantes} sessão(ns) restante(s)</p>
-                    </div>
-                    <Gift size={18} className="text-green-600" />
+            <div className="flex flex-col gap-4">
+              {coberturas.map(cob => (
+                <div key={cob.servico_id} className="flex flex-col gap-2">
+                  <p className="font-semibold text-gray-900 text-sm">{cob.nome}</p>
+                  <div className="flex flex-col gap-2">
+                    {cob.opcoes.map(op => (
+                      <button key={op.cliente_pacote_id}
+                        onClick={() => atualizarEscolha(cob.servico_id, op.cliente_pacote_id)}
+                        className="w-full p-3 rounded-xl border-2 transition-all text-left"
+                        style={cob.escolha === op.cliente_pacote_id
+                          ? { borderColor: '#22c55e', backgroundColor: '#f0fdf4' }
+                          : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-gray-900 text-sm">{op.nome}</p>
+                          <Gift size={16} className="text-green-600 shrink-0" />
+                        </div>
+                        <p className="text-xs text-gray-500">{op.restantes} sessão(ns) restante(s)</p>
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => atualizarEscolha(cob.servico_id, 'individual')}
+                      className="w-full p-3 rounded-xl border-2 transition-all text-left"
+                      style={cob.escolha === 'individual'
+                        ? { borderColor: cor, backgroundColor: `${cor}10` }
+                        : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
+                      <p className="font-medium text-gray-900 text-sm">Cobrar à parte</p>
+                      <p className="text-xs text-gray-500">R$ {cob.preco.toFixed(2).replace('.', ',')}</p>
+                    </button>
                   </div>
-                </button>
+                </div>
               ))}
-
-              <button
-                onClick={() => {
-                  setOpcaoPacote('individual')
-                  finalizarAtendimento(agendamentoConcluindo, 'individual')
-                }}
-                disabled={conclusao}
-                className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
-                  opcaoPacote === 'individual'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-blue-200'
-                }`}>
-                <p className="font-semibold text-gray-900">Cobrar à parte (sem pacote)</p>
-                <p className="text-sm text-gray-500">Registrar como sessão individual</p>
-              </button>
             </div>
 
-            <button
-              onClick={() => {
-                setModalPacote(false)
-                setAgendamentoConcluindo(null)
-                setOpcaoPacote(null)
-              }}
-              className="w-full mt-4 py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl hover:bg-gray-200 transition-colors">
-              Cancelar
-            </button>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Observações (opcional)</label>
+              <textarea className="input-field resize-none" rows={2}
+                value={obsAtendimento} onChange={e => setObsAtendimento(e.target.value)} />
+            </div>
+
+            <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
+              <span className="text-sm text-gray-500">Total cobrado agora</span>
+              <span className="font-bold text-lg" style={{ color: cor }}>
+                R$ {valorTotalPreview.toFixed(2).replace('.', ',')}
+              </span>
+            </div>
+
+            {erroConclusao && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm">{erroConclusao}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setModalPacote(false)
+                  setAgendamentoConcluindo(null)
+                  setCoberturas([])
+                }}
+                className="flex-1 py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl">
+                Cancelar
+              </button>
+              <button
+                onClick={() => finalizarAtendimento(agendamentoConcluindo, coberturas, obsAtendimento)}
+                disabled={salvandoConclusao}
+                className="flex-1 py-3 rounded-xl text-white font-semibold disabled:opacity-50"
+                style={{ backgroundColor: cor }}>
+                {salvandoConclusao ? 'Salvando...' : 'Concluir atendimento'}
+              </button>
+            </div>
           </div>
         </div>
       )}
