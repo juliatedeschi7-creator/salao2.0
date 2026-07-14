@@ -1,339 +1,242 @@
 'use client'
-
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Clock, CheckCircle, AlertCircle, XCircle, Edit2, Trash2, Gift } from 'lucide-react'
-import BottomNav from '@/components/BottomNav'
-import { Home, Calendar, Users, BarChart2, Settings } from 'lucide-react'
+import { temAcessoTotal } from '@/lib/permissoes'
+import { ArrowLeft, Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Clock, X, Check, Calendar } from 'lucide-react'
 
-interface Agendamento {
+type Agendamento = {
   id: string
+  cliente_id: string
+  servico_id: string
+  servicos_ids?: string[]
+  profissional_id?: string
   data_hora: string
   duracao_minutos: number
   status: string
-  valor: number
-  cliente_id: string
-  servico_id: string
-  servicos_ids: string[] | null
-  observacoes: string | null
-  clientes: { nome: string; profile_id: string }
-  servicos: { nome: string; categoria: string }
-  profiles: { nome: string }
+  observacoes?: string
+  valor?: number
+  clientes?: { nome: string }
+  servicos?: { nome: string; preco: number }
+  profiles?: { nome: string }
+  servicos_detalhes?: { id: string; nome: string; preco: number; duracao_minutos: number }[]
 }
 
-interface HorarioDisponivel {
-  id: string
-  data_hora: string
-  duracao_minutos: number
-  ocupado: boolean
+function formatarDuracao(min: number) {
+  if (!min) return ''
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60), m = min % 60
+  return m === 0 ? `${h}h` : `${h}h${m}min`
 }
 
-// Uma "cobertura" = um serviço do atendimento + as opções de pacote que
-// podem cobrir ele + a escolha atual do dono (id de um cliente_pacote, ou
-// 'individual' se for cobrar à parte)
-interface Cobertura {
-  servico_id: string
-  nome: string
-  preco: number
-  opcoes: { cliente_pacote_id: string; nome: string; restantes: number }[]
-  escolha: string
-}
+const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const DIAS_COMPLETOS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 export default function AgendaPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [dataSelecionada, setDataSelecionada] = useState(new Date())
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
-  const [horarios, setHorarios] = useState<HorarioDisponivel[]>([])
   const [todosServicos, setTodosServicos] = useState<any[]>([])
-  const [visualizacao, setVisualizacao] = useState<'semana' | 'mes'>('semana')
-  const [modalDisponivel, setModalDisponivel] = useState(false)
-  const [novoHorario, setNovoHorario] = useState('')
-  const [novaDuracao, setNovaDuracao] = useState(60)
-  const [modalCancelamento, setModalCancelamento] = useState(false)
-  const [agendamentoParaCancelar, setAgendamentoParaCancelar] = useState<Agendamento | null>(null)
-  const [cancelando, setCancelando] = useState(false)
-
-  // Conclusão de atendimento com checagem de pacote por serviço
-  const [modalPacote, setModalPacote] = useState(false)
-  const [agendamentoConcluindo, setAgendamentoConcluindo] = useState<Agendamento | null>(null)
-  const [coberturas, setCoberturas] = useState<Cobertura[]>([])
-  const [obsAtendimento, setObsAtendimento] = useState('')
-  const [salvandoConclusao, setSalvandoConclusao] = useState(false)
-  const [erroConclusao, setErroConclusao] = useState('')
+  const [view, setView] = useState<'semana' | 'mes'>('semana')
+  const [dataBase, setDataBase] = useState(new Date())
+  const [carregando, setCarregando] = useState(true)
+  const [modalEditar, setModalEditar] = useState<Agendamento | null>(null)
+  const [formEditar, setFormEditar] = useState({ status: '', observacoes: '', valor: '' })
+  const [salvando, setSalvando] = useState(false)
+  const [diaSelecionado, setDiaSelecionado] = useState<Date | null>(null)
 
   useEffect(() => {
-    if (!loading && profile?.salao_id) carregarDados()
-  }, [loading, dataSelecionada])
+    if (loading) return
+    if (!profile) return
+    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (profile.salao_id) carregarDados()
+  }, [loading, profile])
 
   async function carregarDados() {
-    const { data: sal } = await supabase.from('saloes').select('*')
-      .eq('id', profile!.salao_id!).single()
+    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    const { data: srv } = await supabase.from('servicos').select('*')
+    const { data: srvs } = await supabase.from('servicos').select('id, nome, preco, duracao_minutos')
       .eq('salao_id', profile!.salao_id!).eq('ativo', true)
-    setTodosServicos(srv || [])
+    setTodosServicos(srvs || [])
 
-    const inicio = new Date(dataSelecionada)
-    inicio.setHours(0, 0, 0, 0)
-    const fim = new Date(dataSelecionada)
-    fim.setHours(23, 59, 59, 999)
+    await carregarAgendamentos()
+    setCarregando(false)
+  }
 
-    const { data: ags } = await supabase
-      .from('agendamentos')
-      .select('*, clientes(nome, profile_id), servicos(nome, categoria), profiles!agendamentos_profissional_id_fkey(nome)')
-      .eq('salao_id', profile!.salao_id!)
-      .gte('data_hora', inicio.toISOString())
-      .lte('data_hora', fim.toISOString())
-      .order('data_hora')
+  async function carregarAgendamentos() {
+    const inicio = getInicioSemana(dataBase)
+    const fim = new Date(inicio); fim.setDate(fim.getDate() + 60)
 
-    const { data: hors } = await supabase
-      .from('horarios_disponiveis')
-      .select('*')
+    const { data: ags } = await supabase.from('agendamentos')
+      .select('*, clientes(nome), servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
       .eq('salao_id', profile!.salao_id!)
       .gte('data_hora', inicio.toISOString())
       .lte('data_hora', fim.toISOString())
       .order('data_hora')
 
     setAgendamentos(ags || [])
-    setHorarios(hors || [])
   }
 
-  async function adicionarHorarioDisponivel() {
-    if (!novoHorario) return
-    const dataHora = new Date(dataSelecionada)
-    const [h, m] = novoHorario.split(':')
-    dataHora.setHours(parseInt(h), parseInt(m), 0, 0)
+  useEffect(() => {
+    if (profile?.salao_id) carregarAgendamentos()
+  }, [dataBase])
 
-    await supabase.from('horarios_disponiveis').insert({
-      salao_id: profile!.salao_id,
-      profissional_id: profile!.id,
-      data_hora: dataHora.toISOString(),
-      duracao_minutos: novaDuracao,
-      ocupado: false,
-    })
-
-    setModalDisponivel(false)
-    setNovoHorario('')
-    carregarDados()
+  function getInicioSemana(d: Date) {
+    const dia = new Date(d)
+    const dow = dia.getDay()
+    dia.setDate(dia.getDate() - dow)
+    dia.setHours(0, 0, 0, 0)
+    return dia
   }
 
-  function nomesServicosDoAgendamento(ag: Agendamento) {
-    const ids = ag.servicos_ids?.length ? ag.servicos_ids : [ag.servico_id]
-    return ids
-      .map(id => todosServicos.find(s => s.id === id)?.nome || ag.servicos?.nome)
-      .filter(Boolean)
-      .join(', ')
-  }
-
-  // Pra cada serviço do atendimento, descobre quais pacotes ativos da
-  // cliente cobrem ele. Pacotes "modelo" (pacote_id preenchido) só cobrem
-  // se o serviço estiver em pacote_itens; pacotes de cadastro manual
-  // (pacote_id nulo, ex: "Pacote Antigo") não têm essa granularidade e
-  // são tratados como cobrindo qualquer serviço.
-  async function verificarCoberturas(agendamento: Agendamento): Promise<Cobertura[]> {
-    const idsServicos = agendamento.servicos_ids?.length ? agendamento.servicos_ids : [agendamento.servico_id]
-
-    const { data: pacotesAtivos } = await supabase
-      .from('cliente_pacotes')
-      .select('*, pacotes(nome)')
-      .eq('cliente_id', agendamento.cliente_id)
-      .eq('status', 'ativo')
-
-    const elegiveis = (pacotesAtivos || []).filter((p: any) => p.sessoes_usadas < p.sessoes_total)
-
-    const pacoteIdsModelados = elegiveis.filter((p: any) => p.pacote_id).map((p: any) => p.pacote_id)
-    let itensPorPacote: Record<string, string[]> = {}
-    if (pacoteIdsModelados.length > 0) {
-      const { data: itens } = await supabase
-        .from('pacote_itens')
-        .select('pacote_id, servico_id')
-        .in('pacote_id', pacoteIdsModelados)
-      ;(itens || []).forEach((i: any) => {
-        if (!itensPorPacote[i.pacote_id]) itensPorPacote[i.pacote_id] = []
-        itensPorPacote[i.pacote_id].push(i.servico_id)
-      })
-    }
-
-    return idsServicos.map((servicoId: string) => {
-      const servico = todosServicos.find(s => s.id === servicoId)
-      const opcoes = elegiveis
-        .filter((p: any) => !p.pacote_id || (itensPorPacote[p.pacote_id] || []).includes(servicoId))
-        .map((p: any) => ({
-          cliente_pacote_id: p.id,
-          nome: p.pacotes?.nome || p.observacoes || 'Pacote',
-          restantes: p.sessoes_total - p.sessoes_usadas
-        }))
-      return {
-        servico_id: servicoId,
-        nome: servico?.nome || agendamento.servicos?.nome || 'Serviço',
-        preco: servico?.preco || 0,
-        opcoes,
-        escolha: opcoes.length > 0 ? opcoes[0].cliente_pacote_id : 'individual'
-      }
+  function getDiasSemana() {
+    const inicio = getInicioSemana(dataBase)
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(inicio); d.setDate(d.getDate() + i); return d
     })
   }
 
-  async function marcarComoConcluido(agendamento: Agendamento) {
-    setAgendamentoConcluindo(agendamento)
-    setErroConclusao('')
-    setObsAtendimento(agendamento.observacoes || '')
-    const cob = await verificarCoberturas(agendamento)
-    const temCobertura = cob.some(c => c.opcoes.length > 0)
-    setCoberturas(cob)
-
-    if (temCobertura) {
-      setModalPacote(true)
-    } else {
-      await finalizarAtendimento(agendamento, cob, agendamento.observacoes || '')
-    }
-  }
-
-  function atualizarEscolha(servicoId: string, valor: string) {
-    setCoberturas(prev => prev.map(c => c.servico_id === servicoId ? { ...c, escolha: valor } : c))
-  }
-
-  async function finalizarAtendimento(agendamento: Agendamento, coberturasFinal: Cobertura[], observacoesFinal: string) {
-    setSalvandoConclusao(true)
-    setErroConclusao('')
-
-    try {
-      let valorCobrado = 0
-      const pacotesUsados = new Set<string>()
-
-      for (const cob of coberturasFinal) {
-        if (cob.escolha === 'individual') {
-          valorCobrado += cob.preco
-        } else {
-          pacotesUsados.add(cob.escolha)
-        }
-      }
-
-      // Uma sessão descontada por pacote usado (não por serviço) — o
-      // sistema conta sessão como "visita", igual já funciona em todo
-      // o resto do app.
-      for (const pacoteId of Array.from(pacotesUsados)) {
-        const { data: pac, error: errBusca } = await supabase
-          .from('cliente_pacotes').select('*').eq('id', pacoteId).single()
-        if (errBusca || !pac) throw errBusca || new Error('Pacote não encontrado')
-
-        const servicosDessePacote = coberturasFinal
-          .filter(c => c.escolha === pacoteId)
-          .map(c => c.nome)
-          .join(', ')
-
-        const novasUsadas = pac.sessoes_usadas + 1
-        const novoStatus = novasUsadas >= pac.sessoes_total ? 'concluido' : 'ativo'
-
-        const { error: errUp } = await supabase.from('cliente_pacotes')
-          .update({ sessoes_usadas: novasUsadas, status: novoStatus })
-          .eq('id', pacoteId)
-        if (errUp) throw errUp
-
-        const { error: errSess } = await supabase.from('sessoes_pacote').insert({
-          cliente_pacote_id: pacoteId,
-          data_sessao: new Date().toISOString().slice(0, 10),
-          servico_realizado: servicosDessePacote,
-          profissional_id: profile!.id
-        })
-        if (errSess) throw errSess
-      }
-
-      const pacoteIdUnico = pacotesUsados.size === 1 ? Array.from(pacotesUsados)[0] : null
-      const tipoCobranca = pacotesUsados.size === 0 ? 'avulso' : valorCobrado > 0 ? 'misto' : 'pacote'
-
-      const { error: errAg } = await supabase.from('agendamentos').update({
-        status: 'concluido',
-        confirmado_por: profile!.id,
-        valor: valorCobrado,
-        tipo_cobranca: tipoCobranca,
-        cliente_pacote_id: pacoteIdUnico,
-        observacoes: observacoesFinal || null
-      }).eq('id', agendamento.id)
-      if (errAg) throw errAg
-
-      setSalvandoConclusao(false)
-      setModalPacote(false)
-      setAgendamentoConcluindo(null)
-      setCoberturas([])
-      carregarDados()
-    } catch (e: any) {
-      setErroConclusao('Erro ao concluir: ' + (e.message || 'tente novamente'))
-      setSalvandoConclusao(false)
-    }
-  }
-
-  async function alterarStatus(id: string, status: string) {
-    await supabase.from('agendamentos').update({ status, confirmado_por: profile?.id }).eq('id', id)
-    carregarDados()
-  }
-
-  async function cancelarAgendamento(agendamento: Agendamento) {
-    setCancelando(true)
-
-    await supabase.from('agendamentos').delete().eq('id', agendamento.id)
-
-    if (agendamento?.clientes?.profile_id) {
-      await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id,
-        remetente_id: profile!.id,
-        destinatario_id: agendamento.clientes.profile_id,
-        titulo: '❌ Agendamento cancelado',
-        mensagem: `Seu agendamento foi cancelado.`,
-        tipo: 'lembrete'
-      })
-    }
-
-    setCancelando(false)
-    setModalCancelamento(false)
-    setAgendamentoParaCancelar(null)
-    carregarDados()
-  }
-
-  function diasDaSemana() {
-    const dias = []
-    const inicio = new Date(dataSelecionada)
-    const diaSemana = inicio.getDay()
-    inicio.setDate(inicio.getDate() - diaSemana + 1)
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(inicio)
-      d.setDate(inicio.getDate() + i)
-      dias.push(d)
-    }
+  function getDiasMes() {
+    const ano = dataBase.getFullYear(), mes = dataBase.getMonth()
+    const primeiro = new Date(ano, mes, 1)
+    const ultimo = new Date(ano, mes + 1, 0)
+    const dias: Date[] = []
+    for (let d = new Date(primeiro); d <= ultimo; d.setDate(d.getDate() + 1)) dias.push(new Date(d))
     return dias
   }
 
-  const cor = salao?.cor_primaria || '#E91E8C'
-  const navItems = [
-    { icon: Home, label: 'Início', href: '/salao' },
-    { icon: Calendar, label: 'Agenda', href: '/salao/agenda' },
-    { icon: Users, label: 'Clientes', href: '/salao/clientes' },
-    { icon: BarChart2, label: 'Finanças', href: '/salao/financeiro' },
-    { icon: Settings, label: 'Ajustes', href: '/salao/configuracoes' },
-  ]
-
-  const statusConfig: Record<string, { cor: string; label: string }> = {
-    confirmado: { cor: 'text-green-600 bg-green-50', label: 'CONFIRMADO' },
-    pendente: { cor: 'text-yellow-600 bg-yellow-50', label: 'PENDENTE' },
-    concluido: { cor: 'text-gray-500 bg-gray-50', label: 'CONCLUÍDO' },
-    cancelado: { cor: 'text-red-500 bg-red-50', label: 'CANCELADO' },
-    aguardando_confirmacao: { cor: 'text-blue-600 bg-blue-50', label: 'AGUARDANDO' },
+  function agendamentosDoDia(dia: Date) {
+    return agendamentos.filter(ag => {
+      const d = new Date(ag.data_hora)
+      return d.getFullYear() === dia.getFullYear() && d.getMonth() === dia.getMonth() && d.getDate() === dia.getDate()
+    })
   }
 
-  const valorTotalPreview = coberturas
-    .filter(c => c.escolha === 'individual')
-    .reduce((acc, c) => acc + c.preco, 0)
+  function getServicosDetalhados(ag: Agendamento) {
+    if (ag.servicos_ids && ag.servicos_ids.length > 1) {
+      return todosServicos.filter(s => ag.servicos_ids!.includes(s.id))
+    }
+    return ag.servicos ? [ag.servicos] : []
+  }
+
+  async function excluirAgendamento(id: string) {
+    await supabase.from('agendamentos').delete().eq('id', id)
+    carregarAgendamentos()
+  }
+
+  async function salvarEdicao() {
+    if (!modalEditar) return
+    setSalvando(true)
+    await supabase.from('agendamentos').update({
+      status: formEditar.status,
+      observacoes: formEditar.observacoes || null,
+      valor: formEditar.valor ? parseFloat(formEditar.valor) : null
+    }).eq('id', modalEditar.id)
+    setModalEditar(null); setSalvando(false); carregarAgendamentos()
+  }
+
+  const statusConfig: Record<string, { label: string; cor: string; bg: string }> = {
+    confirmado: { label: 'Confirmado', cor: '#16a34a', bg: '#f0fdf4' },
+    pendente: { label: 'Pendente', cor: '#d97706', bg: '#fffbeb' },
+    concluido: { label: 'Concluído', cor: '#6b7280', bg: '#f9fafb' },
+    cancelado: { label: 'Cancelado', cor: '#dc2626', bg: '#fef2f2' },
+    aguardando_confirmacao: { label: 'Aguardando', cor: '#2563eb', bg: '#eff6ff' },
+  }
+
+  const cor = salao?.cor_primaria || '#E91E8C'
+  const hoje = new Date()
+  const diasSemana = getDiasSemana()
+  const diasMes = getDiasMes()
+  const diaVer = diaSelecionado || (view === 'semana' ? diasSemana[0] : hoje)
+
+  function CardAgendamento({ ag }: { ag: Agendamento }) {
+    const st = statusConfig[ag.status] || statusConfig.pendente
+    const inicio = new Date(ag.data_hora)
+    const fim = new Date(inicio.getTime() + (ag.duracao_minutos || 60) * 60000)
+    const horaInicio = inicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const horaFim = fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const servicosDetalhados = getServicosDetalhados(ag)
+    const temMultiplos = servicosDetalhados.length > 1
+    const precoTotal = ag.valor || servicosDetalhados.reduce((acc, s) => acc + (s.preco || 0), 0)
+
+    return (
+      <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 leading-tight">{ag.clientes?.nome}</p>
+
+            {/* Serviços — lista se múltiplos */}
+            {temMultiplos ? (
+              <div className="mt-1 flex flex-col gap-0.5">
+                {servicosDetalhados.map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cor }} />
+                    <p className="text-sm text-gray-500">{s.nome}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 mt-0.5">{ag.servicos?.nome}</p>
+            )}
+
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              <div className="flex items-center gap-1 text-gray-400">
+                <Clock size={12} />
+                <p className="text-xs">{horaInicio} – {horaFim}</p>
+              </div>
+              {ag.profiles?.nome && (
+                <p className="text-xs text-gray-400">Prof: {ag.profiles.nome}</p>
+              )}
+            </div>
+
+            {precoTotal > 0 && (
+              <p className="text-sm font-bold mt-1" style={{ color: cor }}>
+                R$ {precoTotal.toFixed(2).replace('.', ',')}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ color: st.cor, backgroundColor: st.bg }}>
+              {st.label.toUpperCase()}
+            </span>
+            <div className="flex gap-1.5">
+              <button onClick={() => {
+                setModalEditar(ag)
+                setFormEditar({ status: ag.status, observacoes: ag.observacoes || '', valor: ag.valor?.toString() || '' })
+              }} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                <Edit2 size={13} className="text-gray-500" />
+              </button>
+              <button onClick={() => excluirAgendamento(ag.id)}
+                className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+                <Trash2 size={13} className="text-red-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {ag.observacoes && (
+          <p className="text-xs text-gray-400 bg-gray-50 rounded-xl px-3 py-2">{ag.observacoes}</p>
+        )}
+      </div>
+    )
+  }
+
+  if (loading || carregando) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-[#f8f4f6] pb-20">
+    <div className="min-h-screen bg-[#f8f9fa] pb-24">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button onClick={() => router.back()}>
-          <ArrowLeft size={22} className="text-gray-700" />
-        </button>
+        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1">Agenda</h1>
         <button onClick={() => router.push('/salao/agenda/novo')}
           className="w-9 h-9 rounded-full flex items-center justify-center text-white"
@@ -342,308 +245,229 @@ export default function AgendaPage() {
         </button>
       </div>
 
-      {/* Semana/Mês toggle */}
-      <div className="bg-white px-4 pb-3">
-        <div className="flex bg-pink-50 rounded-full p-1 gap-1">
+      {/* Toggle semana/mês */}
+      <div className="px-4 py-3 bg-white border-b border-gray-100">
+        <div className="flex bg-gray-100 rounded-2xl p-1">
           {(['semana', 'mes'] as const).map(v => (
-            <button key={v} onClick={() => setVisualizacao(v)}
-              className={`flex-1 py-2 rounded-full text-sm font-medium transition-all ${visualizacao === v ? 'bg-white shadow-sm' : 'text-gray-400'}`}
-              style={visualizacao === v ? { color: cor } : {}}>
-              {v.charAt(0).toUpperCase() + v.slice(1)}
+            <button key={v} onClick={() => setView(v)}
+              className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
+              style={view === v ? { backgroundColor: cor, color: 'white' } : { color: '#6b7280' }}>
+              {v === 'semana' ? 'Semana' : 'Mês'}
             </button>
           ))}
         </div>
-
-        {/* Dias da semana */}
-        <div className="flex gap-2 mt-3 overflow-x-auto pb-1">
-          {diasDaSemana().map((dia, i) => {
-            const isSelecionado = dia.toDateString() === dataSelecionada.toDateString()
-            const isHoje = dia.toDateString() === new Date().toDateString()
-            const diasSemana = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM']
-            return (
-              <button key={i} onClick={() => setDataSelecionada(dia)}
-                className={`flex flex-col items-center gap-1 px-3 py-2 rounded-2xl min-w-[52px] transition-all`}
-                style={isSelecionado ? { backgroundColor: cor } : {}}>
-                <span className={`text-xs font-medium ${isSelecionado ? 'text-white' : 'text-gray-400'}`}>
-                  {diasSemana[i]}
-                </span>
-                <span className={`text-lg font-bold ${isSelecionado ? 'text-white' : 'text-gray-900'}`}>
-                  {dia.getDate()}
-                </span>
-                {isHoje && !isSelecionado && (
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
-                )}
-              </button>
-            )
-          })}
-        </div>
       </div>
 
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {/* Botão horário disponível */}
-        <button onClick={() => setModalDisponivel(true)}
-          className="flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-dashed text-sm font-medium"
-          style={{ borderColor: cor, color: cor }}>
-          <Plus size={16} />
-          Liberar horário para clientes
-        </button>
+      {/* Navegação de semana */}
+      {view === 'semana' && (
+        <>
+          <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
+            <button onClick={() => { const d = new Date(dataBase); d.setDate(d.getDate() - 7); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronLeft size={16} className="text-gray-600" />
+            </button>
+            <p className="text-sm font-semibold text-gray-700">
+              {diasSemana[0].getDate()} {MESES[diasSemana[0].getMonth()]} – {diasSemana[6].getDate()} {MESES[diasSemana[6].getMonth()]}
+            </p>
+            <button onClick={() => { const d = new Date(dataBase); d.setDate(d.getDate() + 7); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronRight size={16} className="text-gray-600" />
+            </button>
+          </div>
 
-        {/* Horários disponíveis */}
-        {horarios.filter(h => !h.ocupado).map(h => (
-          <div key={h.id} className="card border-2 border-dashed border-gray-200 flex items-center gap-3">
-            <Clock size={16} className="text-gray-400" />
-            <div>
-              <p className="text-sm text-gray-500">Disponível</p>
-              <p className="font-medium text-gray-700">
-                {new Date(h.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                {' '}• {h.duracao_minutos} min
-              </p>
+          <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
+            {diasSemana.map((dia, i) => {
+              const ehHoje = dia.toDateString() === hoje.toDateString()
+              const selecionado = diaSelecionado?.toDateString() === dia.toDateString()
+              const count = agendamentosDoDia(dia).length
+              return (
+                <button key={i} onClick={() => setDiaSelecionado(selecionado ? null : dia)}
+                  className="flex-1 flex flex-col items-center py-2 gap-0.5 relative">
+                  <p className="text-xs text-gray-400">{DIAS[dia.getDay()]}</p>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
+                    style={ehHoje || selecionado
+                      ? { backgroundColor: cor, color: 'white' }
+                      : { color: '#111827' }}>
+                    {dia.getDate()}
+                  </div>
+                  {count > 0 && (
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Navegação de mês */}
+      {view === 'mes' && (
+        <>
+          <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
+            <button onClick={() => { const d = new Date(dataBase); d.setMonth(d.getMonth() - 1); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronLeft size={16} className="text-gray-600" />
+            </button>
+            <p className="text-sm font-semibold text-gray-700">
+              {MESES[dataBase.getMonth()]} {dataBase.getFullYear()}
+            </p>
+            <button onClick={() => { const d = new Date(dataBase); d.setMonth(d.getMonth() + 1); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronRight size={16} className="text-gray-600" />
+            </button>
+          </div>
+
+          <div className="bg-white border-b border-gray-100 px-2 pb-2">
+            <div className="grid grid-cols-7 mb-1">
+              {DIAS.map(d => <p key={d} className="text-center text-xs text-gray-400 py-1">{d}</p>)}
+            </div>
+            <div className="grid grid-cols-7 gap-y-1">
+              {Array.from({ length: new Date(dataBase.getFullYear(), dataBase.getMonth(), 1).getDay() }).map((_, i) => (
+                <div key={i} />
+              ))}
+              {diasMes.map((dia, i) => {
+                const ehHoje = dia.toDateString() === hoje.toDateString()
+                const selecionado = diaSelecionado?.toDateString() === dia.toDateString()
+                const count = agendamentosDoDia(dia).length
+                return (
+                  <button key={i} onClick={() => setDiaSelecionado(selecionado ? null : dia)}
+                    className="flex flex-col items-center py-1 gap-0.5">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                      style={ehHoje || selecionado
+                        ? { backgroundColor: cor, color: 'white' }
+                        : { color: '#111827' }}>
+                      {dia.getDate()}
+                    </div>
+                    {count > 0 && (
+                      <div className="w-1 h-1 rounded-full" style={{ backgroundColor: cor }} />
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
-        ))}
+        </>
+      )}
 
-        {/* Agendamentos */}
-        {agendamentos.length === 0 && horarios.filter(h => !h.ocupado).length === 0 ? (
-          <div className="card text-center py-10">
-            <Calendar size={36} className="text-gray-300 mx-auto mb-2" />
-            <p className="text-gray-400">Nenhum agendamento neste dia</p>
-          </div>
-        ) : (
-          agendamentos.map(ag => {
-            const st = statusConfig[ag.status] || statusConfig.pendente
-            const hora = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-            const horaFim = new Date(new Date(ag.data_hora).getTime() + ag.duracao_minutos * 60000)
-              .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-            const nomesServicos = nomesServicosDoAgendamento(ag)
+      {/* Lista de agendamentos */}
+      <div className="px-4 py-4 flex flex-col gap-3">
 
+        {/* Botão liberar horário */}
+        <button onClick={() => router.push('/salao/horarios')}
+          className="w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold"
+          style={{ borderColor: cor, color: cor }}>
+          <Plus size={16} />Liberar horário para clientes
+        </button>
+
+        {(() => {
+          const diasParaMostrar = diaSelecionado
+            ? [diaSelecionado]
+            : view === 'semana'
+              ? diasSemana
+              : diasMes.filter(d => agendamentosDoDia(d).length > 0)
+
+          const temAlgum = diasParaMostrar.some(d => agendamentosDoDia(d).length > 0)
+
+          if (!temAlgum) return (
+            <div className="card text-center py-10 flex flex-col items-center gap-3">
+              <Calendar size={36} className="text-gray-300" />
+              <p className="text-gray-400">Nenhum agendamento</p>
+              <button onClick={() => router.push('/salao/agenda/novo')}
+                className="px-4 py-2 rounded-full text-sm font-medium text-white"
+                style={{ backgroundColor: cor }}>
+                + Novo agendamento
+              </button>
+            </div>
+          )
+
+          return diasParaMostrar.map(dia => {
+            const ags = agendamentosDoDia(dia)
+            if (ags.length === 0) return null
             return (
-              <div key={ag.id} className="card flex flex-col gap-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${st.cor}`}>
-                        {st.label}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-500">{nomesServicos}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      <Clock size={10} className="inline mr-1" />
-                      {hora} - {horaFim} • Prof: {ag.profiles?.nome}
-                    </p>
-                    {ag.valor != null && (
-                      <p className="text-sm font-medium mt-1" style={{ color: cor }}>
-                        R$ {Number(ag.valor).toFixed(2).replace('.', ',')}
-                      </p>
+              <div key={dia.toISOString()}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-white shrink-0"
+                    style={{ backgroundColor: dia.toDateString() === hoje.toDateString() ? cor : '#9ca3af' }}>
+                    {dia.getDate()}
+                  </div>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {DIAS_COMPLETOS[dia.getDay()]}, {dia.getDate()} de {MESES[dia.getMonth()]}
+                    {dia.toDateString() === hoje.toDateString() && (
+                      <span className="ml-2 text-xs font-normal" style={{ color: cor }}>(hoje)</span>
                     )}
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => router.push(`/salao/agenda/editar/${ag.id}`)}
-                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors">
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        setAgendamentoParaCancelar(ag)
-                        setModalCancelamento(true)
-                      }}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  </p>
                 </div>
-
-                {/* Ações */}
-                {ag.status === 'aguardando_confirmacao' && (
-                  <div className="flex gap-2">
-                    <button onClick={() => alterarStatus(ag.id, 'cancelado')}
-                      className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
-                      <XCircle size={14} />Recusar
-                    </button>
-                    <button onClick={() => alterarStatus(ag.id, 'confirmado')}
-                      className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-green-50 text-green-600 text-sm font-medium">
-                      <CheckCircle size={14} />Confirmar
-                    </button>
-                  </div>
-                )}
-                {ag.status === 'confirmado' && (
-                  <button onClick={() => marcarComoConcluido(ag)}
-                    className="w-full py-2 rounded-xl text-sm font-medium text-white"
-                    style={{ backgroundColor: cor }}>
-                    ✓ Marcar como Concluído
-                  </button>
-                )}
+                <div className="flex flex-col gap-2 ml-10">
+                  {ags.map(ag => <CardAgendamento key={ag.id} ag={ag} />)}
+                </div>
               </div>
             )
           })
-        )}
+        })()}
       </div>
 
-      {/* Modal horário disponível */}
-      {modalDisponivel && (
+      {/* Modal editar */}
+      {modalEditar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
-            <h3 className="font-bold text-gray-900 text-lg">Liberar Horário</h3>
-            <p className="text-gray-500 text-sm">
-              Clientes poderão solicitar este horário em {dataSelecionada.toLocaleDateString('pt-BR')}
-            </p>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Horário</label>
-              <input type="time" className="input-field"
-                value={novoHorario} onChange={e => setNovoHorario(e.target.value)} />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1.5 block">Duração (minutos)</label>
-              <select className="input-field" value={novaDuracao}
-                onChange={e => setNovaDuracao(Number(e.target.value))}>
-                {[30, 45, 60, 90, 120].map(d => (
-                  <option key={d} value={d}>{d} minutos</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setModalDisponivel(false)}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
-                Cancelar
-              </button>
-              <button onClick={adicionarHorarioDisponivel}
-                className="flex-1 py-3 rounded-2xl text-white font-medium"
-                style={{ backgroundColor: cor }}>
-                Liberar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Cancelamento */}
-      {modalCancelamento && agendamentoParaCancelar && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <AlertCircle size={24} className="text-red-500" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900">Cancelar agendamento?</h3>
-                <p className="text-sm text-gray-500">Esta ação não pode ser desfeita</p>
-              </div>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">Editar agendamento</h3>
+              <button onClick={() => setModalEditar(null)}><X size={20} className="text-gray-400" /></button>
             </div>
 
-            <div className="space-y-3">
-              <button
-                onClick={() => cancelarAgendamento(agendamentoParaCancelar)}
-                disabled={cancelando}
-                className="w-full py-3 bg-red-500 text-white font-semibold rounded-xl hover:bg-red-600 transition-colors disabled:opacity-50">
-                {cancelando ? 'Cancelando...' : 'Sim, cancelar agendamento'}
-              </button>
-              <button
-                onClick={() => {
-                  setModalCancelamento(false)
-                  setAgendamentoParaCancelar(null)
-                }}
-                className="w-full py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl hover:bg-gray-200 transition-colors">
-                Não, voltar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <p className="text-sm text-gray-500">{modalEditar.clientes?.nome}</p>
 
-      {/* Modal de conclusão com checagem de pacote por serviço */}
-      {modalPacote && agendamentoConcluindo && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: `${cor}20` }}>
-                <Gift size={24} style={{ color: cor }} />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900">Concluir atendimento</h3>
-                <p className="text-sm text-gray-500">{agendamentoConcluindo.clientes?.nome}</p>
-              </div>
-            </div>
-
-            <p className="text-gray-500 text-sm">
-              Escolha, pra cada serviço, se vai descontar de um pacote ativo ou cobrar à parte:
-            </p>
-
-            <div className="flex flex-col gap-4">
-              {coberturas.map(cob => (
-                <div key={cob.servico_id} className="flex flex-col gap-2">
-                  <p className="font-semibold text-gray-900 text-sm">{cob.nome}</p>
-                  <div className="flex flex-col gap-2">
-                    {cob.opcoes.map(op => (
-                      <button key={op.cliente_pacote_id}
-                        onClick={() => atualizarEscolha(cob.servico_id, op.cliente_pacote_id)}
-                        className="w-full p-3 rounded-xl border-2 transition-all text-left"
-                        style={cob.escolha === op.cliente_pacote_id
-                          ? { borderColor: '#22c55e', backgroundColor: '#f0fdf4' }
-                          : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-gray-900 text-sm">{op.nome}</p>
-                          <Gift size={16} className="text-green-600 shrink-0" />
-                        </div>
-                        <p className="text-xs text-gray-500">{op.restantes} sessão(ns) restante(s)</p>
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => atualizarEscolha(cob.servico_id, 'individual')}
-                      className="w-full p-3 rounded-xl border-2 transition-all text-left"
-                      style={cob.escolha === 'individual'
-                        ? { borderColor: cor, backgroundColor: `${cor}10` }
-                        : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
-                      <p className="font-medium text-gray-900 text-sm">Cobrar à parte</p>
-                      <p className="text-xs text-gray-500">R$ {cob.preco.toFixed(2).replace('.', ',')}</p>
-                    </button>
+            {getServicosDetalhados(modalEditar).length > 1 && (
+              <div className="bg-gray-50 rounded-xl p-3 flex flex-col gap-1">
+                <p className="text-xs font-medium text-gray-500 mb-1">Serviços:</p>
+                {getServicosDetalhados(modalEditar).map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
+                    <p className="text-sm text-gray-700">{s.nome}</p>
                   </div>
-                </div>
-              ))}
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Observações (opcional)</label>
-              <textarea className="input-field resize-none" rows={2}
-                value={obsAtendimento} onChange={e => setObsAtendimento(e.target.value)} />
-            </div>
-
-            <div className="bg-gray-50 rounded-xl px-4 py-3 flex items-center justify-between">
-              <span className="text-sm text-gray-500">Total cobrado agora</span>
-              <span className="font-bold text-lg" style={{ color: cor }}>
-                R$ {valorTotalPreview.toFixed(2).replace('.', ',')}
-              </span>
-            </div>
-
-            {erroConclusao && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                <p className="text-red-600 text-sm">{erroConclusao}</p>
+                ))}
               </div>
             )}
 
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Status</label>
+              <select className="input-field" value={formEditar.status}
+                onChange={e => setFormEditar(p => ({ ...p, status: e.target.value }))}>
+                <option value="confirmado">Confirmado</option>
+                <option value="pendente">Pendente</option>
+                <option value="concluido">Concluído</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor cobrado (R$)</label>
+              <input className="input-field" type="number" placeholder="0,00"
+                value={formEditar.valor}
+                onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Observações</label>
+              <textarea className="input-field resize-none" rows={2}
+                value={formEditar.observacoes}
+                onChange={e => setFormEditar(p => ({ ...p, observacoes: e.target.value }))} />
+            </div>
+
             <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setModalPacote(false)
-                  setAgendamentoConcluindo(null)
-                  setCoberturas([])
-                }}
-                className="flex-1 py-3 bg-gray-100 text-gray-900 font-semibold rounded-xl">
+              <button onClick={() => setModalEditar(null)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
                 Cancelar
               </button>
-              <button
-                onClick={() => finalizarAtendimento(agendamentoConcluindo, coberturas, obsAtendimento)}
-                disabled={salvandoConclusao}
-                className="flex-1 py-3 rounded-xl text-white font-semibold disabled:opacity-50"
+              <button onClick={salvarEdicao} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
                 style={{ backgroundColor: cor }}>
-                {salvandoConclusao ? 'Salvando...' : 'Concluir atendimento'}
+                {salvando ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>
         </div>
       )}
-
-      <BottomNav items={navItems} corPrimaria={cor} />
     </div>
   )
 }
