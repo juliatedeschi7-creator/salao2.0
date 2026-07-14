@@ -34,11 +34,12 @@ export default function ContasPage() {
   const [form, setForm] = useState({
     cliente_id: '', descricao: '', valor: '', tipo: 'debito'
   })
-  const [formPagamento, setFormPagamento] = useState({
-    valor: '',
-    meio_pagamento: 'pix',
-    data_pagamento: new Date().toISOString().split('T')[0]
-  })
+const [formPagamento, setFormPagamento] = useState({
+  valor: '',
+  meio_pagamento: 'pix',
+  descricao: '',
+  data_pagamento: new Date().toISOString().split('T')[0]
+})
 
   useEffect(() => {
     if (loading) return
@@ -101,12 +102,12 @@ export default function ContasPage() {
     const restante = Number(conta.valor) - Number(conta.valor_pago || 0)
     setModalPagamento(conta)
     setErroPagamento('')
-    setFormPagamento({
-      valor: restante.toFixed(2),
-      meio_pagamento: 'pix',
-      data_pagamento: new Date().toISOString().split('T')[0]
-    })
-  }
+setFormPagamento({
+  valor: restante.toFixed(2),
+  meio_pagamento: 'pix',
+  descricao: '',
+  data_pagamento: new Date().toISOString().split('T')[0]
+})
 
   async function registrarPagamento(conta: any) {
     setErroPagamento('')
@@ -133,10 +134,11 @@ export default function ContasPage() {
     const { error: errHist } = await supabase.from('pagamentos_conta').insert({
       conta_id: conta.id,
       valor: valorPagoAgora,
-      meio_pagamento: formPagamento.meio_pagamento,
-      data_pagamento: formPagamento.data_pagamento,
-      criado_por: profile!.id
-    })
+  meio_pagamento: formPagamento.meio_pagamento,
+  descricao: formPagamento.descricao || null,
+  data_pagamento: formPagamento.data_pagamento,
+  criado_por: profile!.id
+})
     if (errHist) {
       setErroPagamento('Pagamento registrado, mas houve erro no histórico: ' + errHist.message)
       setSalvando(false)
@@ -281,13 +283,17 @@ export default function ContasPage() {
                         <span className="text-gray-400">
                           {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
                         </span>
-                        <span className="font-medium text-green-600">
-                          {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
-                          {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+  <span className="font-medium text-green-600">
+    {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
+    {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
+  </span>
+
+  {p.descricao && (
+    <p className="text-xs text-gray-500 mt-0.5">
+      {p.descricao}
+    </p>
+  )}
+</div>
 
                   <div className="flex gap-2 pt-1 border-t border-gray-100 mt-1">
                     {c.status === 'pendente' && (
@@ -418,7 +424,27 @@ export default function ContasPage() {
                 <option value="transferencia">Transferência</option>
               </select>
             </div>
+<div>
+  <label className="text-sm font-medium text-gray-700 mb-1 block">
+    Descrição (opcional)
+  </label>
 
+  <textarea
+    className="input-field min-h-[90px] resize-none"
+    placeholder={
+      modalPagamento.tipo === 'credito'
+        ? 'Ex.: Devolução referente ao pacote Maria. Cliente trocou por outro serviço.'
+        : 'Ex.: Pagamento referente ao pacote Maria.'
+    }
+    value={formPagamento.descricao}
+    onChange={e =>
+      setFormPagamento(p => ({
+        ...p,
+        descricao: e.target.value
+      }))
+    }
+  />
+</div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Data</label>
               <input className="input-field" type="date" value={formPagamento.data_pagamento}
