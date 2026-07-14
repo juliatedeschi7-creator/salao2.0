@@ -124,17 +124,17 @@ export default function ConfiguracoesPage() {
     setSalvandoAprovacao(false)
   }
 
-  async function ativarPush() {
+async function ativarPush() {
     setAtivandoPush(true)
-const resultado = await registrarPush(profile!.id, profile!.salao_id || undefined)
-const ok = !!(resultado as any)
-setPushAtivo(ok)
+    const resultado = await registrarPush(profile!.id, profile!.salao_id || undefined)
+    const ok = resultado.ok
+    setPushAtivo(ok)
     setAtivandoPush(false)
     setResultadoPush(ok
       ? { ok: true, msg: 'Push ativado! Agora clique em testar.' }
-      : { ok: false, msg: 'Não foi possível ativar. Verifique se o navegador permite notificações.' })
+      : { ok: false, msg: resultado.motivo || 'Não foi possível ativar. Verifique se o navegador permite notificações.' })
     setTimeout(() => setResultadoPush(null), 4000)
-  }
+}
 
  async function testarPush() {
   setTestandoPush(true)
