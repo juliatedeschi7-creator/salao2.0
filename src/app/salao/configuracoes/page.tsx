@@ -149,7 +149,7 @@ async function ativarPush() {
     // Mostra SEMPRE o resultado, seja erro ou sucesso
     setResultadoPush({
   ok: json.ok,
-  msg: JSON.stringify(json, null, 2) // temporário para debug
+  msg: JSON.stringify(json, null, 2)
 })
         ? '✓ Push enviado com sucesso!'
         : '✗ Erro: ' + (json.erro || JSON.stringify(json))
