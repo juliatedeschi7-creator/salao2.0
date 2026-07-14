@@ -278,22 +278,31 @@ setFormPagamento({
                         {isCredito ? 'Lançamento (crédito)' : 'Lançamento (débito)'}: {fmt(c.valor)}
                       </span>
                     </div>
-                    {historico.map(p => (
-                      <div key={p.id} className="flex items-center justify-between text-xs">
-                        <span className="text-gray-400">
-                          {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-  <span className="font-medium text-green-600">
-    {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
-    {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
-  </span>
 
-  {p.descricao && (
-    <p className="text-xs text-gray-500 mt-0.5">
-      {p.descricao}
-    </p>
-  )}
-</div>
+{historico.map(p => (
+  <div key={p.id} className="flex items-center justify-between text-xs">
+    <span className="text-gray-400">
+      {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric'
+      })}
+    </span>
+
+    <div className="text-right">
+      <span className="font-medium text-green-600">
+        {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
+        {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
+      </span>
+
+      {p.descricao && (
+        <p className="text-xs text-gray-500 mt-0.5">
+          {p.descricao}
+        </p>
+      )}
+    </div>
+  </div>
+))}
 
                   <div className="flex gap-2 pt-1 border-t border-gray-100 mt-1">
                     {c.status === 'pendente' && (
