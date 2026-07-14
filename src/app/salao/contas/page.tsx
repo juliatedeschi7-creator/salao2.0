@@ -301,6 +301,7 @@ setFormPagamento({
         </p>
       )}
     </div>
+</div>
 ))}
                   <div className="flex gap-2 pt-1 border-t border-gray-100 mt-1">
                     {c.status === 'pendente' && (
