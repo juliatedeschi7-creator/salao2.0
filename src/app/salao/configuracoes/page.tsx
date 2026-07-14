@@ -126,8 +126,9 @@ export default function ConfiguracoesPage() {
 
   async function ativarPush() {
     setAtivandoPush(true)
-    const ok = await registrarPush(profile!.id, profile!.salao_id || undefined)
-setPushAtivo(ok === true)
+const resultado = await registrarPush(profile!.id, profile!.salao_id || undefined)
+const ok = !!(resultado as any)
+setPushAtivo(ok)
     setAtivandoPush(false)
     setResultadoPush(ok
       ? { ok: true, msg: 'Push ativado! Agora clique em testar.' }
