@@ -29,8 +29,10 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Organiza Salão" />
         <meta name="theme-color" content="#111827" />
-        <link rel="apple-touch-icon" href="/logo.png" />
-      </head>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/logo.png" />
+</head>
+
       <body>{children}</body>
     </html>
   )
