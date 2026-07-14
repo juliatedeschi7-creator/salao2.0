@@ -17,56 +17,46 @@ export async function POST(req: NextRequest) {
   try {
     const { profileId } = await req.json()
 
-    const { data: subs } = await supabase
+    const { data: subs, error: dbErr } = await supabase
       .from('push_subscriptions')
-      .select('id, subscription')
+      .select('id, subscription, updated_at')
       .eq('profile_id', profileId)
       .order('updated_at', { ascending: false })
 
-    if (!subs || subs.length === 0) {
-      return NextResponse.json({
-        ok: false,
-        erro: 'Nenhuma subscription encontrada para este usuário.'
-      }, { status: 404 })
-    }
+    if (dbErr) return NextResponse.json({ ok: false, erro: 'DB: ' + dbErr.message }, { status: 500 })
+    if (!subs || subs.length === 0) return NextResponse.json({ ok: false, erro: 'Nenhuma subscription encontrada.' }, { status: 404 })
 
-    // Tenta enviar para todas as subscriptions do usuário
-    const resultados = await Promise.allSettled(
-      subs.map(async sub => {
-        try {
-          await webpush.sendNotification(
-            sub.subscription,
-            JSON.stringify({
-              title: '🔔 Organiza Salão',
-              body: 'Push funcionando! Suas notificações estão ativas.',
-              icon: '/logo.png',
-              url: '/salao'
-            })
-          )
-          return { ok: true, id: sub.id }
-        } catch (err: any) {
-          // Remove subscriptions expiradas/inválidas
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            await supabase.from('push_subscriptions').delete().eq('id', sub.id)
-          }
-          throw err
+    const detalhes: any[] = []
+
+    for (const sub of subs) {
+      const s = sub.subscription
+      try {
+        await webpush.sendNotification(
+          { endpoint: s.endpoint, keys: { p256dh: s.keys?.p256dh, auth: s.keys?.auth } },
+          JSON.stringify({
+            title: '🔔 Organiza Salão',
+            body: 'Push funcionando!',
+            icon: '/logo.png',
+            url: '/salao'
+          })
+        )
+        detalhes.push({ id: sub.id, status: 'enviado', endpoint: s.endpoint?.substring(0, 50) })
+      } catch (err: any) {
+        detalhes.push({
+          id: sub.id,
+          status: 'erro',
+          statusCode: err.statusCode,
+          mensagem: err.message,
+          endpoint: s.endpoint?.substring(0, 50)
+        })
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await supabase.from('push_subscriptions').delete().eq('id', sub.id)
         }
-      })
-    )
-
-    const enviados = resultados.filter(r => r.status === 'fulfilled').length
-    const erros = resultados.filter(r => r.status === 'rejected')
-
-    if (enviados > 0) {
-      return NextResponse.json({ ok: true, enviados })
+      }
     }
 
-    const primeiroErro = erros[0] as PromiseRejectedResult
-    return NextResponse.json({
-      ok: false,
-      erro: primeiroErro?.reason?.message || 'Falha ao enviar'
-    }, { status: 500 })
-
+    const enviados = detalhes.filter(d => d.status === 'enviado').length
+    return NextResponse.json({ ok: enviados > 0, enviados, total: subs.length, detalhes })
   } catch (err: any) {
     return NextResponse.json({ ok: false, erro: err.message }, { status: 500 })
   }
