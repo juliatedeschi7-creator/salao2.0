@@ -136,25 +136,28 @@ setPushAtivo(ok)
     setTimeout(() => setResultadoPush(null), 4000)
   }
 
-  async function testarPush() {
-    setTestandoPush(true)
-    setResultadoPush(null)
-    try {
-      const res = await fetch('/api/push/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profileId: profile!.id })
-      })
-      const json = await res.json()
-      setResultadoPush(json.ok
-        ? { ok: true, msg: '✓ Push enviado! Você deve receber a notificação agora.' }
-        : { ok: false, msg: json.erro || 'Erro ao enviar. Verifique as chaves VAPID no Vercel.' })
-    } catch {
-      setResultadoPush({ ok: false, msg: 'Erro de conexão.' })
-    }
-    setTestandoPush(false)
-    setTimeout(() => setResultadoPush(null), 5000)
+ async function testarPush() {
+  setTestandoPush(true)
+  setResultadoPush(null)
+  try {
+    const res = await fetch('/api/push/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profileId: profile!.id })
+    })
+    const json = await res.json()
+    // Mostra SEMPRE o resultado, seja erro ou sucesso
+    setResultadoPush({
+      ok: json.ok,
+      msg: json.ok
+        ? '✓ Push enviado com sucesso!'
+        : '✗ Erro: ' + (json.erro || JSON.stringify(json))
+    })
+  } catch (err: any) {
+    setResultadoPush({ ok: false, msg: 'Erro de conexão: ' + err.message })
   }
+  setTestandoPush(false)
+}
 
   function copiarTexto(texto: string, id: string) {
     navigator.clipboard.writeText(texto)
