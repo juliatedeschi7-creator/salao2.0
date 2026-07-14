@@ -108,7 +108,7 @@ setFormPagamento({
   descricao: '',
   data_pagamento: new Date().toISOString().split('T')[0]
 })
-
+}
   async function registrarPagamento(conta: any) {
     setErroPagamento('')
     const valorPagoAgora = parseFloat(formPagamento.valor)
