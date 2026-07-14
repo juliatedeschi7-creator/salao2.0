@@ -352,12 +352,12 @@ export default function AgendaPage() {
       {/* Lista de agendamentos */}
       <div className="px-4 py-4 flex flex-col gap-3">
 
-        {/* Botão liberar horário */}
-        <button onClick={() => router.push('/salao/horarios')}
-          className="w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold"
-          style={{ borderColor: cor, color: cor }}>
-          <Plus size={16} />Liberar horário para clientes
-        </button>
+    {/* Botão liberar horário */}
+<button onClick={() => router.push('/salao/horarios-vagos')}
+  className="w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold"
+  style={{ borderColor: cor, color: cor }}>
+  <Plus size={16} />Liberar horário para clientes
+</button>
 
         {(() => {
           const diasParaMostrar = diaSelecionado
