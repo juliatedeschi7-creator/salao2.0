@@ -8,29 +8,46 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { subscription, userId } = await req.json()
+    const { subscription, userId, salaoId } = await req.json()
     if (!subscription || !userId) {
       return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 })
     }
 
-    await supabase.from('push_subscriptions').upsert({
-      user_id: userId,
-      endpoint: subscription.endpoint,
-      p256dh: subscription.keys.p256dh,
-      auth: subscription.keys.auth,
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'endpoint' })
+    // Verifica se já existe pelo profile_id
+    const { data: existente } = await supabase
+      .from('push_subscriptions')
+      .select('id')
+      .eq('profile_id', userId)
+      .maybeSingle()
+
+    if (existente) {
+      await supabase.from('push_subscriptions').update({
+        subscription,
+        user_id: userId,
+        salao_id: salaoId || null,
+        updated_at: new Date().toISOString()
+      }).eq('profile_id', userId)
+    } else {
+      await supabase.from('push_subscriptions').insert({
+        profile_id: userId,
+        user_id: userId,
+        salao_id: salaoId || null,
+        subscription,
+        updated_at: new Date().toISOString()
+      })
+    }
 
     return NextResponse.json({ ok: true })
-  } catch (e) {
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
+  } catch (e: any) {
+    console.error('Push subscribe error:', e)
+    return NextResponse.json({ error: e.message || 'Erro interno' }, { status: 500 })
   }
 }
 
 export async function DELETE(req: NextRequest) {
   try {
-    const { endpoint } = await req.json()
-    await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+    const { userId } = await req.json()
+    await supabase.from('push_subscriptions').delete().eq('profile_id', userId)
     return NextResponse.json({ ok: true })
   } catch (e) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 })
