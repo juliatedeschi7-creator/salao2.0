@@ -148,8 +148,9 @@ async function ativarPush() {
     const json = await res.json()
     // Mostra SEMPRE o resultado, seja erro ou sucesso
     setResultadoPush({
-      ok: json.ok,
-      msg: json.ok
+  ok: json.ok,
+  msg: JSON.stringify(json, null, 2) // temporário para debug
+})
         ? '✓ Push enviado com sucesso!'
         : '✗ Erro: ' + (json.erro || JSON.stringify(json))
     })
