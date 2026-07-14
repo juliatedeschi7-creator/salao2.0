@@ -136,27 +136,31 @@ async function ativarPush() {
     setTimeout(() => setResultadoPush(null), 4000)
 }
 
- async function testarPush() {
+async function testarPush() {
   setTestandoPush(true)
   setResultadoPush(null)
+
   try {
     const res = await fetch('/api/push/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profileId: profile!.id })
     })
+
     const json = await res.json()
-    // Mostra SEMPRE o resultado, seja erro ou sucesso
+
     setResultadoPush({
-  ok: json.ok,
-  msg: JSON.stringify(json, null, 2)
-})
-        ? '✓ Push enviado com sucesso!'
-        : '✗ Erro: ' + (json.erro || JSON.stringify(json))
+      ok: json.ok,
+      msg: JSON.stringify(json, null, 2)
     })
+
   } catch (err: any) {
-    setResultadoPush({ ok: false, msg: 'Erro de conexão: ' + err.message })
+    setResultadoPush({
+      ok: false,
+      msg: 'Erro de conexão: ' + err.message
+    })
   }
+
   setTestandoPush(false)
 }
 
