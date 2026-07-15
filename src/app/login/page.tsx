@@ -3,7 +3,7 @@ import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff, Bell } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
-import { registrarPush } from '@/lib/push'
+import { registrarPush } from '@/lib/push-client'
 
 function LoginForm() {
   const searchParams = useSearchParams()
