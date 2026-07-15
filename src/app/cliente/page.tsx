@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, Heart, ChevronRight, Sparkles, FileText, Wallet, X } from 'lucide-react'
-import { registrarPush, verificarPushAtivo } from '@/lib/push'
+import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
 
 export default function ClientePage() {
   const { profile, loading, logout } = useAuth()
