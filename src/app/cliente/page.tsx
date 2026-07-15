@@ -68,12 +68,14 @@ export default function ClientePage() {
   async function ativarPushAgora() {
     setAtivandoPush(true)
     setErroPush('')
-const resultado = await registrarPush(profile!.id)
+    const resultado = await registrarPush(profile!.id)
     setAtivandoPush(false)
-    if (resultado.ok) {
+    
+    if (resultado) { // <--- Mudamos de 'resultado.ok' para apenas 'resultado'
       setModalPushLembrete(false)
     } else {
-      setErroPush(resultado.motivo || 'Não foi possível ativar. Verifique as permissões do navegador.')
+      // Como o resultado é apenas false se der errado, usamos a mensagem de erro direta
+      setErroPush('Não foi possível ativar. Verifique as permissões do navegador.')
     }
   }
 
