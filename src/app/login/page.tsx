@@ -65,6 +65,8 @@ function LoginForm() {
 
     }
 
+    }
+
     await new Promise(resolve => setTimeout(resolve, 500))
     window.location.href = destino
   }
