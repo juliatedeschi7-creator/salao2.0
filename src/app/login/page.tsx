@@ -60,11 +60,7 @@ function LoginForm() {
     // Não bloqueia nem falha o login se o navegador negar a permissão —
     // é best-effort, roda em paralelo com o redirecionamento.
     if (lembrarEReceber) {
-      registrarPush(data.user.id).catch(() => {}) // <--- Removido o segundo argumento!
-    }
-
-    }
-
+      registrarPush(data.user.id).catch(() => {})
     }
 
     await new Promise(resolve => setTimeout(resolve, 500))
