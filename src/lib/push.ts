@@ -53,14 +53,7 @@ export async function sendPushNotification(profileId: string, payload: PushPaylo
       }
     })
 
-    const resultados = await Promise.all(promessas)
-    return { ok: true, resultados }
-  } catch (error: any) {
-    return { ok: false, error: error.message }
-  }
-}
-
-// === TODOS OS MODELOS DE NOTIFICAÇÃO DO SISTEMA ===
+    // === TODOS OS MODELOS DE NOTIFICAÇÃO DO SISTEMA ===
 export const PushTemplates = {
   // 1. Agendamento Criado (Envia para o Dono)
   novoAgendamentoDono: (donoId: string, clienteNome: string, servico: string, dataHora: string) => {
@@ -90,7 +83,6 @@ export const PushTemplates = {
   },
 
   // 4. Atualização de Pacote (Envia para o Cliente)
-  // Exemplo: Comprou pacote, ou usou uma sessão do pacote
   atualizacaoPacoteCliente: (clienteId: string, pacoteNome: string, sessoesRestantes: number) => {
     return sendPushNotification(clienteId, {
       title: '📦 Atualização de Pacote',
@@ -100,7 +92,6 @@ export const PushTemplates = {
   },
 
   // 5. Atualização de Conta (Envia para o Usuário)
-  // Exemplo: Assinatura do salão ativa, alteração de dados, etc.
   atualizacaoContaUsuario: (perfilId: string, mensagem: string) => {
     return sendPushNotification(perfilId, {
       title: '⚙️ Atualização na sua Conta',
@@ -115,6 +106,44 @@ export const PushTemplates = {
       title: '⏰ Lembrete de Agendamento',
       body: `Falta pouco! Seu serviço de ${servico} está marcado para hoje às ${horario}.`,
       url: '/salao/meus-horarios'
+    })
+  },
+
+  // --- NOVOS FLUXOS CLÍNICOS E ESTÉTICOS ---
+
+  // 7. Solicitação para Responder Anamnese (Envia para o Cliente)
+  solicitarPreenchimentoAnamnese: (clienteId: string, profissionalNome: string) => {
+    return sendPushNotification(clienteId, {
+      title: '📝 Ficha de Anamnese',
+      body: `Olá! Por favor, responda a sua ficha de anamnese antes do seu atendimento com ${profissionalNome}.`,
+      url: '/salao/anamnese' // Leva o cliente direto para o formulário
+    })
+  },
+
+  // 8. Ficha Respondida / Atualizada (Envia para o Dono / Profissional)
+  anamneseRespondidaDono: (donoId: string, clienteNome: string) => {
+    return sendPushNotification(donoId, {
+      title: '📋 Anamnese Atualizada',
+      body: `${clienteNome} respondeu/atualizou a ficha de anamnese. Clique para revisar.`,
+      url: `/salao/clientes`
+    })
+  },
+
+  // 9. Foto de Evolução Adicionada (Envia para o Cliente)
+  fotoEvolucaoAdicionada: (clienteId: string, tratamentoNome: string) => {
+    return sendPushNotification(clienteId, {
+      title: '✨ Nova Foto de Evolução!',
+      body: `Uma nova foto foi adicionada ao seu histórico de evolução em "${tratamentoNome}". Venha ver seu progresso!`,
+      url: '/salao/minha-evolucao' // Tela de antes e depois do cliente
+    })
+  },
+
+  // 10. Campanhas e Marketing (Envia para Clientes)
+  campanhaMarketingServicos: (clienteId: string, salaoNome: string) => {
+    return sendPushNotification(clienteId, {
+      title: `✨ Novidades no ${salaoNome}!`,
+      body: 'Que tal um momento de autocuidado? Vem conferir nossos serviços e garanta seu horário.',
+      url: '/salao/servicos'
     })
   }
 }
