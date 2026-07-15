@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, Heart, ChevronRight, Sparkles, FileText, Wallet } from 'lucide-react'
+import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, Heart, ChevronRight, Sparkles, FileText, Wallet, X } from 'lucide-react'
+import { registrarPush, verificarPushAtivo } from '@/lib/push'
 
 export default function ClientePage() {
   const { profile, loading, logout } = useAuth()
@@ -15,6 +16,9 @@ export default function ClientePage() {
   const [notifCount, setNotifCount] = useState(0)
   const [contratosCount, setContratosCount] = useState(0)
   const [contasCount, setContasCount] = useState(0)
+  const [modalPushLembrete, setModalPushLembrete] = useState(false)
+  const [ativandoPush, setAtivandoPush] = useState(false)
+  const [erroPush, setErroPush] = useState('')
 
   useEffect(() => {
     if (!loading && profile) carregarDados()
@@ -54,6 +58,23 @@ export default function ClientePage() {
       .from('contas_clientes').select('*', { count: 'exact', head: true })
       .eq('cliente_id', cli?.id)
     setContasCount(contas || 0)
+
+    // Lembrete chamativo: se as notificações não estão ativas neste
+    // dispositivo, mostra o modal assim que ela entra no perfil.
+    const pushAtivo = await verificarPushAtivo()
+    if (!pushAtivo) setModalPushLembrete(true)
+  }
+
+  async function ativarPushAgora() {
+    setAtivandoPush(true)
+    setErroPush('')
+    const resultado = await registrarPush(profile!.id, cliente?.salao_id || salao?.id)
+    setAtivandoPush(false)
+    if (resultado.ok) {
+      setModalPushLembrete(false)
+    } else {
+      setErroPush(resultado.motivo || 'Não foi possível ativar. Verifique as permissões do navegador.')
+    }
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -302,6 +323,52 @@ if (loading || !cliente || !salao) {
           <LogOut size={15} />Sair da conta
         </button>
       </div>
+
+      {/* Lembrete chamativo de notificações desativadas */}
+      {modalPushLembrete && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-end">
+          <div className="bg-white w-full rounded-t-3xl overflow-hidden flex flex-col">
+            <div className="relative px-6 pt-8 pb-9 overflow-hidden shrink-0"
+              style={{ background: `linear-gradient(135deg, ${cor}, ${cor}bb)` }}>
+              <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-10 bg-white" />
+              <button onClick={() => setModalPushLembrete(false)}
+                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                <X size={16} className="text-white" />
+              </button>
+              <div className="relative flex flex-col items-center text-center gap-3 pt-2">
+                <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/30 flex items-center justify-center">
+                  <Bell size={30} className="text-white" />
+                </div>
+                <h3 className="text-white font-bold text-xl leading-snug px-4">
+                  Ative suas notificações!
+                </h3>
+                <p className="text-white/80 text-sm px-6 leading-relaxed">
+                  Sem elas, você pode perder avisos de horários confirmados, lembretes de agendamento e novidades do salão.
+                </p>
+              </div>
+            </div>
+
+            <div className="px-6 py-6 flex flex-col gap-3">
+              {erroPush && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <p className="text-red-600 text-sm">{erroPush}</p>
+                </div>
+              )}
+              <button onClick={ativarPushAgora} disabled={ativandoPush}
+                className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2"
+                style={{ backgroundColor: cor }}>
+                {ativandoPush
+                  ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <><Bell size={16} />Ativar notificações agora</>}
+              </button>
+              <button onClick={() => setModalPushLembrete(false)}
+                className="w-full py-3 text-gray-400 text-sm font-medium">
+                Agora não
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
