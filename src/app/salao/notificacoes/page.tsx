@@ -21,6 +21,12 @@ type CoberturaServico = {
   pacotesDisponiveis: PacoteOpcao[]
 }
 
+const PERIODO_LABEL: Record<string, string> = {
+  manha: 'manhã',
+  tarde: 'tarde',
+  noite: 'noite',
+}
+
 export default function NotificacoesDonoPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
@@ -353,6 +359,14 @@ export default function NotificacoesDonoPage() {
                   <p className="text-xs text-gray-400">
                     {new Date(s.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
+                  {(s.data_preferida || s.periodo_preferido) && (
+                    <p className="text-xs font-medium mt-1" style={{ color: cor }}>
+                      📅 Prefere: {s.data_preferida
+                        ? new Date(s.data_preferida + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
+                        : 'qualquer dia'}
+                      {s.periodo_preferido ? ` · ${PERIODO_LABEL[s.periodo_preferido] || s.periodo_preferido}` : ''}
+                    </p>
+                  )}
                 </div>
                 <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
                   (s.status === 'horario_sugerido' ? 'bg-blue-50 text-blue-600' : 'bg-yellow-50 text-yellow-600')}>
