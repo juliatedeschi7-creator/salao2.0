@@ -139,28 +139,32 @@ async function ativarPush() {
 async function testarPush() {
   setTestandoPush(true)
   setResultadoPush(null)
-
   try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000)
+    
     const res = await fetch('/api/push/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId: profile!.id })
+      body: JSON.stringify({ profileId: profile!.id }),
+      signal: controller.signal
     })
-
+    clearTimeout(timeout)
+    
     const json = await res.json()
-
     setResultadoPush({
       ok: json.ok,
-      msg: JSON.stringify(json, null, 2)
+      msg: json.ok
+        ? '✓ Push enviado! Aguarde a notificação chegar.'
+        : '✗ Erro: ' + (json.erro || JSON.stringify(json))
     })
-
   } catch (err: any) {
-    setResultadoPush({
-      ok: false,
-      msg: 'Erro de conexão: ' + err.message
-    })
+    if (err.name === 'AbortError') {
+      setResultadoPush({ ok: false, msg: 'Timeout — servidor demorou demais. Tente novamente.' })
+    } else {
+      setResultadoPush({ ok: false, msg: 'Erro de conexão: ' + err.message })
+    }
   }
-
   setTestandoPush(false)
 }
 
