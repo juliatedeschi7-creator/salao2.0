@@ -125,15 +125,22 @@ export default function ConfiguracoesPage() {
   }
 
 async function ativarPush() {
-    setAtivandoPush(true)
-    const resultado = await registrarPush(profile!.id, profile!.salao_id || undefined)
-    const ok = resultado.ok
-    setPushAtivo(ok)
-    setAtivandoPush(false)
-    setResultadoPush(ok
-      ? { ok: true, msg: 'Push ativado! Agora clique em testar.' }
-      : { ok: false, msg: resultado.motivo || 'Não foi possível ativar. Verifique se o navegador permite notificações.' })
-    setTimeout(() => setResultadoPush(null), 4000)
+  setAtivandoPush(true)
+  
+  // 1. Chamamos passando apenas 1 argumento (o ID do profile)
+  // 2. Como ela retorna true ou false, guardamos direto na variável 'ok'
+  const ok = await registrarPush(profile!.id)
+  
+  setPushAtivo(ok)
+  setAtivandoPush(false)
+  
+  // 3. Adaptamos a mensagem de erro para não tentar ler 'resultado.motivo' (já que é um booleano)
+  setResultadoPush(ok
+    ? { ok: true, msg: 'Push ativado! Agora clique em testar.' }
+    : { ok: false, msg: 'Não foi possível ativar. Verifique se o navegador permite notificações.' }
+  )
+  
+  setTimeout(() => setResultadoPush(null), 4000)
 }
 
 async function testarPush() {
