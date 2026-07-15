@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Bell, Link, Copy, Check, LogOut, Palette, Smartphone, Clock, ChevronRight, UserCheck, Edit3, Save, X } from 'lucide-react'
-import { registrarPush, verificarPushAtivo } from '@/lib/push'
+import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
 
 const CORES = [
   { primaria: '#E91E8C', secundaria: '#FCE4F3', nome: 'Rosa' },
