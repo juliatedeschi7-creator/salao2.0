@@ -1,9 +1,15 @@
 self.addEventListener('install', e => self.skipWaiting())
 self.addEventListener('activate', e => e.waitUntil(clients.claim()))
 
-// Deixa passar TODAS as requisições fetch sem interceptar
+// Não intercepta fetch de API - deixa passar direto
 self.addEventListener('fetch', e => {
-  e.respondWith(fetch(e.request))
+  const url = new URL(e.request.url)
+  
+  // Ignora requisições de API completamente
+  if (url.pathname.startsWith('/api/')) return
+  
+  // Para o resto, busca normalmente
+  e.respondWith(fetch(e.request).catch(() => fetch(e.request)))
 })
 
 self.addEventListener('push', e => {
