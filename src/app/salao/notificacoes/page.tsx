@@ -6,13 +6,19 @@ import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, Package } from 'lucide-react'
 
-type CoberturaPacote = {
+// ─── Tipos ──────────────────────────────────────────────────────────────────
+type PacoteOpcao = {
+  clientePacoteId: string
+  nome: string
+  sessoesRestantes: number
+}
+
+type CoberturaServico = {
   servicoId: string
   servicoNome: string
-  pacoteId: string | null
-  pacoteNome: string | null
-  clientePacoteId: string | null
-  coberto: boolean
+  // clientePacoteId selecionado pelo dono (null = não usa pacote)
+  clientePacoteIdSelecionado: string | null
+  pacotesDisponiveis: PacoteOpcao[]
 }
 
 export default function NotificacoesDonoPage() {
@@ -29,7 +35,7 @@ export default function NotificacoesDonoPage() {
   const [horariosLivres, setHorariosLivres] = useState(['', '', ''])
   const [servicoRealizado, setServicoRealizado] = useState('')
   const [salvando, setSalvando] = useState(false)
-  const [coberturas, setCoberturas] = useState<CoberturaPacote[]>([])
+  const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
   const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
 
   useEffect(() => {
@@ -78,92 +84,78 @@ export default function NotificacoesDonoPage() {
     setNotificacoesExcluidas(excluidas || [])
   }
 
-  // ── Detecta automaticamente quais serviços do agendamento têm pacote ──
-  async function calcularCoberturas(agendamento: any): Promise<CoberturaPacote[]> {
-    // Monta lista de IDs dos serviços deste agendamento
+  // ─── Monta lista de serviços com pacotes disponíveis ────────────────────
+  async function montarCoberturas(agendamento: any): Promise<CoberturaServico[]> {
     const idsServicos: string[] = Array.isArray(agendamento.servicos_ids) && agendamento.servicos_ids.length > 0
       ? agendamento.servicos_ids
       : agendamento.servico_id ? [agendamento.servico_id] : []
 
     if (idsServicos.length === 0) return []
 
-    // Busca detalhes dos serviços
+    // Detalhes dos serviços
     const { data: servicosInfo } = await supabase.from('servicos')
       .select('id, nome').in('id', idsServicos)
 
-    // Busca pacotes ativos da cliente com seus itens
+    // Todos os pacotes ativos da cliente com itens
     const { data: clientePacotes } = await supabase.from('cliente_pacotes')
       .select('*, pacotes(nome, pacote_itens(servico_id))')
       .eq('cliente_id', agendamento.cliente_id)
       .eq('status', 'ativo')
 
-    const resultado: CoberturaPacote[] = []
+    const pacotesAtivos = (clientePacotes || []).filter(
+      (cp: any) => cp.sessoes_usadas < cp.sessoes_total
+    )
 
-    for (const id of idsServicos) {
+    return idsServicos.map(id => {
       const srv = (servicosInfo || []).find((s: any) => s.id === id)
-      let cobert: CoberturaPacote = {
+
+      // Filtra pacotes que cobrem este serviço
+      const pacotesCobrem = pacotesAtivos.filter((cp: any) => {
+        const itens: any[] = cp.pacotes?.pacote_itens || []
+        // pacote com itens definidos → verifica se este serviço está nos itens
+        if (itens.length > 0) return itens.some((i: any) => i.servico_id === id)
+        // pacote genérico (sem itens) → cobre qualquer serviço
+        return true
+      })
+
+      const opcoes: PacoteOpcao[] = pacotesCobrem.map((cp: any) => ({
+        clientePacoteId: cp.id,
+        nome: cp.pacotes?.nome || 'Pacote',
+        sessoesRestantes: cp.sessoes_total - cp.sessoes_usadas,
+      }))
+
+      return {
         servicoId: id,
         servicoNome: srv?.nome || 'Serviço',
-        pacoteId: null,
-        pacoteNome: null,
-        clientePacoteId: null,
-        coberto: false,
+        // pré-seleciona o primeiro pacote compatível (pode ser alterado)
+        clientePacoteIdSelecionado: opcoes.length > 0 ? opcoes[0].clientePacoteId : null,
+        pacotesDisponiveis: opcoes,
       }
-
-      // Verifica se algum pacote ativo cobre este serviço
-      for (const cp of clientePacotes || []) {
-        if (cp.sessoes_usadas >= cp.sessoes_total) continue // sem sessões restantes
-        const itens: any[] = cp.pacotes?.pacote_itens || []
-        const cobre = itens.some((item: any) => item.servico_id === id)
-        if (cobre) {
-          cobert = {
-            ...cobert,
-            pacoteId: cp.pacote_id,
-            pacoteNome: cp.pacotes?.nome || 'Pacote',
-            clientePacoteId: cp.id,
-            coberto: true,
-          }
-          break // usa o primeiro pacote que cobre
-        }
-      }
-
-      // Se não tem pacote misto, verifica pacote genérico (sem itens definidos)
-      if (!cobert.coberto) {
-        const pacoteGenerico = (clientePacotes || []).find(
-          (cp: any) => cp.sessoes_usadas < cp.sessoes_total &&
-            (!cp.pacotes?.pacote_itens || cp.pacotes.pacote_itens.length === 0)
-        )
-        if (pacoteGenerico) {
-          cobert = {
-            ...cobert,
-            pacoteId: pacoteGenerico.pacote_id,
-            pacoteNome: pacoteGenerico.pacotes?.nome || 'Pacote',
-            clientePacoteId: pacoteGenerico.id,
-            coberto: true,
-          }
-        }
-      }
-
-      resultado.push(cobert)
-    }
-
-    return resultado
+    })
   }
 
   async function abrirModalConfirmar(ag: any) {
     setModalConfirmar(ag)
     setServicoRealizado(ag.servicos?.nome || '')
     setCarregandoCoberturas(true)
-    const covs = await calcularCoberturas(ag)
+    const covs = await montarCoberturas(ag)
     setCoberturas(covs)
     setCarregandoCoberturas(false)
   }
 
+  function alterarPacoteServico(servicoId: string, clientePacoteId: string | null) {
+    setCoberturas(prev => prev.map(c =>
+      c.servicoId === servicoId
+        ? { ...c, clientePacoteIdSelecionado: clientePacoteId }
+        : c
+    ))
+  }
+
+  // ─── Confirma e desconta dos pacotes escolhidos ──────────────────────────
   async function confirmarAtendimento() {
     if (!servicoRealizado || !modalConfirmar) return
     setSalvando(true)
 
-    // Registra confirmação
     await supabase.from('confirmacoes_atendimento').insert({
       agendamento_id: modalConfirmar.id,
       salao_id: profile!.salao_id,
@@ -171,53 +163,53 @@ export default function NotificacoesDonoPage() {
       servico_realizado: servicoRealizado
     })
 
-    // Marca agendamento como concluído
     await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', modalConfirmar.id)
 
-    // Processa deduções de pacote por serviço
     const hoje = new Date().toISOString().slice(0, 10)
-    const pacotesDescontados: Record<string, number> = {} // clientePacoteId → sessões descontadas
 
+    // Agrupa por pacote: { clientePacoteId → [servicoNome, ...] }
+    const descontos: Record<string, string[]> = {}
     for (const cob of coberturas) {
-      if (!cob.coberto || !cob.clientePacoteId) continue
-
-      // Acumula quantas sessões usar deste pacote
-      pacotesDescontados[cob.clientePacoteId] = (pacotesDescontados[cob.clientePacoteId] || 0) + 1
-
-      // Registra a sessão
-      await supabase.from('sessoes_pacote').insert({
-        cliente_pacote_id: cob.clientePacoteId,
-        data_sessao: hoje,
-        servico_realizado: cob.servicoNome,
-        profissional_id: profile!.id
-      })
+      if (!cob.clientePacoteIdSelecionado) continue
+      if (!descontos[cob.clientePacoteIdSelecionado]) descontos[cob.clientePacoteIdSelecionado] = []
+      descontos[cob.clientePacoteIdSelecionado].push(cob.servicoNome)
     }
 
-    // Atualiza saldo de cada pacote usado
-    for (const [cpId, qtd] of Object.entries(pacotesDescontados)) {
+    // Aplica desconto e registra sessões
+    for (const [cpId, servicos] of Object.entries(descontos)) {
       const { data: cp } = await supabase.from('cliente_pacotes')
         .select('sessoes_usadas, sessoes_total').eq('id', cpId).single()
-      if (cp) {
-        const novasUsadas = cp.sessoes_usadas + qtd
-        await supabase.from('cliente_pacotes').update({
-          sessoes_usadas: novasUsadas,
-          status: novasUsadas >= cp.sessoes_total ? 'concluido' : 'ativo'
-        }).eq('id', cpId)
+      if (!cp) continue
+
+      const novasUsadas = cp.sessoes_usadas + servicos.length
+      await supabase.from('cliente_pacotes').update({
+        sessoes_usadas: novasUsadas,
+        status: novasUsadas >= cp.sessoes_total ? 'concluido' : 'ativo'
+      }).eq('id', cpId)
+
+      for (const nomeServico of servicos) {
+        await supabase.from('sessoes_pacote').insert({
+          cliente_pacote_id: cpId,
+          data_sessao: hoje,
+          servico_realizado: nomeServico,
+          profissional_id: profile!.id
+        })
       }
     }
+
+    const totalDescontados = Object.values(descontos).reduce((acc, arr) => acc + arr.length, 0)
 
     // Notifica a cliente
     const { data: clienteInfo } = await supabase.from('clientes')
       .select('profile_id').eq('id', modalConfirmar.cliente_id).single()
     if (clienteInfo?.profile_id) {
-      const nPacotes = Object.keys(pacotesDescontados).length
       await supabase.from('notificacoes').insert({
         salao_id: profile!.salao_id,
         remetente_id: profile!.id,
         destinatario_id: clienteInfo.profile_id,
         titulo: '✅ Atendimento confirmado!',
-        mensagem: nPacotes > 0
-          ? `Seu atendimento foi confirmado. ${nPacotes} sessão(ões) de pacote utilizada(s).`
+        mensagem: totalDescontados > 0
+          ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
           : 'Seu atendimento foi registrado com sucesso!',
         tipo: 'confirmacao'
       })
@@ -230,36 +222,24 @@ export default function NotificacoesDonoPage() {
     carregarDados()
   }
 
+  // ─── Demais funções (sem mudança) ────────────────────────────────────────
   async function sugerirHorarios(solicitacao: any) {
     const horarios = horariosLivres.filter(h => h)
     if (!horarios.length) return
     setSalvando(true)
-
     await supabase.from('solicitacoes_agendamento').update({
-      status: 'horario_sugerido',
-      horarios_sugeridos: horarios,
-      profissional_id: profile!.id
+      status: 'horario_sugerido', horarios_sugeridos: horarios, profissional_id: profile!.id
     }).eq('id', solicitacao.id)
-
-    const { data: clienteProfile } = await supabase.from('clientes')
-      .select('profile_id').eq('id', solicitacao.cliente_id).single()
-
-    if (clienteProfile?.profile_id) {
+    const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
+    if (cp?.profile_id) {
       await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id,
-        remetente_id: profile!.id,
-        destinatario_id: clienteProfile.profile_id,
+        salao_id: profile!.salao_id, remetente_id: profile!.id, destinatario_id: cp.profile_id,
         titulo: '📅 Horários disponíveis para você!',
         mensagem: `${salao?.nome} sugeriu horários para ${solicitacao.servicos?.nome}. Escolha o melhor para você!`,
-        tipo: 'horario_sugerido',
-        referencia_id: solicitacao.id
+        tipo: 'horario_sugerido', referencia_id: solicitacao.id
       })
     }
-
-    setModalSugestao(null)
-    setHorariosLivres(['', '', ''])
-    setSalvando(false)
-    carregarDados()
+    setModalSugestao(null); setHorariosLivres(['', '', '']); setSalvando(false); carregarDados()
   }
 
   async function cancelarSugestao(solicitacao: any) {
@@ -301,7 +281,7 @@ export default function NotificacoesDonoPage() {
       await supabase.from('notificacoes').insert({
         salao_id: profile!.salao_id, remetente_id: profile!.id, destinatario_id: cp.profile_id,
         titulo: '⚠️ Um horário foi removido',
-        mensagem: `Um dos horários sugeridos para ${solicitacao.servicos?.nome} não está mais disponível. Os outros ainda estão válidos.`,
+        mensagem: `Um dos horários sugeridos para ${solicitacao.servicos?.nome} não está mais disponível.`,
         tipo: 'horario_sugerido', referencia_id: solicitacao.id
       })
     }
@@ -540,10 +520,10 @@ export default function NotificacoesDonoPage() {
         </div>
       )}
 
-      {/* Modal confirmar atendimento — com detecção de pacotes */}
+      {/* ── Modal confirmar atendimento com seleção de pacote por serviço ── */}
       {modalConfirmar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-lg">Confirmar atendimento</h3>
               <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}>
@@ -551,46 +531,64 @@ export default function NotificacoesDonoPage() {
               </button>
             </div>
 
-            <p className="text-sm text-gray-500 font-medium">{modalConfirmar.clientes?.nome}</p>
+            <p className="text-sm text-gray-600 font-medium">{modalConfirmar.clientes?.nome}</p>
 
-            {/* Cobertura de pacotes por serviço */}
+            {/* Serviços com seleção de pacote */}
             {carregandoCoberturas ? (
               <div className="flex items-center gap-2 py-2">
                 <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
-                <p className="text-xs text-gray-400">Verificando pacotes...</p>
+                <p className="text-xs text-gray-400">Verificando pacotes ativos...</p>
               </div>
             ) : coberturas.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Serviços deste atendimento</p>
+              <div className="flex flex-col gap-3">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+                  Serviços deste atendimento
+                </p>
                 {coberturas.map(cob => (
-                  <div key={cob.servicoId}
-                    className={'flex items-center justify-between rounded-xl px-3 py-2.5 ' +
-                      (cob.coberto ? 'bg-green-50' : 'bg-gray-50')}>
+                  <div key={cob.servicoId} className="bg-gray-50 rounded-2xl p-3 flex flex-col gap-2">
+                    {/* Nome do serviço */}
                     <div className="flex items-center gap-2">
-                      <div className={'w-6 h-6 rounded-full flex items-center justify-center shrink-0 ' +
-                        (cob.coberto ? 'bg-green-200' : 'bg-gray-200')}>
-                        {cob.coberto
-                          ? <Package size={12} className="text-green-700" />
-                          : <X size={12} className="text-gray-500" />}
+                      <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${cor}18` }}>
+                        <Package size={13} style={{ color: cor }} />
                       </div>
-                      <p className={'text-sm font-medium ' + (cob.coberto ? 'text-green-800' : 'text-gray-600')}>
-                        {cob.servicoNome}
-                      </p>
+                      <p className="font-semibold text-gray-900 text-sm">{cob.servicoNome}</p>
                     </div>
-                    <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
-                      (cob.coberto ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500')}>
-                      {cob.coberto ? cob.pacoteNome : 'Sem pacote'}
-                    </span>
+
+                    {/* Selector de pacote */}
+                    {cob.pacotesDisponiveis.length === 0 ? (
+                      <p className="text-xs text-gray-400 ml-9">Sem pacote ativo para este serviço</p>
+                    ) : (
+                      <div className="ml-9">
+                        <label className="text-xs text-gray-500 mb-1 block">Descontar de qual pacote?</label>
+                        <select
+                          className="input-field text-sm py-2"
+                          value={cob.clientePacoteIdSelecionado || ''}
+                          onChange={e => alterarPacoteServico(cob.servicoId, e.target.value || null)}>
+                          <option value="">Não usar pacote</option>
+                          {cob.pacotesDisponiveis.map(op => (
+                            <option key={op.clientePacoteId} value={op.clientePacoteId}>
+                              {op.nome} ({op.sessoesRestantes} sessão{op.sessoesRestantes !== 1 ? 'ões' : ''} restante{op.sessoesRestantes !== 1 ? 's' : ''})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 ))}
-                {coberturas.some(c => c.coberto) && (
-                  <p className="text-xs text-green-600 font-medium">
-                    ✓ {coberturas.filter(c => c.coberto).length} sessão(ões) serão descontadas automaticamente dos pacotes
-                  </p>
+
+                {/* Resumo */}
+                {coberturas.some(c => c.clientePacoteIdSelecionado) && (
+                  <div className="bg-green-50 rounded-xl px-3 py-2">
+                    <p className="text-xs text-green-700 font-medium">
+                      ✓ {coberturas.filter(c => c.clientePacoteIdSelecionado).length} sessão(ões) serão descontadas dos pacotes selecionados
+                    </p>
+                  </div>
                 )}
               </div>
             ) : null}
 
+            {/* O que foi realizado */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">O que foi realizado?</label>
               <input className="input-field" placeholder="Ex: Manicure + Pedicure tradicionais"
@@ -599,7 +597,9 @@ export default function NotificacoesDonoPage() {
 
             <div className="flex gap-3">
               <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
+                Cancelar
+              </button>
               <button onClick={confirmarAtendimento} disabled={salvando || !servicoRealizado}
                 className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40"
                 style={{ backgroundColor: cor }}>
