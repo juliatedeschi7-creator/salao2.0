@@ -21,12 +21,19 @@ interface PushPayload {
 // Função core de envio (envia para todos os aparelhos de um usuário)
 export async function sendPushNotification(profileId: string, payload: PushPayload) {
   try {
-    const { data: subs } = await supabase
+    const { data: subs, error: dbErr } = await supabase
       .from('push_subscriptions')
       .select('id, subscription')
       .eq('profile_id', profileId)
 
-    if (!subs || subs.length === 0) return { ok: false, message: 'Nenhum dispositivo registrado.' }
+    if (dbErr) {
+      console.error('[Push] Erro ao buscar do banco:', dbErr)
+      return { ok: false, error: dbErr.message }
+    }
+
+    if (!subs || subs.length === 0) {
+      return { ok: false, message: 'Nenhum dispositivo registrado.' }
+    }
 
     const promessas = subs.map(async (sub) => {
       const s = sub.subscription
@@ -34,7 +41,10 @@ export async function sendPushNotification(profileId: string, payload: PushPaylo
         await webpush.sendNotification(
           {
             endpoint: s.endpoint,
-            keys: { p256dh: s.keys?.p256dh, auth: s.keys?.auth }
+            keys: {
+              p256dh: s.keys?.p256dh,
+              auth: s.keys?.auth
+            }
           },
           JSON.stringify({
             title: payload.title,
@@ -49,11 +59,18 @@ export async function sendPushNotification(profileId: string, payload: PushPaylo
         if (err.statusCode === 410 || err.statusCode === 404) {
           await supabase.from('push_subscriptions').delete().eq('id', sub.id)
         }
-        return { id: sub.id, status: 'erro' }
+        return { id: sub.id, status: 'erro', code: err.statusCode }
       }
     })
 
-    // === TODOS OS MODELOS DE NOTIFICAÇÃO DO SISTEMA ===
+    const resultados = await Promise.all(promessas)
+    return { ok: true, resultados }
+  } catch (error: any) {
+    return { ok: false, error: error.message }
+  }
+}
+
+// === TODOS OS MODELOS DE NOTIFICAÇÃO DO SISTEMA ===
 export const PushTemplates = {
   // 1. Agendamento Criado (Envia para o Dono)
   novoAgendamentoDono: (donoId: string, clienteNome: string, servico: string, dataHora: string) => {
@@ -109,23 +126,21 @@ export const PushTemplates = {
     })
   },
 
-  // --- NOVOS FLUXOS CLÍNICOS E ESTÉTICOS ---
-
   // 7. Solicitação para Responder Anamnese (Envia para o Cliente)
   solicitarPreenchimentoAnamnese: (clienteId: string, profissionalNome: string) => {
     return sendPushNotification(clienteId, {
       title: '📝 Ficha de Anamnese',
       body: `Olá! Por favor, responda a sua ficha de anamnese antes do seu atendimento com ${profissionalNome}.`,
-      url: '/salao/anamnese' // Leva o cliente direto para o formulário
+      url: '/salao/anamnese'
     })
   },
 
-  // 8. Ficha Respondida / Atualizada (Envia para o Dono / Profissional)
+  // 8. Ficha Respondida / Atualizada (Envia para o Dono)
   anamneseRespondidaDono: (donoId: string, clienteNome: string) => {
     return sendPushNotification(donoId, {
       title: '📋 Anamnese Atualizada',
       body: `${clienteNome} respondeu/atualizou a ficha de anamnese. Clique para revisar.`,
-      url: `/salao/clientes`
+      url: '/salao/clientes'
     })
   },
 
@@ -134,7 +149,7 @@ export const PushTemplates = {
     return sendPushNotification(clienteId, {
       title: '✨ Nova Foto de Evolução!',
       body: `Uma nova foto foi adicionada ao seu histórico de evolução em "${tratamentoNome}". Venha ver seu progresso!`,
-      url: '/salao/minha-evolucao' // Tela de antes e depois do cliente
+      url: '/salao/minha-evolucao'
     })
   },
 
