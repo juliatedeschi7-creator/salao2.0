@@ -68,7 +68,7 @@ export default function ClientePage() {
   async function ativarPushAgora() {
     setAtivandoPush(true)
     setErroPush('')
-    const resultado = await registrarPush(profile!.id, cliente?.salao_id || salao?.id)
+const resultado = await registrarPush(profile!.id)
     setAtivandoPush(false)
     if (resultado.ok) {
       setModalPushLembrete(false)
