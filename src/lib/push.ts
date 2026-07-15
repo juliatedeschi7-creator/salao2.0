@@ -1,106 +1,120 @@
-import { supabase } from '@/lib/supabase'
+import webpush from 'web-push'
+import { createClient } from '@supabase/supabase-js'
 
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
-  const rawData = window.atob(base64)
-  const outputArray = new Uint8Array(rawData.length)
+webpush.setVapidDetails(
+  process.env.VAPID_EMAIL!,
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+  process.env.VAPID_PRIVATE_KEY!
+)
 
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i)
-  }
-
-  return outputArray
+interface PushPayload {
+  title: string
+  body: string
+  url?: string
 }
 
-export async function verificarPushAtivo(): Promise<boolean> {
-  if (typeof window === 'undefined') return false
-  if (!('serviceWorker' in navigator)) return false
-
-  const registration = await navigator.serviceWorker.getRegistration()
-  if (!registration) return false
-
-  const subscription = await registration.pushManager.getSubscription()
-  return subscription !== null
-}
-
-export interface ResultadoPush {
-  ok: boolean
-  motivo?: string
-}
-
-// Agora devolve { ok, motivo } em vez de só true/false — assim a tela
-// consegue mostrar exatamente o que falhou (chave VAPID ausente, service
-// worker não registrou, permissão negada, erro do Supabase, etc) sem
-// precisar abrir o console do navegador pra depurar.
-export async function registrarPush(
-  profileId: string,
-  salaoId?: string
-): Promise<ResultadoPush> {
+// Função core de envio (envia para todos os aparelhos de um usuário)
+export async function sendPushNotification(profileId: string, payload: PushPayload) {
   try {
-    if (!('serviceWorker' in navigator)) {
-      return { ok: false, motivo: 'Este navegador não suporta Service Worker.' }
-    }
-
-    if (!('PushManager' in window)) {
-      return { ok: false, motivo: 'Este navegador não suporta notificações push. No iOS, precisa ser pelo app instalado na tela de início (não pelo Safari direto).' }
-    }
-
-    const chavePublica = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-    if (!chavePublica) {
-      return { ok: false, motivo: 'Chave VAPID pública não configurada (NEXT_PUBLIC_VAPID_PUBLIC_KEY ausente no build).' }
-    }
-
-    const permission = await Notification.requestPermission()
-    if (permission !== 'granted') {
-      return {
-        ok: false,
-        motivo: permission === 'denied'
-          ? 'Permissão de notificação foi negada. Vá nas configurações do dispositivo/navegador e libere manualmente.'
-          : 'Permissão de notificação não foi concedida.'
-      }
-    }
-
-    let registration: ServiceWorkerRegistration
-    try {
-      registration = await navigator.serviceWorker.register('/sw.js')
-    } catch (e: any) {
-      return { ok: false, motivo: 'Falha ao registrar o Service Worker (/sw.js): ' + (e?.message || String(e)) }
-    }
-
-    await navigator.serviceWorker.ready
-
-    let subscription = await registration.pushManager.getSubscription()
-
-    if (!subscription) {
-      try {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(chavePublica)
-        })
-      } catch (e: any) {
-        return { ok: false, motivo: 'Falha ao criar inscrição push: ' + (e?.message || String(e)) }
-      }
-    }
-
-    const { error } = await supabase
+    const { data: subs } = await supabase
       .from('push_subscriptions')
-      .upsert({
-        profile_id: profileId,
-        salao_id: salaoId ?? null,
-        subscription
-      })
-      .select()
+      .select('id, subscription')
+      .eq('profile_id', profileId)
 
-    if (error) {
-      return { ok: false, motivo: 'Erro ao salvar no banco: ' + error.message }
-    }
+    if (!subs || subs.length === 0) return { ok: false, message: 'Nenhum dispositivo registrado.' }
 
-    return { ok: true }
-  } catch (e: any) {
-    return { ok: false, motivo: 'Erro inesperado: ' + (e?.message || String(e)) }
+    const promessas = subs.map(async (sub) => {
+      const s = sub.subscription
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: s.endpoint,
+            keys: { p256dh: s.keys?.p256dh, auth: s.keys?.auth }
+          },
+          JSON.stringify({
+            title: payload.title,
+            body: payload.body,
+            icon: '/logo.png',
+            url: payload.url || '/salao'
+          }),
+          { timeout: 5000 }
+        )
+        return { id: sub.id, status: 'enviado' }
+      } catch (err: any) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          await supabase.from('push_subscriptions').delete().eq('id', sub.id)
+        }
+        return { id: sub.id, status: 'erro' }
+      }
+    })
+
+    const resultados = await Promise.all(promessas)
+    return { ok: true, resultados }
+  } catch (error: any) {
+    return { ok: false, error: error.message }
+  }
+}
+
+// === TODOS OS MODELOS DE NOTIFICAÇÃO DO SISTEMA ===
+export const PushTemplates = {
+  // 1. Agendamento Criado (Envia para o Dono)
+  novoAgendamentoDono: (donoId: string, clienteNome: string, servico: string, dataHora: string) => {
+    return sendPushNotification(donoId, {
+      title: '📅 Novo Agendamento!',
+      body: `${clienteNome} agendou ${servico} para ${dataHora}.`,
+      url: '/salao/agendamentos'
+    })
+  },
+
+  // 2. Agendamento Confirmado (Envia para o Cliente)
+  agendamentoConfirmadoCliente: (clienteId: string, servico: string, dataHora: string) => {
+    return sendPushNotification(clienteId, {
+      title: '✅ Horário Confirmado!',
+      body: `Seu agendamento de ${servico} para ${dataHora} foi aprovado pelo salão!`,
+      url: '/salao/meus-horarios'
+    })
+  },
+
+  // 3. Orçamento Pronto (Envia para o Cliente)
+  orcamentoProntoCliente: (clienteId: string, servico: string) => {
+    return sendPushNotification(clienteId, {
+      title: '💰 Orçamento Disponível!',
+      body: `O orçamento solicitado para o serviço de ${servico} está pronto para aprovação.`,
+      url: '/salao/orcamentos'
+    })
+  },
+
+  // 4. Atualização de Pacote (Envia para o Cliente)
+  // Exemplo: Comprou pacote, ou usou uma sessão do pacote
+  atualizacaoPacoteCliente: (clienteId: string, pacoteNome: string, sessoesRestantes: number) => {
+    return sendPushNotification(clienteId, {
+      title: '📦 Atualização de Pacote',
+      body: `Você possui agora ${sessoesRestantes} sessões restantes no seu pacote de ${pacoteNome}.`,
+      url: '/salao/meus-pacotes'
+    })
+  },
+
+  // 5. Atualização de Conta (Envia para o Usuário)
+  // Exemplo: Assinatura do salão ativa, alteração de dados, etc.
+  atualizacaoContaUsuario: (perfilId: string, mensagem: string) => {
+    return sendPushNotification(perfilId, {
+      title: '⚙️ Atualização na sua Conta',
+      body: mensagem,
+      url: '/salao/configuracoes'
+    })
+  },
+
+  // 6. Lembrete de Horário (Envia para o Cliente)
+  lembreteDeHorarioCliente: (clienteId: string, servico: string, horario: string) => {
+    return sendPushNotification(clienteId, {
+      title: '⏰ Lembrete de Agendamento',
+      body: `Falta pouco! Seu serviço de ${servico} está marcado para hoje às ${horario}.`,
+      url: '/salao/meus-horarios'
+    })
   }
 }
