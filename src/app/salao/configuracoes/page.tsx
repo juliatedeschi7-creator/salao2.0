@@ -142,8 +142,7 @@ async function testarPush() {
   try {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), 15000)
-    
-    const res = await fetch('/api/push/test', {
+const res = await fetch('/api/push/test/', { // 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profileId: profile!.id }),
