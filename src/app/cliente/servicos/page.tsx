@@ -31,8 +31,6 @@ function AvisoServicos({ cor, texto }: { cor: string; texto?: string | null }) {
   )
 }
 
-// Flag "s" (dotAll) faz o "." também casar quebras de linha, então o link
-// funciona mesmo quando o texto entre [[ ]] está espalhado por várias linhas.
 const REGEX_LINK = /\[\[(.+?)\|(.+?)\]\]/gs
 
 function DescricaoComLinks({ texto, cor, onAbrirExplicacao }: {
@@ -176,6 +174,23 @@ export default function ClienteServicosPage() {
   function marcarInteresse(pacoteId: string) {
     setInteressados(prev => new Set(Array.from(prev).concat(pacoteId)))
   }
+
+  // --- FUNÇÃO ADICIONADA AQUI ---
+  async function demonstrarInteresse(pacote: any) {
+    setEnviandoInteresse(pacote.id)
+    
+    // Pequeno delay para feedback visual no botão antes de abrir a nova aba
+    await new Promise(resolve => setTimeout(resolve, 600))
+    
+    const link = linkInteressePacote(pacote)
+    if (link !== '#') {
+      window.open(link, '_blank')
+    }
+    
+    marcarInteresse(pacote.id)
+    setEnviandoInteresse(null)
+  }
+  // ------------------------------
 
   function adicionarAoCarrinho(s: any) {
     setCarrinho(prev => {
