@@ -22,14 +22,15 @@ export default function NovoClientePage() {
     setSalvando(true)
     setErro('')
 
-    const { error } = await supabase.from('clientes').insert({
-      salao_id: profile!.salao_id,
-      nome,
-      telefone: telefone || null,
-      email: email || null,
-      data_nascimento: dataNascimento || null,
-      observacoes: observacoes || null,
-    })
+const { error } = await supabase.from('clientes').insert({
+  salao_id: profile!.salao_id,
+  nome,
+  telefone: telefone || null,
+  email: email || null,
+  data_nascimento: dataNascimento || null,
+  observacoes: observacoes || null,
+  cadastro_pendente: true,
+})
 
     if (error) {
       setErro('Erro ao salvar cliente.')
