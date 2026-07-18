@@ -86,76 +86,87 @@ function CadastroForm() {
         window.location.href = '/aguardando'; return
       }
 
-if (isCliente && salaoSlug) {
-  const { data: salao } = await supabase.from('saloes')
-    .select('id, aprovacao_automatica_clientes').eq('slug', salaoSlug).single()
-  if (!salao) { setErro('Salão não encontrado.'); setLoading(false); return }
-  const aprovadoAuto = salao.aprovacao_automatica_clientes === true
+      if (isCliente && salaoSlug) {
+        const { data: salao } = await supabase.from('saloes')
+          .select('id, aprovacao_automatica_clientes').eq('slug', salaoSlug).single()
+        if (!salao) { setErro('Salão não encontrado.'); setLoading(false); return }
+        const aprovadoAuto = salao.aprovacao_automatica_clientes === true
 
-  const { data: clienteExistente } = await supabase.from('clientes')
-    .select('id').eq('salao_id', salao.id).eq('email', email.trim().toLowerCase()).maybeSingle()
+        const { data: clienteExistente } = await supabase.from('clientes')
+          .select('id').eq('salao_id', salao.id).eq('email', email.trim().toLowerCase()).maybeSingle()
 
-  await supabase.from('profiles').upsert({
-    id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
-    role: 'cliente', salao_id: salao.id, aprovado: aprovadoAuto, ativo: true
-  }, { onConflict: 'id' })
+        await supabase.from('profiles').upsert({
+          id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
+          role: 'cliente', salao_id: salao.id, aprovado: aprovadoAuto, ativo: true
+        }, { onConflict: 'id' })
 
-  let houveSugestaoMesclagem = false
+        let houveSugestaoMesclagem = false
 
-  if (clienteExistente) {
-    await supabase.from('clientes').update({ profile_id: data.user.id }).eq('id', clienteExistente.id)
-  } else {
-    const { data: novoCliente } = await supabase.from('clientes').insert({
-      salao_id: salao.id, profile_id: data.user.id,
-      nome: nome.trim(), email: email.trim().toLowerCase(),
-      data_nascimento: dataNascimento || null
-    }).select('id').single()
+        if (clienteExistente) {
+          await supabase.from('clientes').update({ profile_id: data.user.id }).eq('id', clienteExistente.id)
+        } else {
+          const { data: novoCliente } = await supabase.from('clientes').insert({
+            salao_id: salao.id, profile_id: data.user.id,
+            nome: nome.trim(), email: email.trim().toLowerCase(),
+            data_nascimento: dataNascimento || null
+          }).select('id').single()
 
-    // Verifica se já existe um contato cadastrado manualmente (mesmo nome, sem conta ainda)
-    if (novoCliente) {
-      const nomeNormalizado = normalizarNome(nome)
-      const { data: pendentes } = await supabase.from('clientes')
-        .select('id, nome')
-        .eq('salao_id', salao.id)
-        .eq('cadastro_pendente', true)
-        .neq('id', novoCliente.id)
+          // Verifica se já existe um contato cadastrado manualmente (mesmo nome, sem conta ainda)
+          if (novoCliente) {
+            const nomeNormalizado = normalizarNome(nome)
+            const { data: pendentes } = await supabase.from('clientes')
+              .select('id, nome')
+              .eq('salao_id', salao.id)
+              .eq('cadastro_pendente', true)
+              .neq('id', novoCliente.id)
 
-      const possivelDuplicata = (pendentes || []).find(
-        (p: any) => normalizarNome(p.nome) === nomeNormalizado
-      )
+            const possivelDuplicata = (pendentes || []).find(
+              (p: any) => normalizarNome(p.nome) === nomeNormalizado
+            )
 
-      if (possivelDuplicata) {
-        await supabase.from('sugestoes_mesclagem').insert({
-          salao_id: salao.id,
-          cliente_pendente_id: possivelDuplicata.id,
-          cliente_novo_id: novoCliente.id,
-          status: 'pendente'
-        })
-        houveSugestaoMesclagem = true
+            if (possivelDuplicata) {
+              await supabase.from('sugestoes_mesclagem').insert({
+                salao_id: salao.id,
+                cliente_pendente_id: possivelDuplicata.id,
+                cliente_novo_id: novoCliente.id,
+                status: 'pendente'
+              })
+              houveSugestaoMesclagem = true
+            }
+          }
+        }
+
+        const { data: dono } = await supabase.from('profiles').select('id')
+          .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
+        if (dono) {
+          await supabase.from('notificacoes').insert({
+            destinatario_id: dono.id,
+            titulo: aprovadoAuto ? 'Nova cliente cadastrada! 🎉' : 'Nova cliente aguardando aprovação',
+            mensagem: aprovadoAuto ? `${nome.trim()} se cadastrou no seu salão.` : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
+            tipo: 'sistema'
+          })
+          if (houveSugestaoMesclagem) {
+            await supabase.from('notificacoes').insert({
+              destinatario_id: dono.id,
+              titulo: 'Possível contato duplicado',
+              mensagem: `"${nome.trim()}" já existia como contato cadastrado manualmente. Toque para revisar e mesclar.`,
+              tipo: 'mesclagem'
+            })
+          }
+        }
+        window.location.href = aprovadoAuto ? '/cliente' : '/aguardando'; return
       }
-    }
-  }
 
-  const { data: dono } = await supabase.from('profiles').select('id')
-    .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
-  if (dono) {
-    await supabase.from('notificacoes').insert({
-      destinatario_id: dono.id,
-      titulo: aprovadoAuto ? 'Nova cliente cadastrada! 🎉' : 'Nova cliente aguardando aprovação',
-      mensagem: aprovadoAuto ? `${nome.trim()} se cadastrou no seu salão.` : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
-      tipo: 'sistema'
-    })
-    if (houveSugestaoMesclagem) {
-      await supabase.from('notificacoes').insert({
-        destinatario_id: dono.id,
-        titulo: 'Possível contato duplicado',
-        mensagem: `"${nome.trim()}" já existia como contato cadastrado manualmente. Toque para revisar e mesclar.`,
-        tipo: 'mesclagem'
-      })
+      await supabase.from('profiles').upsert({
+        id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
+        role: roleInicial, aprovado: false, ativo: true
+      }, { onConflict: 'id' })
+      window.location.href = isNovoSalao ? '/aguardando' : '/login'
+    } catch (e: any) {
+      setErro('Erro: ' + (e.message || 'Tente novamente.'))
     }
+    setLoading(false)
   }
-  window.location.href = aprovadoAuto ? '/cliente' : '/aguardando'; return
-}
 
   const cor = (isCliente || isFuncionario) && salaoInfo?.cor_primaria ? salaoInfo.cor_primaria : '#111827'
   const corSec = (isCliente || isFuncionario) && salaoInfo?.cor_secundaria ? salaoInfo.cor_secundaria : '#f3f4f6'
