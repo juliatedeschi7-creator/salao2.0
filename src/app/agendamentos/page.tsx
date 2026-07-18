@@ -158,14 +158,15 @@ export default function NovoAgendamentoPage() {
 
     const dataHoraPrimeira = new Date(`${data}T${hora}:00`)
 
-    await supabase.from('notificacoes').insert({
-      salao_id: profile!.salao_id,
-      remetente_id: profile!.id,
-      destinatario_id: clienteSelecionado.profile_id,
-      titulo: 'Agendamento confirmado!',
-      mensagem: `${nomesServicos} com ${nomesProfissionais} — ${dataHoraPrimeira.toLocaleDateString('pt-BR')} às ${hora}.${horarioFixo ? ` Horário fixo (${frequenciaFixo}).` : ''}`,
-      tipo: 'lembrete'
-    })
+await notificar({
+  salaoId: profile!.salao_id,
+  remetenteId: profile!.id,
+  destinatarioId: clienteSelecionado.profile_id,
+  titulo: 'Agendamento confirmado!',
+  mensagem: `${nomesServicos} com ${nomesProfissionais} — ${dataHoraPrimeira.toLocaleDateString('pt-BR')} às ${hora}.${horarioFixo ? ` Horário fixo (${frequenciaFixo}).` : ''}`,
+  tipo: 'lembrete',
+  url: '/cliente/agendamentos'
+})
 
     setSucesso(true)
     setSalvando(false)
