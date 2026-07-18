@@ -18,6 +18,14 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray
 }
 
+// Evita que o app fique travado pra sempre esperando uma Promise que nunca resolve
+function comTimeout<T>(promise: Promise<T>, ms: number, mensagemErro: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(mensagemErro)), ms))
+  ])
+}
+
 export async function verificarPushAtivo(): Promise<boolean> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     return false
@@ -27,7 +35,7 @@ export async function verificarPushAtivo(): Promise<boolean> {
   if (permission !== 'granted') return false
 
   try {
-    const registration = await navigator.serviceWorker.ready
+    const registration = await comTimeout(navigator.serviceWorker.ready, 5000, 'Timeout ao verificar service worker')
     const subscription = await registration.pushManager.getSubscription()
     return !!subscription
   } catch (err) {
@@ -51,7 +59,18 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       return false
     }
 
-    const registration = await navigator.serviceWorker.ready
+    // Registra o service worker explicitamente — se ele já estiver registrado,
+    // o navegador só devolve o registration existente, sem duplicar nada.
+    let registration: ServiceWorkerRegistration
+    try {
+      registration = await navigator.serviceWorker.register('/sw.js')
+    } catch (e) {
+      console.error('Falha ao registrar o service worker:', e)
+      return false
+    }
+
+    // Espera o service worker ficar pronto, com limite de tempo pra nunca travar
+    registration = await comTimeout(navigator.serviceWorker.ready, 8000, 'Timeout esperando o service worker ficar pronto')
 
     const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
     if (!vapidPublicKey) {
@@ -59,10 +78,13 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       return false
     }
 
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-    })
+    let subscription = await registration.pushManager.getSubscription()
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+      })
+    }
 
     const { error } = await supabase
       .from('push_subscriptions')
@@ -70,7 +92,7 @@ export async function registrarPush(profileId: string): Promise<boolean> {
         profile_id: profileId,
         subscription: subscription.toJSON()
       }, {
-        onConflict: 'subscription'
+        onConflict: 'profile_id'
       })
 
     if (error) {
