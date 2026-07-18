@@ -11,11 +11,14 @@ function normalizarNome(s: string) {
 }
 
 function nomesCorrespondem(nomeA: string, nomeB: string): boolean {
-  const a = normalizarNome(nomeA).split(' ').filter(Boolean)
-  const b = normalizarNome(nomeB).split(' ').filter(Boolean)
-  // Precisa ter pelo menos nome + 1 sobrenome nos dois pra comparar com segurança
-  if (a.length < 2 || b.length < 2) return false
-  return a[0] === b[0] && a[1] === b[1]
+  const palavrasA = new Set(normalizarNome(nomeA).split(' ').filter(Boolean))
+  const palavrasB = normalizarNome(nomeB).split(' ').filter(Boolean)
+
+  let coincidencias = 0
+  for (const palavra of palavrasB) {
+    if (palavrasA.has(palavra)) coincidencias++
+  }
+  return coincidencias >= 2
 }
 
 function CadastroForm() {
