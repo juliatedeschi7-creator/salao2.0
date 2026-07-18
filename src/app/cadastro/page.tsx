@@ -10,6 +10,14 @@ function normalizarNome(s: string) {
     .toLowerCase().trim().replace(/\s+/g, ' ')
 }
 
+function nomesCorrespondem(nomeA: string, nomeB: string): boolean {
+  const a = normalizarNome(nomeA).split(' ').filter(Boolean)
+  const b = normalizarNome(nomeB).split(' ').filter(Boolean)
+  // Precisa ter pelo menos nome + 1 sobrenome nos dois pra comparar com segurança
+  if (a.length < 2 || b.length < 2) return false
+  return a[0] === b[0] && a[1] === b[1]
+}
+
 function CadastroForm() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
@@ -113,16 +121,15 @@ function CadastroForm() {
 
           // Verifica se já existe um contato cadastrado manualmente (mesmo nome, sem conta ainda)
           if (novoCliente) {
-            const nomeNormalizado = normalizarNome(nome)
-            const { data: pendentes } = await supabase.from('clientes')
-              .select('id, nome')
-              .eq('salao_id', salao.id)
-              .eq('cadastro_pendente', true)
-              .neq('id', novoCliente.id)
+const { data: pendentes } = await supabase.from('clientes')
+  .select('id, nome')
+  .eq('salao_id', salao.id)
+  .eq('cadastro_pendente', true)
+  .neq('id', novoCliente.id)
 
-            const possivelDuplicata = (pendentes || []).find(
-              (p: any) => normalizarNome(p.nome) === nomeNormalizado
-            )
+const possivelDuplicata = (pendentes || []).find(
+  (p: any) => nomesCorrespondem(p.nome, nome)
+)
 
             if (possivelDuplicata) {
               await supabase.from('sugestoes_mesclagem').insert({
