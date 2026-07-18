@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Search, Plus, CheckCircle, X, Clock, ChevronDown } from 'lucide-react'
+ import { notificar } from '@/lib/notificar'
 
 export default function NovoAgendamentoPage() {
   const { profile, loading } = useAuth()
