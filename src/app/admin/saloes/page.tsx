@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, PauseCircle, PlayCircle, Search, CheckCircle } from 'lucide-react'
+import { notificar } from '@/lib/notificar'
 
 function SaloesContent() {
   const { profile, loading } = useAuth()
@@ -35,37 +36,40 @@ function SaloesContent() {
     }
   }
 
-  async function aprovar(salao: any) {
-    setSalvando(true)
-    await supabase.from('saloes').update({ aprovado: true, ativo: true }).eq('id', salao.id)
-    await supabase.from('notificacoes').insert({
-      salao_id: salao.id, remetente_id: profile?.id, destinatario_id: salao.dono_id,
-      titulo: 'Salao aprovado!',
-      mensagem: 'Seu salao foi aprovado!',
-      tipo: 'admin'
-    })
-    setSalvando(false)
-    carregarSaloes()
-  }
-  async function pausar(salao: any) {
-    if (!motivo) return
-    setSalvando(true)
-    await supabase.from('saloes').update({ pausado: true, motivo_pausa: motivo }).eq('id', salao.id)
-    await supabase.from('notificacoes').insert({
-      salao_id: salao.id, remetente_id: profile?.id, destinatario_id: salao.dono_id,
-      titulo: 'Salao pausado', mensagem: 'Motivo: ' + motivo, tipo: 'admin'
-    })
-    setModalPausa(null); setMotivo(''); setSalvando(false); carregarSaloes()
-  }
+async function aprovar(salao: any) {
+  setSalvando(true)
+  await supabase.from('saloes').update({ aprovado: true, ativo: true }).eq('id', salao.id)
+  await notificar({
+    salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
+    titulo: 'Salão aprovado!',
+    mensagem: 'Seu salão foi aprovado!',
+    tipo: 'admin'
+  })
+  setSalvando(false)
+  carregarSaloes()
+}
 
-  async function reativar(salao: any) {
-    await supabase.from('saloes').update({ pausado: false, motivo_pausa: null }).eq('id', salao.id)
-    await supabase.from('notificacoes').insert({
-      salao_id: salao.id, remetente_id: profile?.id, destinatario_id: salao.dono_id,
-      titulo: 'Salao reativado', mensagem: 'Seu salao foi reativado!', tipo: 'admin'
-    })
-    carregarSaloes()
-  }
+
+async function reativar(salao: any) {
+  await supabase.from('saloes').update({ pausado: false, motivo_pausa: null }).eq('id', salao.id)
+  await notificar({
+    salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
+    titulo: 'Salão reativado', mensagem: 'Seu salão foi reativado!', tipo: 'admin'
+  })
+  carregarSaloes()
+}
+
+
+async function pausar(salao: any) {
+  if (!motivo) return
+  setSalvando(true)
+  await supabase.from('saloes').update({ pausado: true, motivo_pausa: motivo }).eq('id', salao.id)
+  await notificar({
+    salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
+    titulo: 'Salão pausado', mensagem: 'Motivo: ' + motivo, tipo: 'admin'
+  })
+  setModalPausa(null); setMotivo(''); setSalvando(false); carregarSaloes()
+}
 
   const cont = {
     todos: saloes.length,
