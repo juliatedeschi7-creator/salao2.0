@@ -65,18 +65,17 @@ export default function ClientesPage() {
       setAprovando(null)
       return
     }
-    await supabase.from('notificacoes').insert({
-      salao_id: profile!.salao_id,
-      remetente_id: profile!.id,
-      destinatario_id: cliente.profile_id,
-      titulo: '✅ Cadastro aprovado!',
-      mensagem: `Seu cadastro no ${salao?.nome} foi aprovado! Já pode acessar sua área de cliente.`,
-      tipo: 'sistema'
-    })
-    setAprovando(null)
-    carregarDados()
-  }
-
+await notificar({
+  salaoId: profile!.salao_id,
+  remetenteId: profile!.id,
+  destinatarioId: cliente.profile_id,
+  titulo: '✅ Cadastro aprovado!',
+  mensagem: `Seu cadastro no ${salao?.nome} foi aprovado! Já pode acessar sua área de cliente.`,
+  tipo: 'sistema',
+  url: '/cliente'
+})
+setAprovando(null)
+carregarDados()
   async function rejeitarCliente(cliente: any) {
     setAprovando(cliente.id)
     const { error } = await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', cliente.profile_id)
