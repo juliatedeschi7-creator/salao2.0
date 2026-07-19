@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Search, Plus, CheckCircle, X, Clock, ChevronDown } from 'lucide-react'
 
 export default function NovoAgendamentoPage() {
