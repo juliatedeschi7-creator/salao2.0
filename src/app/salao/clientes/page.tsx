@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Search, UserPlus, Copy, Check, Users, QrCode, X, CheckCircle, XCircle, Clock, Share } from 'lucide-react'
 
 export default function ClientesPage() {
