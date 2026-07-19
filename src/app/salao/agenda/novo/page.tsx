@@ -184,7 +184,7 @@ await notificar({
         setProfissionaisSelecionados([])
         setData('')
         setHora('')
-      }}
+      }} 
         className="text-sm text-gray-400">
         Criar outro agendamento
       </button>
