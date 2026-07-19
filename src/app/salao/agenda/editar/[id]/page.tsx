@@ -179,16 +179,17 @@ export default function EditarAgendamentoPage() {
       const { error } = await supabase.from('agendamentos').delete().eq('id', agendamentoId)
       if (error) { setErro('Erro ao excluir agendamento.'); setExcluindo(false); return }
 
-      if (clienteSelecionado?.profile_id) {
-        await supabase.from('notificacoes').insert({
-          salao_id: profile!.salao_id,
-          remetente_id: profile!.id,
-          destinatario_id: clienteSelecionado.profile_id,
-          titulo: '❌ Agendamento cancelado',
-          mensagem: `Seu agendamento de ${servicosSelecionadosInfo.map(s => s.nome).join(', ')} foi cancelado.`,
-          tipo: 'lembrete'
-        })
-      }
+if (clienteSelecionado?.profile_id) {
+  await notificar({
+    salaoId: profile!.salao_id,
+    remetenteId: profile!.id,
+    destinatarioId: clienteSelecionado.profile_id,
+    titulo: '❌ Agendamento cancelado',
+    mensagem: `Seu agendamento de ${servicosSelecionadosInfo.map(s => s.nome).join(', ')} foi cancelado.`,
+    tipo: 'lembrete',
+    url: '/cliente/agendamentos'
+  })
+}
 
       setExcluindo(false)
       router.push('/salao/agenda')
