@@ -97,6 +97,8 @@ await notificar({
   url: '/salao/equipe'
 })
 }
+        window.location.href = '/aguardando'; return
+      }
 
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes')
