@@ -1,9 +1,10 @@
-'use client'
+ 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, Package } from 'lucide-react'
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
@@ -16,6 +17,7 @@ type PacoteOpcao = {
 type CoberturaServico = {
   servicoId: string
   servicoNome: string
+  sessoesEquivalentes: number
   // clientePacoteId selecionado pelo dono (null = não usa pacote)
   clientePacoteIdSelecionado: string | null
   pacotesDisponiveis: PacoteOpcao[]
@@ -100,7 +102,7 @@ export default function NotificacoesDonoPage() {
 
     // Detalhes dos serviços
     const { data: servicosInfo } = await supabase.from('servicos')
-      .select('id, nome').in('id', idsServicos)
+      .select('id, nome, sessoes_equivalentes').in('id', idsServicos)
 
     // Todos os pacotes ativos da cliente com itens
     const { data: clientePacotes } = await supabase.from('cliente_pacotes')
@@ -133,6 +135,7 @@ export default function NotificacoesDonoPage() {
       return {
         servicoId: id,
         servicoNome: srv?.nome || 'Serviço',
+        sessoesEquivalentes: srv?.sessoes_equivalentes || 1,
         // pré-seleciona o primeiro pacote compatível (pode ser alterado)
         clientePacoteIdSelecionado: opcoes.length > 0 ? opcoes[0].clientePacoteId : null,
         pacotesDisponiveis: opcoes,
@@ -173,51 +176,57 @@ export default function NotificacoesDonoPage() {
 
     const hoje = new Date().toISOString().slice(0, 10)
 
-    // Agrupa por pacote: { clientePacoteId → [servicoNome, ...] }
-    const descontos: Record<string, string[]> = {}
+    // Agrupa por pacote: { clientePacoteId → [{ nome, peso }, ...] }
+    const descontos: Record<string, { nome: string; peso: number }[]> = {}
     for (const cob of coberturas) {
       if (!cob.clientePacoteIdSelecionado) continue
       if (!descontos[cob.clientePacoteIdSelecionado]) descontos[cob.clientePacoteIdSelecionado] = []
-      descontos[cob.clientePacoteIdSelecionado].push(cob.servicoNome)
+      descontos[cob.clientePacoteIdSelecionado].push({ nome: cob.servicoNome, peso: cob.sessoesEquivalentes })
     }
 
-    // Aplica desconto e registra sessões
-    for (const [cpId, servicos] of Object.entries(descontos)) {
+    // Aplica desconto e registra sessões (respeitando o peso de cada serviço)
+    for (const [cpId, itens] of Object.entries(descontos)) {
+      const totalPeso = itens.reduce((acc, i) => acc + i.peso, 0)
+
       const { data: cp } = await supabase.from('cliente_pacotes')
         .select('sessoes_usadas, sessoes_total').eq('id', cpId).single()
       if (!cp) continue
 
-      const novasUsadas = cp.sessoes_usadas + servicos.length
+      const novasUsadas = cp.sessoes_usadas + totalPeso
       await supabase.from('cliente_pacotes').update({
         sessoes_usadas: novasUsadas,
         status: novasUsadas >= cp.sessoes_total ? 'concluido' : 'ativo'
       }).eq('id', cpId)
 
-      for (const nomeServico of servicos) {
-        await supabase.from('sessoes_pacote').insert({
-          cliente_pacote_id: cpId,
-          data_sessao: hoje,
-          servico_realizado: nomeServico,
-          profissional_id: profile!.id
-        })
+      for (const item of itens) {
+        for (let i = 0; i < item.peso; i++) {
+          await supabase.from('sessoes_pacote').insert({
+            cliente_pacote_id: cpId,
+            data_sessao: hoje,
+            servico_realizado: item.peso > 1 ? `${item.nome} (${i + 1}/${item.peso})` : item.nome,
+            profissional_id: profile!.id
+          })
+        }
       }
     }
 
-    const totalDescontados = Object.values(descontos).reduce((acc, arr) => acc + arr.length, 0)
+    const totalDescontados = Object.values(descontos)
+      .reduce((acc, itens) => acc + itens.reduce((a, i) => a + i.peso, 0), 0)
 
-    // Notifica a cliente
+    // Notifica a cliente (grava no sininho + dispara push de verdade)
     const { data: clienteInfo } = await supabase.from('clientes')
       .select('profile_id').eq('id', modalConfirmar.cliente_id).single()
     if (clienteInfo?.profile_id) {
-      await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id,
-        remetente_id: profile!.id,
-        destinatario_id: clienteInfo.profile_id,
+      await notificar({
+        salaoId: profile!.salao_id,
+        remetenteId: profile!.id,
+        destinatarioId: clienteInfo.profile_id,
         titulo: '✅ Atendimento confirmado!',
         mensagem: totalDescontados > 0
           ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
           : 'Seu atendimento foi registrado com sucesso!',
-        tipo: 'confirmacao'
+        tipo: 'confirmacao',
+        url: '/cliente/pacotes'
       })
     }
 
@@ -228,7 +237,7 @@ export default function NotificacoesDonoPage() {
     carregarDados()
   }
 
-  // ─── Demais funções (sem mudança) ────────────────────────────────────────
+  // ─── Demais funções ───────────────────────────────────────────────────────
   async function sugerirHorarios(solicitacao: any) {
     const horarios = horariosLivres.filter(h => h)
     if (!horarios.length) return
@@ -238,11 +247,12 @@ export default function NotificacoesDonoPage() {
     }).eq('id', solicitacao.id)
     const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
     if (cp?.profile_id) {
-      await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id, remetente_id: profile!.id, destinatario_id: cp.profile_id,
+      await notificar({
+        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
         titulo: '📅 Horários disponíveis para você!',
         mensagem: `${salao?.nome} sugeriu horários para ${solicitacao.servicos?.nome}. Escolha o melhor para você!`,
-        tipo: 'horario_sugerido', referencia_id: solicitacao.id
+        tipo: 'horario_sugerido',
+        url: '/cliente/agendamentos'
       })
     }
     setModalSugestao(null); setHorariosLivres(['', '', '']); setSalvando(false); carregarDados()
@@ -254,11 +264,12 @@ export default function NotificacoesDonoPage() {
     }).eq('id', solicitacao.id)
     const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
     if (cp?.profile_id) {
-      await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id, remetente_id: profile!.id, destinatario_id: cp.profile_id,
+      await notificar({
+        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
         titulo: '⚠️ Horários indisponíveis',
         mensagem: `Os horários sugeridos para ${solicitacao.servicos?.nome} não estão mais disponíveis.`,
-        tipo: 'sistema'
+        tipo: 'sistema',
+        url: '/cliente/agendamentos'
       })
     }
     carregarDados()
@@ -268,11 +279,12 @@ export default function NotificacoesDonoPage() {
     await supabase.from('solicitacoes_agendamento').update({ status: 'recusado' }).eq('id', solicitacao.id)
     const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
     if (cp?.profile_id) {
-      await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id, remetente_id: profile!.id, destinatario_id: cp.profile_id,
+      await notificar({
+        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
         titulo: 'Solicitação não disponível',
         mensagem: `Não foi possível atender sua solicitação de ${solicitacao.servicos?.nome} no momento.`,
-        tipo: 'sistema'
+        tipo: 'sistema',
+        url: '/cliente/agendamentos'
       })
     }
     carregarDados()
@@ -284,11 +296,12 @@ export default function NotificacoesDonoPage() {
     await supabase.from('solicitacoes_agendamento').update({ horarios_sugeridos: novos }).eq('id', solicitacao.id)
     const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
     if (cp?.profile_id) {
-      await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id, remetente_id: profile!.id, destinatario_id: cp.profile_id,
+      await notificar({
+        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
         titulo: '⚠️ Um horário foi removido',
         mensagem: `Um dos horários sugeridos para ${solicitacao.servicos?.nome} não está mais disponível.`,
-        tipo: 'horario_sugerido', referencia_id: solicitacao.id
+        tipo: 'horario_sugerido',
+        url: '/cliente/agendamentos'
       })
     }
     carregarDados()
@@ -566,7 +579,12 @@ export default function NotificacoesDonoPage() {
                         style={{ backgroundColor: `${cor}18` }}>
                         <Package size={13} style={{ color: cor }} />
                       </div>
-                      <p className="font-semibold text-gray-900 text-sm">{cob.servicoNome}</p>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {cob.servicoNome}
+                        {cob.sessoesEquivalentes > 1 && (
+                          <span className="text-xs font-normal text-gray-400"> (vale {cob.sessoesEquivalentes} sessões)</span>
+                        )}
+                      </p>
                     </div>
 
                     {/* Selector de pacote */}
@@ -595,7 +613,8 @@ export default function NotificacoesDonoPage() {
                 {coberturas.some(c => c.clientePacoteIdSelecionado) && (
                   <div className="bg-green-50 rounded-xl px-3 py-2">
                     <p className="text-xs text-green-700 font-medium">
-                      ✓ {coberturas.filter(c => c.clientePacoteIdSelecionado).length} sessão(ões) serão descontadas dos pacotes selecionados
+                      ✓ {coberturas.filter(c => c.clientePacoteIdSelecionado)
+                        .reduce((acc, c) => acc + c.sessoesEquivalentes, 0)} sessão(ões) serão descontadas dos pacotes selecionados
                     </p>
                   </div>
                 )}
