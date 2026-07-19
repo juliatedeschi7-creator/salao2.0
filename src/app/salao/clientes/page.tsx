@@ -76,7 +76,8 @@ await notificar({
   url: '/cliente'
 })
 setAprovando(null)
-carregarDados()
+carregarDados() 
+  }
   async function rejeitarCliente(cliente: any) {
     setAprovando(cliente.id)
     const { error } = await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', cliente.profile_id)
