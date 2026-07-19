@@ -175,12 +175,13 @@ export default function ServicosPage() {
       resposta: respostaOrcamento.texto,
       valor_resposta: respostaOrcamento.valor ? parseFloat(respostaOrcamento.valor) : null,
     }).eq('id', modalOrcamento.id)
-    await supabase.from('notificacoes').insert({
-      destinatario_id: modalOrcamento.clientes?.profile_id,
-      titulo: 'Resposta ao seu orçamento!',
-      mensagem: `${salao?.nome} respondeu sua solicitação de orçamento para ${modalOrcamento.servicos?.nome}.`,
-      tipo: 'orcamento'
-    })
+await notificar({
+  destinatarioId: modalOrcamento.clientes?.profile_id,
+  titulo: 'Resposta ao seu orçamento!',
+  mensagem: `${salao?.nome} respondeu sua solicitação de orçamento para ${modalOrcamento.servicos?.nome}.`,
+  tipo: 'orcamento',
+  url: '/cliente/orcamentos'
+})
     setSalvandoOrcamento(false)
     setModalOrcamento(null)
     setRespostaOrcamento({ texto: '', valor: '' })
