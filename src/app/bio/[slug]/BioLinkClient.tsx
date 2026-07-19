@@ -20,7 +20,6 @@ export default function BioLinkClient({ salao }: Props) {
   const [loading, setLoading] = useState<string | null>(null)
 
   const cor = salao.cor_primaria || '#E91E8C'
-  const corSec = salao.cor_secundaria || '#FCE4F3'
 
   const partes = salao.nome?.split(' - ')
   const nomePrincipal = partes?.[0]
@@ -65,39 +64,42 @@ export default function BioLinkClient({ salao }: Props) {
   return (
     <>
       <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />
-      {/* Gradiente não vai mais até branco puro — evita que os cards
-          translúcidos "sumam" na parte de baixo da tela */}
-      <div className="min-h-screen flex flex-col items-center pb-12"
-        style={{ background: `linear-gradient(180deg, ${cor} 0%, ${corSec} 100%)` }}>
+      <div className="min-h-screen flex flex-col items-center pb-12 bg-white">
 
         {/* Header */}
         <div className="w-full flex flex-col items-center px-6 pt-16 pb-8">
-          {/* Logo */}
-{salao.logo_url ? (
-  <img src={salao.logo_url} alt={salao.nome}
-    className="w-24 h-24 object-contain mb-5" />
-) : (
-  <img src="/logo.png" alt={salao.nome}
-    className="w-24 h-24 object-contain mb-5" />
-)}
+          {/* Logo — recolorida dinamicamente na cor do salão via máscara CSS */}
+          <div
+            className="w-24 h-24 mb-5"
+            style={{
+              backgroundColor: cor,
+              WebkitMaskImage: `url(${salao.logo_url || '/logo.png'})`,
+              maskImage: `url(${salao.logo_url || '/logo.png'})`,
+              WebkitMaskSize: 'contain',
+              maskSize: 'contain',
+              WebkitMaskRepeat: 'no-repeat',
+              maskRepeat: 'no-repeat',
+              WebkitMaskPosition: 'center',
+              maskPosition: 'center',
+            }}
+          />
 
           {/* Nome em cursiva */}
           <h1 style={{
             fontFamily: "'Dancing Script', cursive",
             fontSize: '2.2rem',
             fontWeight: 700,
-            color: 'white',
-            textShadow: '0 2px 12px rgba(0,0,0,0.15)',
+            color: cor,
             textAlign: 'center',
             lineHeight: 1.2,
           }}>
             {nomePrincipal}
           </h1>
           {nomeSecundario && (
-            <p className="text-white font-bold text-sm mt-1 text-center">{nomeSecundario}</p>
+            <p className="text-gray-900 font-bold text-sm mt-1 text-center">{nomeSecundario}</p>
           )}
           {salao.descricao && (
-            <p className="text-white/90 text-sm mt-3 text-center leading-relaxed max-w-xs">
+            <p className="text-gray-500 text-sm mt-3 text-center leading-relaxed max-w-xs">
               {salao.descricao}
             </p>
           )}
@@ -110,22 +112,19 @@ export default function BioLinkClient({ salao }: Props) {
               key={b.id}
               onClick={() => navegar(b.href, b.id)}
               disabled={loading === b.id}
-              className={`w-full rounded-2xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg bg-white ${
-                b.estilo === 'secundario' ? 'border-2' : ''
+              className={`w-full rounded-2xl px-5 py-4 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg bg-white border ${
+                b.estilo === 'secundario' ? 'border-2' : 'border-gray-100'
               }`}
               style={b.estilo === 'secundario' ? { borderColor: cor } : {}}
             >
               <div
                 className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: `${cor}15` }}
+                style={{ backgroundColor: cor }}
               >
                 {loading === b.id ? (
-                  <div
-                    className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin"
-                    style={{ borderColor: cor }}
-                  />
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
-                  <b.icon size={22} style={{ color: cor }} />
+                  <b.icon size={22} className="text-white" />
                 )}
               </div>
 
@@ -145,9 +144,9 @@ export default function BioLinkClient({ salao }: Props) {
           {/* Divisor */}
           {botoesExtras.length > 0 && (
             <div className="flex items-center gap-3 my-1">
-              <div className="flex-1 h-px bg-white/40" />
-              <span className="text-white/70 text-xs">mais</span>
-              <div className="flex-1 h-px bg-white/40" />
+              <div className="flex-1 h-px bg-gray-200" />
+              <span className="text-gray-400 text-xs">mais</span>
+              <div className="flex-1 h-px bg-gray-200" />
             </div>
           )}
 
@@ -158,13 +157,13 @@ export default function BioLinkClient({ salao }: Props) {
               href={b.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full bg-white rounded-2xl px-5 py-3.5 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg"
+              className="w-full bg-white border border-gray-100 rounded-2xl px-5 py-3.5 flex items-center gap-4 active:scale-[0.98] transition-all shadow-lg"
             >
               <div
                 className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: `${cor}15` }}
+                style={{ backgroundColor: cor }}
               >
-                <b.icon size={18} style={{ color: cor }} />
+                <b.icon size={18} className="text-white" />
               </div>
 
               <div className="flex-1 text-left">
