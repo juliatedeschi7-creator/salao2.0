@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Search, CheckCircle, X, Clock, AlertCircle, Trash2 } from 'lucide-react'
 
 export default function EditarAgendamentoPage() {
