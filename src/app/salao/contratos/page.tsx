@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Plus, FileText, Send, Edit2, Trash2, CheckCircle, Clock, Download } from 'lucide-react'
 
 export default function ContratosPage() {
@@ -78,16 +79,17 @@ export default function ContratosPage() {
       criado_por: profile!.id
     }).select().single()
 
-    if (cliente?.profile_id) {
-      await supabase.from('notificacoes').insert({
-        salao_id: profile!.salao_id,
-        remetente_id: profile!.id,
-        destinatario_id: cliente.profile_id,
-        titulo: 'Novo contrato para assinar',
-        mensagem: modalEnviar.titulo + ' - ' + salao?.nome + ' enviou um documento que precisa da sua assinatura.',
-        tipo: 'contrato'
-      })
-    }
+  if (cliente?.profile_id) {
+  await notificar({
+    salaoId: profile!.salao_id,
+    remetenteId: profile!.id,
+    destinatarioId: cliente.profile_id,
+    titulo: 'Novo contrato para assinar',
+    mensagem: modalEnviar.titulo + ' - ' + salao?.nome + ' enviou um documento que precisa da sua assinatura.',
+    tipo: 'contrato',
+    url: '/cliente/contratos'
+  })
+}
 
     setModalEnviar(null); setClienteId(''); setSalvando(false); carregarDados()
   }
