@@ -3,6 +3,7 @@ import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
+import { notificar } from '@/lib/notificar'
 
 function normalizarNome(s: string) {
   return s
@@ -87,15 +88,15 @@ function CadastroForm() {
         const { data: dono } = await supabase.from('profiles').select('id')
           .eq('salao_id', convite.salao_id).eq('role', 'dono_salao').single()
         if (dono) {
-          await supabase.from('notificacoes').insert({
-            destinatario_id: dono.id,
-            titulo: 'Novo funcionário aguardando aprovação',
-            mensagem: `${nome.trim()} se cadastrou como funcionário e aguarda aprovação.`,
-            tipo: 'sistema'
-          })
-        }
-        window.location.href = '/aguardando'; return
-      }
+await notificar({
+  salaoId: convite.salao_id,
+  destinatarioId: dono.id,
+  titulo: 'Novo funcionário aguardando aprovação',
+  mensagem: `${nome.trim()} se cadastrou como funcionário e aguarda aprovação.`,
+  tipo: 'sistema',
+  url: '/salao/equipe'
+})
+}
 
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes')
@@ -146,26 +147,28 @@ const possivelDuplicata = (pendentes || []).find(
           }
         }
 
-        const { data: dono } = await supabase.from('profiles').select('id')
-          .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
-        if (dono) {
-          await supabase.from('notificacoes').insert({
-            destinatario_id: dono.id,
-            titulo: aprovadoAuto ? 'Nova cliente cadastrada! 🎉' : 'Nova cliente aguardando aprovação',
-            mensagem: aprovadoAuto ? `${nome.trim()} se cadastrou no seu salão.` : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
-            tipo: 'sistema'
-          })
-          if (houveSugestaoMesclagem) {
-            await supabase.from('notificacoes').insert({
-              destinatario_id: dono.id,
-              titulo: 'Possível contato duplicado',
-              mensagem: `"${nome.trim()}" já existia como contato cadastrado manualmente. Toque para revisar e mesclar.`,
-              tipo: 'mesclagem'
-            })
-          }
-        }
-        window.location.href = aprovadoAuto ? '/cliente' : '/aguardando'; return
-      }
+const { data: dono } = await supabase.from('profiles').select('id')
+  .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
+if (dono) {
+  await notificar({
+    salaoId: salao.id,
+    destinatarioId: dono.id,
+    titulo: aprovadoAuto ? 'Nova cliente cadastrada! 🎉' : 'Nova cliente aguardando aprovação',
+    mensagem: aprovadoAuto ? `${nome.trim()} se cadastrou no seu salão.` : `${nome.trim()} se cadastrou e aguarda sua aprovação.`,
+    tipo: 'sistema',
+    url: '/salao/clientes'
+  })
+  if (houveSugestaoMesclagem) {
+    await notificar({
+      salaoId: salao.id,
+      destinatarioId: dono.id,
+      titulo: 'Possível contato duplicado',
+      mensagem: `"${nome.trim()}" já existia como contato cadastrado manualmente. Toque para revisar e mesclar.`,
+      tipo: 'mesclagem',
+      url: '/salao/clientes'
+    })
+  }
+}
 
       await supabase.from('profiles').upsert({
         id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
