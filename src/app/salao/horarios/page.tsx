@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Clock, CheckCircle, XCircle, User } from 'lucide-react'
 
 const DIAS = [
@@ -60,15 +61,15 @@ export default function ClienteHorariosPage() {
       reservado: true, cliente_id: cliente.id
     }).eq('id', horario.id)
 
-    await supabase.from('notificacoes').insert({
-      salao_id: salao.id,
-      remetente_id: profile!.id,
-      destinatario_id: salao.dono_id,
-      titulo: 'Horário reservado!',
-      mensagem: `${cliente.nome} reservou o horário de ${formatarDataHora(horario.data_hora)}.`,
-      tipo: 'horario'
-    })
-
+await notificar({
+  salaoId: salao.id,
+  remetenteId: profile!.id,
+  destinatarioId: salao.dono_id,
+  titulo: 'Horário reservado!',
+  mensagem: `${cliente.nome} reservou o horário de ${formatarDataHora(horario.data_hora)}.`,
+  tipo: 'horario',
+  url: '/salao/agenda'
+})
     setReservados(prev => new Set(Array.from(prev).concat(horario.id)))
     setVagos(prev => prev.filter(h => h.id !== horario.id))
     setReservando(null)
