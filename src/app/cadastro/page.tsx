@@ -51,11 +51,19 @@ function CadastroForm() {
           .eq('slug', salaoSlug).maybeSingle()
         if (data) setSalaoInfo(data)
       }
+
       if (token) {
-        const { data: conv } = await supabase.from('convites')
+        // Busca o convite ativo pelo token
+        const { data: conv, error: convErr } = await supabase.from('convites')
           .select('*, saloes(nome, cor_primaria, cor_secundaria, aprovacao_automatica_clientes)')
           .eq('token', token).eq('usado', false).maybeSingle()
-        if (conv) { setConvite(conv); if (conv.saloes) setSalaoInfo(conv.saloes) }
+
+        if (conv) { 
+          setConvite(conv)
+          if (conv.saloes) setSalaoInfo(conv.saloes) 
+        } else {
+          setErro('Este link de convite é inválido, expirou ou já foi utilizado.')
+        }
       }
       setCarregandoSalao(false)
     }
@@ -66,40 +74,83 @@ function CadastroForm() {
     if (!nome || !email || !senha) { setErro('Preencha todos os campos.'); return }
     if (senha.length < 6) { setErro('Senha deve ter pelo menos 6 caracteres.'); return }
     if (isCliente && !dataNascimento) { setErro('Informe sua data de nascimento.'); return }
+    
+    // Trava caso o convite não tenha sido localizado
+    if (isFuncionario && !convite) {
+      setErro('Não é possível concluir o cadastro: convite inválido ou expirado.')
+      return
+    }
+
     setLoading(true); setErro('')
 
     const roleInicial = isCliente ? 'cliente' : isFuncionario ? (convite?.role || 'funcionario') : 'dono_salao'
+    const salaoIdConvite = convite?.salao_id || null
+    const acessoTotalConvite = convite?.acesso_total || false
 
     try {
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(), password: senha,
-        options: { data: { nome: nome.trim(), role: roleInicial } }
+        email: email.trim().toLowerCase(),
+        password: senha,
+        options: { 
+          data: { 
+            nome: nome.trim(), 
+            role: roleInicial,
+            salao_id: salaoIdConvite,
+            acesso_total: acessoTotalConvite
+          } 
+        }
       })
-      if (error) { setErro(error.message.includes('already') ? 'Email já cadastrado.' : 'Erro: ' + error.message); setLoading(false); return }
+
+      if (error) { 
+        setErro(error.message.includes('already') ? 'Email já cadastrado.' : 'Erro: ' + error.message)
+        setLoading(false)
+        return 
+      }
+
       if (!data.user) { setErro('Erro ao criar usuário.'); setLoading(false); return }
 
+      // --- FLUXO DE FUNCIONÁRIO / CO-GESTORA ---
       if (isFuncionario && convite) {
-        await supabase.from('profiles').upsert({
-          id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
-          role: convite.role, salao_id: convite.salao_id,
-          acesso_total: convite.acesso_total || false, aprovado: false, ativo: true
+        // Salva/Atualiza o perfil vincular ao salão correto com acesso total ou comum
+        const { error: profErr } = await supabase.from('profiles').upsert({
+          id: data.user.id,
+          email: email.trim().toLowerCase(),
+          nome: nome.trim(),
+          role: convite.role || 'funcionario',
+          salao_id: convite.salao_id,
+          acesso_total: convite.acesso_total || false,
+          aprovado: false,
+          ativo: true
         }, { onConflict: 'id' })
+
+        if (profErr) {
+          console.error('Erro ao salvar perfil do funcionário:', profErr)
+        }
+
+        // Marcar convite como utilizado
         await supabase.from('convites').update({ usado: true }).eq('id', convite.id)
+
+        // Notificar o dono do salão
         const { data: dono } = await supabase.from('profiles').select('id')
-          .eq('salao_id', convite.salao_id).eq('role', 'dono_salao').single()
+          .eq('salao_id', convite.salao_id).eq('role', 'dono_salao').maybeSingle()
+
         if (dono) {
+          const cargoNome = convite.acesso_total ? 'co-gestora' : 'funcionário(a)'
           await notificar({
             salaoId: convite.salao_id,
             destinatarioId: dono.id,
-            titulo: 'Novo funcionário aguardando aprovação',
-            mensagem: `${nome.trim()} se cadastrou como funcionário e aguarda aprovação.`,
+            titulo: `Nova ${cargoNome} aguardando aprovação`,
+            mensagem: `${nome.trim()} se cadastrou como ${cargoNome} e aguarda sua aprovação.`,
             tipo: 'sistema',
             url: '/salao/equipe'
           })
         }
-        window.location.href = '/aguardando'; return
+
+        window.location.href = '/aguardando'
+        return
       }
 
+      // --- FLUXO DE CLIENTE ---
       if (isCliente && salaoSlug) {
         const { data: salao } = await supabase.from('saloes')
           .select('id, aprovacao_automatica_clientes').eq('slug', salaoSlug).single()
@@ -149,7 +200,7 @@ function CadastroForm() {
         }
 
         const { data: dono } = await supabase.from('profiles').select('id')
-          .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
+          .eq('salao_id', salao.id).eq('role', 'dono_salao').maybeSingle()
         if (dono) {
           await notificar({
             salaoId: salao.id,
@@ -173,10 +224,12 @@ function CadastroForm() {
         window.location.href = aprovadoAuto ? '/cliente' : '/aguardando'; return
       }
 
+      // --- FLUXO DE CRIAR NOVO SALÃO / OUTROS ---
       await supabase.from('profiles').upsert({
         id: data.user.id, email: email.trim().toLowerCase(), nome: nome.trim(),
         role: roleInicial, aprovado: false, ativo: true
       }, { onConflict: 'id' })
+      
       window.location.href = isNovoSalao ? '/aguardando' : '/login'
     } catch (e: any) {
       setErro('Erro: ' + (e.message || 'Tente novamente.'))
@@ -263,13 +316,13 @@ function CadastroForm() {
                 color: cor,
                 lineHeight: 1.1,
               }}>
-                {nomePrincipal || 'Convite'}
+                {nomePrincipal || 'Convite Especial'}
               </h1>
               {nomeSecundario && (
                 <p className="text-sm font-bold text-gray-900 mt-0.5">{nomeSecundario}</p>
               )}
               <p className="text-gray-500 text-sm mt-2 leading-relaxed">
-                {convite?.acesso_total ? 'Crie sua conta como co-gestora do salão.' : 'Crie sua conta para colaborar na gestão do salão.'}
+                {convite?.acesso_total ? 'Crie sua conta como co-gestora do salão.' : 'Crie sua conta para colaborar na equipe do salão.'}
               </p>
             </div>
           ) : (
@@ -339,7 +392,7 @@ function CadastroForm() {
           )}
 
           <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
-            style={{ backgroundColor: cor }} onClick={handleCadastro} disabled={loading}>
+            style={{ backgroundColor: cor }} onClick={handleCadastro} disabled={loading || (isFuncionario && !convite)}>
             {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Criar conta'}
           </button>
 
