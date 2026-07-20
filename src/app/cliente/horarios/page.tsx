@@ -69,10 +69,10 @@ await notificar({
   tipo: 'horario',
   url: '/salao/agenda'
 })
-}
 setReservados(prev => new Set(Array.from(prev).concat(horario.id)))
 setVagos(prev => prev.filter(h => h.id !== horario.id))
 setReservando(null)
+}
 
   function formatarDataHora(iso: string) {
     const d = new Date(iso)
