@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Clock, AlertTriangle, CheckCircle, ChevronDown, ChevronUp, ShoppingCart, X, Plus, Minus, Sparkles, Package, FileText } from 'lucide-react'
 
 function formatarDuracao(minutos: number): string {
@@ -227,16 +228,16 @@ export default function ClienteServicosPage() {
         periodo_preferido: periodoPreferido !== 'qualquer' ? periodoPreferido : null,
       })
     }
-    const resumo = carrinho.map(i => `${i.quantidade}x ${i.nome}`).join(', ')
-    await supabase.from('notificacoes').insert({
-      salao_id: salao.id, remetente_id: profile!.id, destinatario_id: salao.dono_id,
-      titulo: 'Nova solicitação de agendamento',
-      mensagem: `${cliente.nome} quer agendar: ${resumo}`, tipo: 'solicitacao'
-    })
-    setEnviando(false); setEnviado(true); setCarrinho([])
-    setDataPreferida(''); setPeriodoPreferido('qualquer')
-    setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
-  }
+const resumo = carrinho.map(i => `${i.quantidade}x ${i.nome}`).join(', ')
+await notificar({
+  salaoId: salao.id, remetenteId: profile!.id, destinatarioId: salao.dono_id,
+  titulo: 'Nova solicitação de agendamento',
+  mensagem: `${cliente.nome} quer agendar: ${resumo}`, tipo: 'solicitacao',
+  url: '/salao/notificacoes'
+})
+setEnviando(false); setEnviado(true); setCarrinho([])
+setDataPreferida(''); setPeriodoPreferido('qualquer')
+setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
 
   function toggleDesc(id: string) {
     setDescExpandida(prev => { const n = new Set(Array.from(prev)); n.has(id) ? n.delete(id) : n.add(id); return n })
