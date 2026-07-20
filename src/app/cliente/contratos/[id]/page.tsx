@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, CheckCircle, RotateCcw } from 'lucide-react'
 
 export default function AssinarContratoPage() {
@@ -93,15 +94,15 @@ export default function AssinarContratoPage() {
       hash_documento: hash
     }).eq('id', contrato.id)
 
-    await supabase.from('notificacoes').insert({
-      salao_id: contrato.salao_id,
-      remetente_id: profile!.id,
-      destinatario_id: salao.dono_id,
-      titulo: 'Contrato assinado',
-      mensagem: profile!.nome + ' assinou: ' + contrato.titulo,
-      tipo: 'contrato'
-    })
-
+await notificar({
+  salaoId: contrato.salao_id,
+  remetenteId: profile!.id,
+  destinatarioId: salao.dono_id,
+  titulo: 'Contrato assinado',
+  mensagem: profile!.nome + ' assinou: ' + contrato.titulo,
+  tipo: 'contrato',
+  url: '/salao/contratos'
+})
     setAssinando(false)
     carregarDados()
   }
