@@ -238,7 +238,7 @@ await notificar({
 setEnviando(false); setEnviado(true); setCarrinho([])
 setDataPreferida(''); setPeriodoPreferido('qualquer')
 setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
-
+}
   function toggleDesc(id: string) {
     setDescExpandida(prev => { const n = new Set(Array.from(prev)); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
