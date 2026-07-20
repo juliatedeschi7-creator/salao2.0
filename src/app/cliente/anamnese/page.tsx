@@ -45,15 +45,22 @@ export default function ClienteAnamnesePage() {
     setSalvando(true)
     const jaResp = respostas.find(r => r.ficha_id === fichaAberta.id)
     if (jaResp) {
-      await supabase.from('respostas_anamnese').update({ respostas: respostasForm, versao: fichaAberta.versao }).eq('id', jaResp.id)
-      await supabase.from('notificacoes').insert({
-        salao_id: salao.id,
-        remetente_id: profile!.id,
-        destinatario_id: null,
-        titulo: 'Anamnese atualizada',
-        mensagem: cliente?.nome + ' atualizou a ficha: ' + fichaAberta.titulo,
-        tipo: 'sistema'
-      })
+await supabase.from('respostas_anamnese').update({ respostas: respostasForm, versao: fichaAberta.versao }).eq('id', jaResp.id)
+
+const { data: dono } = await supabase.from('profiles').select('id')
+  .eq('salao_id', salao.id).eq('role', 'dono_salao').single()
+
+if (dono) {
+  await notificar({
+    salaoId: salao.id,
+    remetenteId: profile!.id,
+    destinatarioId: dono.id,
+    titulo: 'Anamnese atualizada',
+    mensagem: cliente?.nome + ' atualizou a ficha: ' + fichaAberta.titulo,
+    tipo: 'sistema',
+    url: '/salao/clientes'
+  })
+}
     } else {
       await supabase.from('respostas_anamnese').insert({
         ficha_id: fichaAberta.id, cliente_id: cliente.id,
