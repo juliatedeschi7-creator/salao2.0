@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
+import { notificar } from '@/lib/notificar'
 import { ArrowLeft, CheckCircle, XCircle, Search, User, Pause, Play, Trash2, RotateCcw } from 'lucide-react'
 
 export default function AdminUsuariosPage() {
@@ -33,17 +34,17 @@ export default function AdminUsuariosPage() {
     setCarregando(false)
   }
 
-  async function aprovar(u: any) {
-    await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
-    await supabase.from('notificacoes').insert({
-      remetente_id: profile?.id,
-      destinatario_id: u.id,
-      titulo: 'Conta aprovada!',
-      mensagem: 'Sua conta foi aprovada! Você já pode acessar o sistema.',
-      tipo: 'admin'
-    })
-    carregarUsuarios()
-  }
+async function aprovar(u: any) {
+  await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
+  await notificar({
+    remetenteId: profile?.id,
+    destinatarioId: u.id,
+    titulo: 'Conta aprovada!',
+    mensagem: 'Sua conta foi aprovada! Você já pode acessar o sistema.',
+    tipo: 'admin'
+  })
+  carregarUsuarios()
+}
 
   async function reprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', u.id)
