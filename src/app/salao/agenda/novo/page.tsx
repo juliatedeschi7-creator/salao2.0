@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Search, Plus, CheckCircle, X, Clock, ChevronDown } from 'lucide-react'
+import { ArrowLeft, Search, Plus, CheckCircle, X, Clock, Edit3 } from 'lucide-react'
 
 export default function NovoAgendamentoPage() {
   const { profile, loading } = useAuth()
@@ -17,6 +17,8 @@ export default function NovoAgendamentoPage() {
   const [buscaCliente, setBuscaCliente] = useState('')
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
   const [servicosSelecionados, setServicosSelecionados] = useState<string[]>([])
+  // Valores personalizados por serviço: { [servicoId]: string }
+  const [valoresPersonalizados, setValoresPersonalizados] = useState<Record<string, string>>({})
   const [profissionaisSelecionados, setProfissionaisSelecionados] = useState<string[]>([])
   const [data, setData] = useState('')
   const [hora, setHora] = useState('')
@@ -25,53 +27,58 @@ export default function NovoAgendamentoPage() {
   const [salvando, setSalvando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
   const [erro, setErro] = useState('')
-  
-  // Filtro e busca de serviços
   const [buscaServico, setBuscaServico] = useState('')
   const [categoriaFiltro, setCategoriaFiltro] = useState<string | null>(null)
+  // Qual serviço está com o campo de valor personalizado aberto
+  const [editandoValor, setEditandoValor] = useState<string | null>(null)
 
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
   }, [loading])
 
   async function carregarDados() {
-    const { data: sal } = await supabase.from('saloes').select('*')
-      .eq('id', profile!.salao_id!).single()
+    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
-
-    const { data: cli } = await supabase.from('clientes').select('*')
-      .eq('salao_id', profile!.salao_id!).order('nome')
+    const { data: cli } = await supabase.from('clientes').select('*').eq('salao_id', profile!.salao_id!).order('nome')
     setClientes(cli || [])
-
-    const { data: srv } = await supabase.from('servicos').select('*')
-      .eq('salao_id', profile!.salao_id!).eq('ativo', true).order('nome')
+    const { data: srv } = await supabase.from('servicos').select('*').eq('salao_id', profile!.salao_id!).eq('ativo', true).order('nome')
     setServicos(srv || [])
-
-    const { data: prof } = await supabase.from('profiles').select('*')
-      .eq('salao_id', profile!.salao_id!)
-      .in('role', ['dono_salao', 'funcionario'])
+    const { data: prof } = await supabase.from('profiles').select('*').eq('salao_id', profile!.salao_id!).in('role', ['dono_salao', 'funcionario'])
     setProfissionais(prof || [])
   }
 
-  // Calcular duração total e preço total dos serviços selecionados
   const servicosSelecionadosInfo = servicos.filter(s => servicosSelecionados.includes(s.id))
-  const duracaoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0)
-  const precoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + (s.preco || 0), 0)
 
-  // Filtrar serviços por categoria e busca
+  // Calcula preço total usando valor personalizado quando disponível
+  const precoTotal = servicosSelecionadosInfo.reduce((acc, s) => {
+    const vPersonalizado = valoresPersonalizados[s.id]
+    const valor = vPersonalizado !== undefined && vPersonalizado !== '' ? parseFloat(vPersonalizado) || 0 : s.preco || 0
+    return acc + valor
+  }, 0)
+
+  const duracaoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0)
+
   const servicosFiltrados = servicos.filter(s => {
     const matchCategoria = !categoriaFiltro || s.categoria === categoriaFiltro
     const matchBusca = s.nome.toLowerCase().includes(buscaServico.toLowerCase())
     return matchCategoria && matchBusca
   })
 
-  // Obter categorias únicas
   const categorias = [...new Set(servicos.map(s => s.categoria).filter(Boolean))].sort()
 
   function toggleServico(id: string) {
     setServicosSelecionados(prev =>
       prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
     )
+    // Limpa valor personalizado ao desselecionar
+    if (servicosSelecionados.includes(id)) {
+      setValoresPersonalizados(prev => {
+        const next = { ...prev }
+        delete next[id]
+        return next
+      })
+      if (editandoValor === id) setEditandoValor(null)
+    }
   }
 
   function toggleProfissional(id: string) {
@@ -88,30 +95,16 @@ export default function NovoAgendamentoPage() {
   }
 
   async function handleSalvar() {
-    if (!clienteSelecionado) {
-      setErro('Selecione uma cliente.')
-      return
-    }
-    if (servicosSelecionados.length === 0) {
-      setErro('Selecione pelo menos um serviço.')
-      return
-    }
-    if (profissionaisSelecionados.length === 0) {
-      setErro('Selecione pelo menos um profissional.')
-      return
-    }
-    if (!data || !hora) {
-      setErro('Informe data e horário.')
-      return
-    }
+    if (!clienteSelecionado) { setErro('Selecione uma cliente.'); return }
+    if (servicosSelecionados.length === 0) { setErro('Selecione pelo menos um serviço.'); return }
+    if (profissionaisSelecionados.length === 0) { setErro('Selecione pelo menos um profissional.'); return }
+    if (!data || !hora) { setErro('Informe data e horário.'); return }
 
-    setSalvando(true)
-    setErro('')
+    setSalvando(true); setErro('')
 
     const dataHora = new Date(`${data}T${hora}:00`)
     const primeiroServico = servicosSelecionados[0]
 
-    // Inserir agendamento com múltiplos serviços e profissionais
     const { error } = await supabase.from('agendamentos').insert({
       salao_id: profile!.salao_id,
       cliente_id: clienteSelecionado.id,
@@ -129,31 +122,29 @@ export default function NovoAgendamentoPage() {
       criado_por: profile!.id,
     })
 
-    if (error) {
-      setErro('Erro ao salvar agendamento.')
-      setSalvando(false)
-      return
-    }
+    if (error) { setErro('Erro ao salvar agendamento.'); setSalvando(false); return }
 
-    // Notificar cliente
-    const nomesServicos = servicosSelecionadosInfo.map(s => s.nome).join(', ')
+    const nomesServicos = servicosSelecionadosInfo.map(s => {
+      const vP = valoresPersonalizados[s.id]
+      if (vP && parseFloat(vP) !== s.preco) return `${s.nome} (R$ ${parseFloat(vP).toFixed(2).replace('.', ',')})`
+      return s.nome
+    }).join(', ')
+
     const nomesProfissionais = profissionais
       .filter(p => profissionaisSelecionados.includes(p.id))
-      .map(p => p.nome)
-      .join(', ')
+      .map(p => p.nome).join(', ')
 
-await notificar({
-  salaoId: profile!.salao_id,
-  remetenteId: profile!.id,
-  destinatarioId: clienteSelecionado.profile_id,
-  titulo: 'Agendamento confirmado!',
-  mensagem: `${nomesServicos} com ${nomesProfissionais} — ${dataHora.toLocaleDateString('pt-BR')} às ${hora}.`,
-  tipo: 'lembrete',
-  url: '/cliente/agendamentos'
-})
+    await notificar({
+      salaoId: profile!.salao_id,
+      remetenteId: profile!.id,
+      destinatarioId: clienteSelecionado.profile_id,
+      titulo: 'Agendamento confirmado!',
+      mensagem: `${nomesServicos} com ${nomesProfissionais} — ${dataHora.toLocaleDateString('pt-BR')} às ${hora}.`,
+      tipo: 'lembrete',
+      url: '/cliente/agendamentos'
+    })
 
-    setSucesso(true)
-    setSalvando(false)
+    setSucesso(true); setSalvando(false)
   }
 
   const clientesFiltrados = clientes.filter(c =>
@@ -165,27 +156,19 @@ await notificar({
 
   if (sucesso) return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 gap-6">
-      <div className="w-20 h-20 rounded-full flex items-center justify-center"
-        style={{ backgroundColor: cor }}>
+      <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ backgroundColor: cor }}>
         <CheckCircle size={40} className="text-white" />
       </div>
       <h2 className="text-2xl font-bold text-gray-900">Agendamento criado!</h2>
-      <p className="text-gray-500 text-center">
-        Cliente notificado com sucesso.
-      </p>
-      <button onClick={() => router.push('/salao/agenda')}
-        className="btn-primary" style={{ backgroundColor: cor }}>
+      <p className="text-gray-500 text-center">Cliente notificado com sucesso.</p>
+      <button onClick={() => router.push('/salao/agenda')} className="btn-primary" style={{ backgroundColor: cor }}>
         Ver Agenda
       </button>
       <button onClick={() => {
-        setSucesso(false)
-        setClienteSelecionado(null)
-        setServicosSelecionados([])
-        setProfissionaisSelecionados([])
-        setData('')
-        setHora('')
-      }} 
-        className="text-sm text-gray-400">
+        setSucesso(false); setClienteSelecionado(null)
+        setServicosSelecionados([]); setProfissionaisSelecionados([])
+        setValoresPersonalizados({}); setData(''); setHora('')
+      }} className="text-sm text-gray-400">
         Criar outro agendamento
       </button>
     </div>
@@ -194,20 +177,18 @@ await notificar({
   return (
     <div className="min-h-screen bg-[#f8f4f6]">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button onClick={() => router.back()}>
-          <ArrowLeft size={22} className="text-gray-700" />
-        </button>
+        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg">Novo Agendamento</h1>
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-4 pb-8">
+
         {/* Cliente */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-sm font-medium text-gray-700">CLIENTE</label>
             <button onClick={() => router.push('/salao/clientes/novo')}
-              className="text-sm font-medium flex items-center gap-1"
-              style={{ color: cor }}>
+              className="text-sm font-medium flex items-center gap-1" style={{ color: cor }}>
               <Plus size={14} />Novo Cliente
             </button>
           </div>
@@ -217,8 +198,7 @@ await notificar({
                 <p className="font-semibold text-gray-900">{clienteSelecionado.nome}</p>
                 <p className="text-sm text-gray-500">{clienteSelecionado.telefone}</p>
               </div>
-              <button onClick={() => setClienteSelecionado(null)}
-                className="text-sm text-red-400">Trocar</button>
+              <button onClick={() => setClienteSelecionado(null)} className="text-sm text-red-400">Trocar</button>
             </div>
           ) : (
             <>
@@ -245,87 +225,113 @@ await notificar({
           )}
         </div>
 
-        {/* Serviços - Multi-seleção com Filtro e Busca */}
+        {/* Serviços */}
         <div>
           <label className="text-sm font-medium text-gray-700 mb-1.5 block">
             SERVIÇOS ({servicosSelecionados.length} selecionado{servicosSelecionados.length !== 1 ? 's' : ''})
           </label>
-          
-          {/* Busca de Serviços */}
+
           <div className="relative mb-3">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input 
-              type="text"
-              className="input-field pl-10 text-sm"
-              placeholder="Buscar serviço..."
-              value={buscaServico}
-              onChange={e => setBuscaServico(e.target.value)}
-            />
+            <input type="text" className="input-field pl-10 text-sm" placeholder="Buscar serviço..."
+              value={buscaServico} onChange={e => setBuscaServico(e.target.value)} />
           </div>
 
-          {/* Filtro por Categoria */}
           {categorias.length > 0 && (
             <div className="mb-3 flex gap-2 flex-wrap">
-              <button
-                onClick={() => setCategoriaFiltro(null)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                  categoriaFiltro === null
-                    ? 'bg-gray-900 text-white'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:border-gray-300'
-                }`}
-              >
+              <button onClick={() => setCategoriaFiltro(null)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${categoriaFiltro === null ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-700'}`}>
                 Todas
               </button>
               {categorias.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setCategoriaFiltro(cat)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                    categoriaFiltro === cat
-                      ? 'text-white'
-                      : 'bg-white border border-gray-200 text-gray-700 hover:border-gray-300'
-                  }`}
-                  style={categoriaFiltro === cat ? { backgroundColor: cor } : {}}
-                >
+                <button key={cat} onClick={() => setCategoriaFiltro(cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${categoriaFiltro === cat ? 'text-white' : 'bg-white border border-gray-200 text-gray-700'}`}
+                  style={categoriaFiltro === cat ? { backgroundColor: cor } : {}}>
                   {cat}
                 </button>
               ))}
             </div>
           )}
 
-          {/* Lista de Serviços Filtrados */}
           <div className="space-y-2">
-            {servicosFiltrados.length > 0 ? (
-              servicosFiltrados.map(s => {
-                const selecionado = servicosSelecionados.includes(s.id)
-                return (
+            {servicosFiltrados.length > 0 ? servicosFiltrados.map(s => {
+              const selecionado = servicosSelecionados.includes(s.id)
+              const vPersonalizado = valoresPersonalizados[s.id]
+              const temValorPersonalizado = vPersonalizado !== undefined && vPersonalizado !== '' && parseFloat(vPersonalizado) !== s.preco
+              const editando = editandoValor === s.id
+
+              return (
+                <div key={s.id} className="flex flex-col gap-0">
                   <button
-                    key={s.id}
                     onClick={() => toggleServico(s.id)}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left"
                     style={selecionado
-                      ? { borderColor: cor, backgroundColor: `${cor}10` }
+                      ? { borderColor: cor, backgroundColor: `${cor}10`, borderBottomLeftRadius: editando || temValorPersonalizado ? 0 : undefined, borderBottomRightRadius: editando || temValorPersonalizado ? 0 : undefined }
                       : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
                     <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
-                      style={selecionado
-                        ? { borderColor: cor, backgroundColor: cor }
-                        : { borderColor: '#d1d5db' }}>
+                      style={selecionado ? { borderColor: cor, backgroundColor: cor } : { borderColor: '#d1d5db' }}>
                       {selecionado && <CheckCircle size={12} className="text-white" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900">{s.nome}</p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                         {s.categoria && <span className="px-1.5 py-0.5 bg-gray-100 rounded">{s.categoria}</span>}
-                        <Clock size={12} />
-                        <span>{s.duracao_minutos} min</span>
+                        <Clock size={12} /><span>{s.duracao_minutos} min</span>
                         <span>•</span>
-                        <span>R$ {s.preco.toFixed(2)}</span>
+                        {temValorPersonalizado ? (
+                          <>
+                            <span className="line-through text-gray-300">R$ {s.preco.toFixed(2)}</span>
+                            <span className="font-bold" style={{ color: cor }}>R$ {parseFloat(vPersonalizado).toFixed(2)}</span>
+                          </>
+                        ) : (
+                          <span>R$ {s.preco.toFixed(2)}</span>
+                        )}
                       </div>
                     </div>
+                    {/* Botão de valor personalizado */}
+                    {selecionado && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setEditandoValor(editando ? null : s.id) }}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all"
+                        style={{ backgroundColor: editando ? cor : `${cor}20` }}
+                        title="Personalizar valor">
+                        <Edit3 size={14} style={{ color: editando ? 'white' : cor }} />
+                      </button>
+                    )}
                   </button>
-                )
-              })
-            ) : (
+
+                  {/* Campo de valor personalizado — aparece abaixo do card quando aberto */}
+                  {selecionado && editando && (
+                    <div className="border-2 border-t-0 rounded-b-xl px-4 py-3 flex items-center gap-3"
+                      style={{ borderColor: cor, backgroundColor: `${cor}06` }}>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold mb-1" style={{ color: cor }}>Valor personalizado</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-500 font-medium">R$</span>
+                          <input
+                            type="number"
+                            className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none font-semibold"
+                            placeholder={s.preco.toFixed(2)}
+                            value={valoresPersonalizados[s.id] || ''}
+                            onChange={e => setValoresPersonalizados(prev => ({ ...prev, [s.id]: e.target.value }))}
+                            autoFocus
+                          />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Valor padrão: R$ {s.preco.toFixed(2)}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setValoresPersonalizados(prev => { const n = { ...prev }; delete n[s.id]; return n })
+                          setEditandoValor(null)
+                        }}
+                        className="text-xs text-gray-400 font-medium">
+                        Resetar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            }) : (
               <p className="text-center text-gray-400 text-sm py-4">Nenhum serviço encontrado</p>
             )}
           </div>
@@ -333,17 +339,18 @@ await notificar({
           {servicosSelecionados.length > 0 && (
             <div className="mt-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
               <p className="text-xs text-gray-600 mb-1">Resumo:</p>
+              <p className="text-sm font-semibold text-gray-900">Duração total: {formatarDuracao(duracaoTotal)}</p>
               <p className="text-sm font-semibold text-gray-900">
-                Duração total: {formatarDuracao(duracaoTotal)}
-              </p>
-              <p className="text-sm font-semibold text-gray-900">
-                Valor total: R$ {precoTotal.toFixed(2)}
+                Valor total: R$ {precoTotal.toFixed(2).replace('.', ',')}
+                {Object.keys(valoresPersonalizados).some(id => servicosSelecionados.includes(id) && valoresPersonalizados[id]) && (
+                  <span className="text-xs font-normal text-gray-400 ml-2">(com valores personalizados)</span>
+                )}
               </p>
             </div>
           )}
         </div>
 
-        {/* Profissionais - Multi-seleção */}
+        {/* Profissionais */}
         <div>
           <label className="text-sm font-medium text-gray-700 mb-1.5 block">
             PROFISSIONAIS ({profissionaisSelecionados.length} selecionado{profissionaisSelecionados.length !== 1 ? 's' : ''})
@@ -352,17 +359,11 @@ await notificar({
             {profissionais.map(p => {
               const selecionado = profissionaisSelecionados.includes(p.id)
               return (
-                <button
-                  key={p.id}
-                  onClick={() => toggleProfissional(p.id)}
+                <button key={p.id} onClick={() => toggleProfissional(p.id)}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition-all text-left"
-                  style={selecionado
-                    ? { borderColor: cor, backgroundColor: `${cor}10` }
-                    : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
+                  style={selecionado ? { borderColor: cor, backgroundColor: `${cor}10` } : { borderColor: '#e5e7eb', backgroundColor: 'white' }}>
                   <div className="w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0"
-                    style={selecionado
-                      ? { borderColor: cor, backgroundColor: cor }
-                      : { borderColor: '#d1d5db' }}>
+                    style={selecionado ? { borderColor: cor, backgroundColor: cor } : { borderColor: '#d1d5db' }}>
                     {selecionado && <CheckCircle size={12} className="text-white" />}
                   </div>
                   <p className="text-sm font-semibold text-gray-900 flex-1">{p.nome}</p>
@@ -377,9 +378,7 @@ await notificar({
                 {profissionaisSelecionadosInfo.map(p => (
                   <span key={p.id} className="inline-flex items-center gap-2 px-2 py-1 bg-white rounded-lg text-xs font-medium text-gray-900 border" style={{ borderColor: cor }}>
                     {p.nome}
-                    <button onClick={() => toggleProfissional(p.id)} className="text-gray-400 hover:text-gray-600">
-                      <X size={12} />
-                    </button>
+                    <button onClick={() => toggleProfissional(p.id)} className="text-gray-400"><X size={12} /></button>
                   </span>
                 ))}
               </div>
@@ -391,13 +390,11 @@ await notificar({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1.5 block">DATA</label>
-            <input type="date" className="input-field"
-              value={data} onChange={e => setData(e.target.value)} />
+            <input type="date" className="input-field" value={data} onChange={e => setData(e.target.value)} />
           </div>
           <div>
             <label className="text-sm font-medium text-gray-700 mb-1.5 block">HORÁRIO</label>
-            <input type="time" className="input-field"
-              value={hora} onChange={e => setHora(e.target.value)} />
+            <input type="time" className="input-field" value={hora} onChange={e => setHora(e.target.value)} />
           </div>
         </div>
 
@@ -413,7 +410,8 @@ await notificar({
             </div>
           </div>
           <button onClick={() => setHorarioFixo(!horarioFixo)}
-            className={`w-12 h-6 rounded-full transition-all ${horarioFixo ? 'bg-[#E91E8C]' : 'bg-gray-200'}`}>
+            className={`w-12 h-6 rounded-full transition-all ${horarioFixo ? '' : 'bg-gray-200'}`}
+            style={horarioFixo ? { backgroundColor: cor } : {}}>
             <div className={`w-5 h-5 bg-white rounded-full shadow transition-all mx-0.5 ${horarioFixo ? 'translate-x-6' : ''}`} />
           </button>
         </div>
