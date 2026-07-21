@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Search, Plus, CheckCircle, X, Clock, Calendar, Repeat, DollarSign } from 'lucide-react'
+import { ArrowLeft, Search, Plus, CheckCircle, X, Clock, Calendar, Repeat, HelpCircle, Pencil, RotateCcw, UserCheck } from 'lucide-react'
 
 type FrequenciaFixo = 'semanal' | 'quinzenal' | 'dias21' | 'mensal'
 
@@ -43,9 +43,10 @@ export default function NovoAgendamentoPage() {
   const [sucesso, setSucesso] = useState(false)
   const [erro, setErro] = useState('')
 
-  // Preço personalizado
-  const [usarPrecoPersonalizado, setUsarPrecoPersonalizado] = useState(false)
-  const [precoPersonalizado, setPrecoPersonalizado] = useState('')
+  // Preço personalizado por serviço: { [servicoId]: valorPersonalizado }
+  const [precosPersonalizados, setPrecosPersonalizados] = useState<Record<string, number>>({})
+  const [editandoPrecoId, setEditandoPrecoId] = useState<string | null>(null)
+  const [tempPrecoInput, setTempPrecoInput] = useState('')
 
   // Filtro e busca de serviços
   const [buscaServico, setBuscaServico] = useState('')
@@ -74,15 +75,49 @@ export default function NovoAgendamentoPage() {
     setProfissionais(prof || [])
   }
 
-  // Calcular duração total e preço total padrão
+  // Obter preço efetivo (personalizado ou padrão)
+  function getPrecoServico(servico: any) {
+    if (precosPersonalizados[servico.id] !== undefined) {
+      return precosPersonalizados[servico.id]
+    }
+    return servico.preco || 0
+  }
+
+  // Funções para edição de preço individual
+  function iniciarEdicaoPreco(s: any, e?: React.MouseEvent) {
+    if (e) e.stopPropagation()
+    setEditandoPrecoId(s.id)
+    setTempPrecoInput(getPrecoServico(s).toFixed(2))
+  }
+
+  function salvarPrecoEditado(id: string, e?: React.MouseEvent) {
+    if (e) e.stopPropagation()
+    const val = parseFloat(tempPrecoInput.replace(',', '.'))
+    if (!isNaN(val) && val >= 0) {
+      setPrecosPersonalizados(prev => ({ ...prev, [id]: val }))
+    }
+    setEditandoPrecoId(null)
+  }
+
+  function resetarPrecoServico(id: string, e?: React.MouseEvent) {
+    if (e) e.stopPropagation()
+    setPrecosPersonalizados(prev => {
+      const copy = { ...prev }
+      delete copy[id]
+      return copy
+    })
+    if (editandoPrecoId === id) setEditandoPrecoId(null)
+  }
+
+  // Calcular duração total e valor total com base nos preços finais
   const servicosSelecionadosInfo = servicos.filter(s => servicosSelecionados.includes(s.id))
   const duracaoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + (s.duracao_minutos || 0), 0)
-  const precoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + (s.preco || 0), 0)
+  const precoTotal = servicosSelecionadosInfo.reduce((acc, s) => acc + getPrecoServico(s), 0)
 
-  // Valor final que será gravado no agendamento
-  const valorFinal = usarPrecoPersonalizado
-    ? (parseFloat(precoPersonalizado.replace(',', '.')) || 0)
-    : precoTotal
+  // Nomes dos serviços formatados para exibição
+  const nomesServicosTexto = servicosSelecionadosInfo.length > 0
+    ? servicosSelecionadosInfo.map(s => s.nome).join(', ')
+    : 'este serviço'
 
   // Filtrar serviços por categoria e busca
   const servicosFiltrados = servicos.filter(s => {
@@ -95,9 +130,13 @@ export default function NovoAgendamentoPage() {
   const categorias = [...new Set(servicos.map(s => s.categoria).filter(Boolean))].sort()
 
   function toggleServico(id: string) {
-    setServicosSelecionados(prev =>
-      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
-    )
+    setServicosSelecionados(prev => {
+      const nov = prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+      if (!nov.includes(id)) {
+        resetarPrecoServico(id)
+      }
+      return nov
+    })
   }
 
   function toggleProfissional(id: string) {
@@ -173,11 +212,11 @@ export default function NovoAgendamentoPage() {
         duracao_minutos: duracaoTotal,
         duracao_total_minutos: duracaoTotal,
         status: 'confirmado',
-        valor: valorFinal,
+        valor: precoTotal,
         observacoes: observacoes || null,
         horario_fixo: horarioFixo,
         recorrencia_id: recorrenciaId,
-        recorrencia_frequencia: horarioFixo ? frequenciaFixo : null,
+        recorrencia_frequencia: horarioFixo ? FREQUENCIA_LABEL[frequenciaFixo] : null,
         criado_por: profile!.id,
       }
     })
@@ -190,7 +229,6 @@ export default function NovoAgendamentoPage() {
       return
     }
 
-    // Atualiza o cadastro do cliente se for fixo
     if (horarioFixo) {
       await supabase.from('clientes').update({
         horario_fixo: true,
@@ -198,8 +236,6 @@ export default function NovoAgendamentoPage() {
       }).eq('id', clienteSelecionado.id)
     }
 
-    // Notificar cliente
-    const nomesServicos = servicosSelecionadosInfo.map(s => s.nome).join(', ')
     const nomesProfissionais = profissionais
       .filter(p => profissionaisSelecionados.includes(p.id))
       .map(p => p.nome)
@@ -211,7 +247,7 @@ export default function NovoAgendamentoPage() {
         remetenteId: profile!.id,
         destinatarioId: clienteSelecionado.profile_id,
         titulo: 'Agendamento confirmado!',
-        mensagem: `${nomesServicos} com ${nomesProfissionais} — ${dataBase.toLocaleDateString('pt-BR')} às ${hora}.${horarioFixo ? ` Cliente Fixa (${FREQUENCIA_LABEL[frequenciaFixo]}).` : ''}`,
+        mensagem: `${nomesServicosTexto} com ${nomesProfissionais} — ${dataBase.toLocaleDateString('pt-BR')} às ${hora}.${horarioFixo ? ` Cliente Fixa (${FREQUENCIA_LABEL[frequenciaFixo]}).` : ''}`,
         tipo: 'lembrete',
         url: '/cliente/agendamentos'
       })
@@ -226,7 +262,6 @@ export default function NovoAgendamentoPage() {
   )
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const profissionaisSelecionadosInfo = profissionais.filter(p => profissionaisSelecionados.includes(p.id))
 
   if (sucesso) return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center px-6 gap-6">
@@ -237,7 +272,7 @@ export default function NovoAgendamentoPage() {
       <h2 className="text-2xl font-bold text-gray-900">Agendamento criado!</h2>
       <p className="text-gray-500 text-center text-sm">
         {horarioFixo
-          ? `${OCORRENCIAS_POR_FREQUENCIA[frequenciaFixo]} datas recorrentes (${FREQUENCIA_LABEL[frequenciaFixo]}) criadas com sucesso!`
+          ? `${OCORRENCIAS_POR_FREQUENCIA[frequenciaFixo]} datas recorrentes (${FREQUENCIA_LABEL[frequenciaFixo]}) reservadas com sucesso!`
           : 'Cliente notificado com sucesso.'}
       </p>
       <button onClick={() => router.push('/salao/agenda')}
@@ -253,8 +288,7 @@ export default function NovoAgendamentoPage() {
         setHora('')
         setHorarioFixo(false)
         setFrequenciaFixo('semanal')
-        setUsarPrecoPersonalizado(false)
-        setPrecoPersonalizado('')
+        setPrecosPersonalizados({})
       }}
         className="text-sm text-gray-400">
         Criar outro agendamento
@@ -283,13 +317,20 @@ export default function NovoAgendamentoPage() {
             </button>
           </div>
           {clienteSelecionado ? (
-            <div className="card flex items-center justify-between">
-              <div>
-                <p className="font-semibold text-gray-900">{clienteSelecionado.nome}</p>
-                <p className="text-sm text-gray-500">{clienteSelecionado.telefone}</p>
+            <div className="card flex items-center justify-between bg-white p-3.5 rounded-2xl border border-gray-100 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center bg-pink-50 text-pink-600 font-bold">
+                  <UserCheck size={20} style={{ color: cor }} />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">{clienteSelecionado.nome}</p>
+                  <p className="text-xs text-gray-500">{clienteSelecionado.telefone}</p>
+                </div>
               </div>
               <button onClick={() => setClienteSelecionado(null)}
-                className="text-sm text-red-400">Trocar</button>
+                className="text-xs font-semibold text-red-500 hover:bg-red-50 px-2.5 py-1.5 rounded-lg transition-all">
+                Trocar
+              </button>
             </div>
           ) : (
             <>
@@ -318,9 +359,14 @@ export default function NovoAgendamentoPage() {
 
         {/* Serviços */}
         <div>
-          <label className="text-sm font-medium text-gray-700 mb-1.5 block">
-            SERVIÇOS ({servicosSelecionados.length} selecionado{servicosSelecionados.length !== 1 ? 's' : ''})
-          </label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-sm font-medium text-gray-700 block">
+              SERVIÇOS ({servicosSelecionados.length} selecionado{servicosSelecionados.length !== 1 ? 's' : ''})
+            </label>
+            <span className="text-[11px] text-gray-400">
+              💡 Clique no ✏️ para ajustar o valor da cliente
+            </span>
+          </div>
 
           <div className="relative mb-3">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -366,6 +412,10 @@ export default function NovoAgendamentoPage() {
             {servicosFiltrados.length > 0 ? (
               servicosFiltrados.map(s => {
                 const selecionado = servicosSelecionados.includes(s.id)
+                const precoEfetivo = getPrecoServico(s)
+                const foiEditado = precosPersonalizados[s.id] !== undefined
+                const estaEditando = editandoPrecoId === s.id
+
                 return (
                   <button
                     key={s.id}
@@ -380,14 +430,77 @@ export default function NovoAgendamentoPage() {
                         : { borderColor: '#d1d5db' }}>
                       {selecionado && <CheckCircle size={12} className="text-white" />}
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-900">{s.nome}</p>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                         {s.categoria && <span className="px-1.5 py-0.5 bg-gray-100 rounded">{s.categoria}</span>}
                         <Clock size={12} />
                         <span>{s.duracao_minutos} min</span>
                         <span>•</span>
-                        <span>R$ {s.preco.toFixed(2)}</span>
+
+                        {estaEditando ? (
+                          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                            <span className="font-semibold text-gray-700">R$</span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              autoFocus
+                              className="w-20 px-1.5 py-0.5 text-xs font-bold border border-pink-500 rounded bg-white text-gray-900 focus:outline-none shadow-sm"
+                              value={tempPrecoInput}
+                              onChange={e => setTempPrecoInput(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') salvarPrecoEditado(s.id, e as any)
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={e => salvarPrecoEditado(s.id, e)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded"
+                              title="Salvar valor"
+                            >
+                              <CheckCircle size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); setEditandoPrecoId(null) }}
+                              className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                              title="Cancelar"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <span className={foiEditado ? 'font-bold text-pink-600' : ''}>
+                              R$ {precoEfetivo.toFixed(2)}
+                            </span>
+                            {foiEditado && (
+                              <span className="text-[10px] bg-pink-100 text-pink-700 px-1.5 py-0.2 rounded-full font-bold">
+                                Valor Especial
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={e => iniciarEdicaoPreco(s, e)}
+                              className="p-1.5 text-gray-400 hover:text-pink-600 hover:bg-pink-100/60 rounded-lg transition-all ml-1"
+                              title="Editar preço deste serviço para esta cliente"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            {foiEditado && (
+                              <button
+                                type="button"
+                                onClick={e => resetarPrecoServico(s.id, e)}
+                                className="p-1 text-gray-400 hover:text-red-500 rounded"
+                                title={`Restaurar valor padrão de tabela (R$ ${s.preco.toFixed(2)})`}
+                              >
+                                <RotateCcw size={12} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -398,56 +511,102 @@ export default function NovoAgendamentoPage() {
             )}
           </div>
 
-          {/* Resumo e Preço Personalizado */}
+          {/* Resumo detalhado dos serviços selecionados */}
           {servicosSelecionados.length > 0 && (
-            <div className="mt-3 p-3.5 bg-blue-50/80 rounded-2xl border border-blue-100 flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold text-blue-900">Resumo dos Serviços</p>
-                  <p className="text-xs text-blue-700">Duração total: {formatarDuracao(duracaoTotal)}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!usarPrecoPersonalizado) {
-                      setPrecoPersonalizado(precoTotal.toFixed(2))
-                    }
-                    setUsarPrecoPersonalizado(!usarPrecoPersonalizado)
-                  }}
-                  className="text-xs font-semibold px-2.5 py-1 rounded-lg border bg-white transition-all shadow-sm"
-                  style={{ color: cor, borderColor: `${cor}40` }}
-                >
-                  {usarPrecoPersonalizado ? 'Usar valor padrão' : 'Personalizar valor'}
-                </button>
+            <div className="mt-3 p-3.5 bg-pink-50/70 rounded-2xl border border-pink-100 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between pb-1 border-b border-pink-200/60">
+                <p className="text-xs font-bold text-pink-950">
+                  Resumo dos Serviços {clienteSelecionado ? `para ${clienteSelecionado.nome.split(' ')[0]}` : ''}
+                </p>
+                <p className="text-xs text-pink-700 font-medium">Duração: {formatarDuracao(duracaoTotal)}</p>
               </div>
 
-              {usarPrecoPersonalizado ? (
-                <div className="flex flex-col gap-1.5 pt-2 border-t border-blue-100">
-                  <label className="text-xs font-medium text-gray-700 flex items-center gap-1">
-                    <DollarSign size={13} className="text-gray-500" />
-                    Valor cobrado nesta cliente (R$):
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="input-field bg-white text-sm font-bold text-gray-900 py-1.5"
-                      placeholder="0.00"
-                      value={precoPersonalizado}
-                      onChange={e => setPrecoPersonalizado(e.target.value)}
-                    />
-                    <span className="text-xs text-gray-500 shrink-0">
-                      (Padrão: R$ {precoTotal.toFixed(2)})
-                    </span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between pt-1 border-t border-blue-100">
-                  <span className="text-xs text-gray-600">Valor total:</span>
-                  <span className="text-base font-bold text-gray-900">R$ {precoTotal.toFixed(2)}</span>
-                </div>
-              )}
+              {/* Lista das linhas dos serviços com botão de editar */}
+              <div className="space-y-1.5 py-1">
+                {servicosSelecionadosInfo.map(s => {
+                  const precoEfetivo = getPrecoServico(s)
+                  const foiEditado = precosPersonalizados[s.id] !== undefined
+                  const estaEditando = editandoPrecoId === s.id
+
+                  return (
+                    <div key={s.id} className="flex items-center justify-between text-xs bg-white/90 px-3 py-2 rounded-xl border border-pink-100 shadow-sm">
+                      <span className="font-semibold text-gray-800 flex-1 truncate pr-2">{s.nome}</span>
+
+                      {estaEditando ? (
+                        <div className="flex items-center gap-1">
+                          <span className="font-semibold text-gray-700">R$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            autoFocus
+                            className="w-16 px-1.5 py-0.5 text-xs font-bold border border-pink-500 rounded bg-white text-gray-900 focus:outline-none"
+                            value={tempPrecoInput}
+                            onChange={e => setTempPrecoInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') salvarPrecoEditado(s.id)
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => salvarPrecoEditado(s.id)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            title="Salvar"
+                          >
+                            <CheckCircle size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditandoPrecoId(null)}
+                            className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                            title="Cancelar"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`font-bold ${foiEditado ? 'text-pink-600' : 'text-gray-900'}`}>
+                            R$ {precoEfetivo.toFixed(2)}
+                          </span>
+                          {foiEditado && (
+                            <span className="text-[10px] text-gray-400 line-through">
+                              (R$ {s.preco.toFixed(2)})
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => iniciarEdicaoPreco(s)}
+                            className="p-1 text-pink-600 bg-pink-50 hover:bg-pink-100 rounded-md transition-all flex items-center gap-0.5 font-medium text-[11px]"
+                            title="Editar preço deste serviço"
+                          >
+                            <Pencil size={11} />
+                            <span>Editar</span>
+                          </button>
+                          {foiEditado && (
+                            <button
+                              type="button"
+                              onClick={() => resetarPrecoServico(s.id)}
+                              className="p-1 text-gray-400 hover:text-red-500 rounded"
+                              title="Restaurar valor padrão"
+                            >
+                              <RotateCcw size={11} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Valor Total Final Somado */}
+              <div className="flex items-center justify-between pt-2 border-t border-pink-200/60">
+                <span className="text-xs font-bold text-gray-700">Valor Total Final:</span>
+                <span className="text-base font-bold text-gray-900" style={{ color: cor }}>
+                  R$ {precoTotal.toFixed(2)}
+                </span>
+              </div>
             </div>
           )}
         </div>
@@ -495,7 +654,7 @@ export default function NovoAgendamentoPage() {
           </div>
         </div>
 
-        {/* Fixar Cliente / Horário Fixo */}
+        {/* Fixar Cliente / Horário Fixo com Pergunta de Frequência do Serviço */}
         <div className="card flex flex-col gap-3 bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -508,7 +667,7 @@ export default function NovoAgendamentoPage() {
                 <p className="text-xs text-gray-500">Agendar horários fixos recorrentes</p>
               </div>
             </div>
-            <button onClick={() => setHorarioFixo(!horarioFixo)}
+            <button type="button" onClick={() => setHorarioFixo(!horarioFixo)}
               className={`w-12 h-6 rounded-full transition-all ${horarioFixo ? 'bg-[#E91E8C]' : 'bg-gray-200'}`}
               style={horarioFixo ? { backgroundColor: cor } : {}}>
               <div className={`w-5 h-5 bg-white rounded-full shadow transition-all mx-0.5 ${horarioFixo ? 'translate-x-6' : ''}`} />
@@ -516,11 +675,23 @@ export default function NovoAgendamentoPage() {
           </div>
 
           {horarioFixo && (
-            <div className="flex flex-col gap-3 pt-2 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-700">Frequência da recorrência:</p>
+            <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
+              <div className="p-3 bg-pink-50/60 rounded-xl border border-pink-100 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
+                  <HelpCircle size={14} style={{ color: cor }} />
+                  Com qual frequência {clienteSelecionado ? clienteSelecionado.nome.split(' ')[0] : 'a cliente'} faz{' '}
+                  <span className="font-bold underline" style={{ color: cor }}>
+                    {nomesServicosTexto}
+                  </span>?
+                </p>
+                <p className="text-[11px] text-gray-500">
+                  Selecione o intervalo habitual em que este serviço se repete.
+                </p>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 {(Object.keys(FREQUENCIA_LABEL) as FrequenciaFixo[]).map(freq => (
-                  <button key={freq} onClick={() => setFrequenciaFixo(freq)}
+                  <button key={freq} type="button" onClick={() => setFrequenciaFixo(freq)}
                     className="py-2.5 px-3 rounded-xl text-xs font-semibold border-2 transition-all flex flex-col items-center gap-0.5"
                     style={frequenciaFixo === freq
                       ? { borderColor: cor, backgroundColor: `${cor}10`, color: cor }
@@ -531,15 +702,19 @@ export default function NovoAgendamentoPage() {
                 ))}
               </div>
 
+              <p className="text-xs text-gray-600 bg-amber-50 p-2.5 rounded-xl border border-amber-200/70 leading-relaxed">
+                💡 <strong>Nota:</strong> Como os serviços podem mudar a cada visita, estas datas serão reservadas com <strong>{nomesServicosTexto}</strong> como sugestão. Você poderá trocar o serviço ou alterar o valor em cada dia de atendimento.
+              </p>
+
               {previasDatas.length > 0 && (
-                <div className="mt-2 p-3 bg-pink-50/50 rounded-xl border border-pink-100">
+                <div className="mt-1 p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <p className="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1">
                     <Calendar size={14} style={{ color: cor }} />
-                    Próximas datas que serão salvas:
+                    Próximas datas de {nomesServicosTexto}:
                   </p>
                   <div className="grid grid-cols-2 gap-1.5 text-xs text-gray-600">
                     {previasDatas.map((d, index) => (
-                      <div key={index} className="bg-white px-2 py-1 rounded-lg border border-gray-100 flex justify-between">
+                      <div key={index} className="bg-white px-2 py-1.5 rounded-lg border border-gray-200 flex justify-between">
                         <span className="font-medium text-gray-900">{index + 1}ª: {d.toLocaleDateString('pt-BR')}</span>
                         <span className="text-gray-400">{hora}</span>
                       </div>
@@ -555,7 +730,7 @@ export default function NovoAgendamentoPage() {
         <div>
           <label className="text-sm font-medium text-gray-700 mb-1.5 block">OBSERVAÇÕES</label>
           <textarea className="input-field resize-none" rows={3}
-            placeholder="Alergias, pouca quantidade de cabelo..."
+            placeholder="Ex: Pouca quantidade de cabelo (desconto aplicado), alergia a amônia..."
             value={observacoes} onChange={e => setObservacoes(e.target.value)} />
         </div>
 
@@ -569,7 +744,7 @@ export default function NovoAgendamentoPage() {
           className="btn-primary" style={{ backgroundColor: cor }}>
           {salvando
             ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            : <><CheckCircle size={18} />Confirmar Agendamento (R$ {valorFinal.toFixed(2)})</>}
+            : <><CheckCircle size={18} />Confirmar Agendamento (R$ {precoTotal.toFixed(2)})</>}
         </button>
       </div>
     </div>
