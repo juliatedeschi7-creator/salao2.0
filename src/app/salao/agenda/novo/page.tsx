@@ -133,7 +133,6 @@ export default function NovoAgendamentoPage() {
     setServicosSelecionados(prev => {
       const nov = prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
       if (!nov.includes(id)) {
-        // Limpar preço personalizado se o serviço for desmarcado
         resetarPrecoServico(id)
       }
       return nov
@@ -217,7 +216,7 @@ export default function NovoAgendamentoPage() {
         observacoes: observacoes || null,
         horario_fixo: horarioFixo,
         recorrencia_id: recorrenciaId,
-        recorrencia_frequencia: horarioFixo ? frequenciaFixo : null,
+        recorrencia_frequencia: horarioFixo ? FREQUENCIA_LABEL[frequenciaFixo] : null,
         criado_por: profile!.id,
       }
     })
@@ -430,7 +429,6 @@ export default function NovoAgendamentoPage() {
                         <span>{s.duracao_minutos} min</span>
                         <span>•</span>
 
-                        {/* Campo ou exibições de preço individual */}
                         {estaEditando ? (
                           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                             <span className="font-semibold text-gray-700">R$</span>
@@ -509,7 +507,6 @@ export default function NovoAgendamentoPage() {
                 <p className="text-xs text-blue-700 font-medium">Duração: {formatarDuracao(duracaoTotal)}</p>
               </div>
 
-              {/* Lista das linhas dos serviços com editar */}
               <div className="space-y-1.5 py-1">
                 {servicosSelecionadosInfo.map(s => {
                   const precoEfetivo = getPrecoServico(s)
@@ -587,7 +584,6 @@ export default function NovoAgendamentoPage() {
                 })}
               </div>
 
-              {/* Valor Total Final Somado */}
               <div className="flex items-center justify-between pt-2 border-t border-blue-100">
                 <span className="text-xs font-semibold text-gray-700">Valor Total Final:</span>
                 <span className="text-base font-bold text-gray-900" style={{ color: cor }}>
@@ -663,7 +659,6 @@ export default function NovoAgendamentoPage() {
 
           {horarioFixo && (
             <div className="flex flex-col gap-3 pt-3 border-t border-gray-100">
-              {/* Caixa de Pergunta Específica do Serviço */}
               <div className="p-3 bg-pink-50/60 rounded-xl border border-pink-100 flex flex-col gap-1">
                 <p className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
                   <HelpCircle size={14} style={{ color: cor }} />
@@ -677,7 +672,6 @@ export default function NovoAgendamentoPage() {
                 </p>
               </div>
 
-              {/* Botões de Frequência */}
               <div className="grid grid-cols-2 gap-2">
                 {(Object.keys(FREQUENCIA_LABEL) as FrequenciaFixo[]).map(freq => (
                   <button key={freq} type="button" onClick={() => setFrequenciaFixo(freq)}
@@ -691,12 +685,10 @@ export default function NovoAgendamentoPage() {
                 ))}
               </div>
 
-              {/* Nota explicativa de flexibilidade de serviço */}
               <p className="text-xs text-gray-600 bg-amber-50 p-2.5 rounded-xl border border-amber-200/70 leading-relaxed">
                 💡 <strong>Nota:</strong> Como os serviços podem mudar a cada visita, estas datas serão reservadas com <strong>{nomesServicosTexto}</strong> como sugestão. Você poderá trocar o serviço ou alterar o valor em cada dia de atendimento.
               </p>
 
-              {/* Prévia das Datas Geradas */}
               {previasDatas.length > 0 && (
                 <div className="mt-1 p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <p className="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1">
