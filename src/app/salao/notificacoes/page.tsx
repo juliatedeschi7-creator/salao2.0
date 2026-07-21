@@ -1,4 +1,4 @@
- 'use client'
+'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -18,7 +18,6 @@ type CoberturaServico = {
   servicoId: string
   servicoNome: string
   sessoesEquivalentes: number
-  // clientePacoteId selecionado pelo dono (null = não usa pacote)
   clientePacoteIdSelecionado: string | null
   pacotesDisponiveis: PacoteOpcao[]
 }
@@ -92,6 +91,20 @@ export default function NotificacoesDonoPage() {
     setNotificacoesExcluidas(excluidas || [])
   }
 
+  // ─── Ação ao clicar na notificação ───────────────────────────────────────
+  async function handleClicarNotificacao(n: any) {
+    if (!n.lida) {
+      await supabase.from('notificacoes').update({ lida: true }).eq('id', n.id)
+      setNotificacoes(prev => prev.map(item => item.id === n.id ? { ...item, lida: true } : item))
+    }
+
+    if (n.url) {
+      router.push(n.url)
+    } else if (n.tipo === 'duplicado' || n.titulo?.toLowerCase().includes('duplicado')) {
+      router.push('/clientes')
+    }
+  }
+
   // ─── Monta lista de serviços com pacotes disponíveis ────────────────────
   async function montarCoberturas(agendamento: any): Promise<CoberturaServico[]> {
     const idsServicos: string[] = Array.isArray(agendamento.servicos_ids) && agendamento.servicos_ids.length > 0
@@ -100,11 +113,9 @@ export default function NotificacoesDonoPage() {
 
     if (idsServicos.length === 0) return []
 
-    // Detalhes dos serviços
     const { data: servicosInfo } = await supabase.from('servicos')
       .select('id, nome, sessoes_equivalentes').in('id', idsServicos)
 
-    // Todos os pacotes ativos da cliente com itens
     const { data: clientePacotes } = await supabase.from('cliente_pacotes')
       .select('*, pacotes(nome, pacote_itens(servico_id))')
       .eq('cliente_id', agendamento.cliente_id)
@@ -117,12 +128,9 @@ export default function NotificacoesDonoPage() {
     return idsServicos.map(id => {
       const srv = (servicosInfo || []).find((s: any) => s.id === id)
 
-      // Filtra pacotes que cobrem este serviço
       const pacotesCobrem = pacotesAtivos.filter((cp: any) => {
         const itens: any[] = cp.pacotes?.pacote_itens || []
-        // pacote com itens definidos → verifica se este serviço está nos itens
         if (itens.length > 0) return itens.some((i: any) => i.servico_id === id)
-        // pacote genérico (sem itens) → cobre qualquer serviço
         return true
       })
 
@@ -136,7 +144,6 @@ export default function NotificacoesDonoPage() {
         servicoId: id,
         servicoNome: srv?.nome || 'Serviço',
         sessoesEquivalentes: srv?.sessoes_equivalentes || 1,
-        // pré-seleciona o primeiro pacote compatível (pode ser alterado)
         clientePacoteIdSelecionado: opcoes.length > 0 ? opcoes[0].clientePacoteId : null,
         pacotesDisponiveis: opcoes,
       }
@@ -176,7 +183,6 @@ export default function NotificacoesDonoPage() {
 
     const hoje = new Date().toISOString().slice(0, 10)
 
-    // Agrupa por pacote: { clientePacoteId → [{ nome, peso }, ...] }
     const descontos: Record<string, { nome: string; peso: number }[]> = {}
     for (const cob of coberturas) {
       if (!cob.clientePacoteIdSelecionado) continue
@@ -184,7 +190,6 @@ export default function NotificacoesDonoPage() {
       descontos[cob.clientePacoteIdSelecionado].push({ nome: cob.servicoNome, peso: cob.sessoesEquivalentes })
     }
 
-    // Aplica desconto e registra sessões (respeitando o peso de cada serviço)
     for (const [cpId, itens] of Object.entries(descontos)) {
       const totalPeso = itens.reduce((acc, i) => acc + i.peso, 0)
 
@@ -213,7 +218,6 @@ export default function NotificacoesDonoPage() {
     const totalDescontados = Object.values(descontos)
       .reduce((acc, itens) => acc + itens.reduce((a, i) => a + i.peso, 0), 0)
 
-    // Notifica a cliente (grava no sininho + dispara push de verdade)
     const { data: clienteInfo } = await supabase.from('clientes')
       .select('profile_id').eq('id', modalConfirmar.cliente_id).single()
     if (clienteInfo?.profile_id) {
@@ -467,7 +471,9 @@ export default function NotificacoesDonoPage() {
               <p className="text-gray-400">Nenhum aviso</p>
             </div>
           ) : notificacoes.map(n => (
-            <div key={n.id} className={'card flex flex-col gap-1 ' + (!n.lida ? 'border-l-4' : '')}
+            <div key={n.id}
+              onClick={() => handleClicarNotificacao(n)}
+              className={'card flex flex-col gap-1 cursor-pointer transition-colors hover:bg-gray-50 ' + (!n.lida ? 'border-l-4' : '')}
               style={!n.lida ? { borderLeftColor: cor } : {}}>
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1">
@@ -477,7 +483,7 @@ export default function NotificacoesDonoPage() {
                     {new Date(n.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
-                <button onClick={() => excluirNotificacao(n.id)}
+                <button onClick={(e) => { e.stopPropagation(); excluirNotificacao(n.id) }}
                   className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
                   <Trash2 size={13} className="text-gray-400" />
                 </button>
@@ -547,7 +553,7 @@ export default function NotificacoesDonoPage() {
         </div>
       )}
 
-      {/* ── Modal confirmar atendimento com seleção de pacote por serviço ── */}
+      {/* Modal confirmar atendimento com seleção de pacote por serviço */}
       {modalConfirmar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
@@ -560,7 +566,6 @@ export default function NotificacoesDonoPage() {
 
             <p className="text-sm text-gray-600 font-medium">{modalConfirmar.clientes?.nome}</p>
 
-            {/* Serviços com seleção de pacote */}
             {carregandoCoberturas ? (
               <div className="flex items-center gap-2 py-2">
                 <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
@@ -573,7 +578,6 @@ export default function NotificacoesDonoPage() {
                 </p>
                 {coberturas.map(cob => (
                   <div key={cob.servicoId} className="bg-gray-50 rounded-2xl p-3 flex flex-col gap-2">
-                    {/* Nome do serviço */}
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
                         style={{ backgroundColor: `${cor}18` }}>
@@ -587,7 +591,6 @@ export default function NotificacoesDonoPage() {
                       </p>
                     </div>
 
-                    {/* Selector de pacote */}
                     {cob.pacotesDisponiveis.length === 0 ? (
                       <p className="text-xs text-gray-400 ml-9">Sem pacote ativo para este serviço</p>
                     ) : (
@@ -609,7 +612,6 @@ export default function NotificacoesDonoPage() {
                   </div>
                 ))}
 
-                {/* Resumo */}
                 {coberturas.some(c => c.clientePacoteIdSelecionado) && (
                   <div className="bg-green-50 rounded-xl px-3 py-2">
                     <p className="text-xs text-green-700 font-medium">
@@ -621,7 +623,6 @@ export default function NotificacoesDonoPage() {
               </div>
             ) : null}
 
-            {/* O que foi realizado */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">O que foi realizado?</label>
               <input className="input-field" placeholder="Ex: Manicure + Pedicure tradicionais"
