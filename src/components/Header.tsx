@@ -3,14 +3,14 @@ import {
   Bell, LogOut, Menu, X,
   Home, Calendar, Users, BarChart2, Settings,
   Scissors, Package, FileText, UserCheck, Box,
-  Sparkles, CreditCard, DollarSign, Clock, Heart
+  Sparkles, CreditCard, DollarSign, Clock, Heart,
+  CheckSquare
 } from 'lucide-react'
 import { useNotificacoes } from '@/lib/hooks/useNotificacoes'
 import { supabase } from '@/lib/supabase'
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import type { Profile } from '@/lib/supabase'
-import { CheckSquare } from 'lucide-react'
 
 interface Props {
   profile: Profile
@@ -23,12 +23,15 @@ const MENU_DONO = [
   { icon: Home, label: 'Início', href: '/salao', grupo: '' },
   { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
+  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' }, // 👈 Adicionado
   { icon: Scissors, label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento' },
   { icon: Package, label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento' },
   { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento' },
   { icon: FileText, label: 'Fichas de Anamnese', href: '/salao/anamnese', grupo: 'Atendimento' },
   { icon: Package, label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento' },
   { icon: FileText, label: 'Contratos', href: '/salao/contratos', grupo: 'Atendimento' },
+  { icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' },
+  { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' },
   { icon: UserCheck, label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe' },
   { icon: Box, label: 'Estoque', href: '/salao/estoque', grupo: 'Gestão' },
   { icon: BarChart2, label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão' },
@@ -40,8 +43,15 @@ const MENU_DONO = [
   { icon: Heart, label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros' },
   { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
   { icon: Clock, label: 'Horários', href: '/salao/horarios', grupo: 'Outros' },
-  { icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' }, 
-  { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' }, // 👈 Adicionado aqui!
+]
+
+const MENU_FUNCIONARIO = [
+  { icon: Home, label: 'Início', href: '/funcionario', grupo: '' },
+  { icon: Calendar, label: 'Minha Agenda', href: '/funcionario/agenda', grupo: 'Atendimento' },
+  { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
+  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' }, // 👈 Adicionado para funcionários
+  { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' },
+  { icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' },
 ]
 
 const MENU_ADMIN = [
@@ -57,7 +67,14 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
   const [notifAberta, setNotifAberta] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
-  const menuItems = profile.role === 'admin_geral' ? MENU_ADMIN : MENU_DONO
+
+  // Define qual menu exibir de acordo com o papel do usuário
+  const menuItems = profile.role === 'admin_geral'
+    ? MENU_ADMIN
+    : (profile.role === 'funcionario' || profile.role === 'profissional')
+    ? MENU_FUNCIONARIO
+    : MENU_DONO
+
   const grupos = Array.from(new Set(menuItems.map(i => i.grupo)))
 
   async function logout() {
