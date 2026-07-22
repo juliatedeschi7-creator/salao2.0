@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText } from 'lucide-react'
+import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText, Share2, Check } from 'lucide-react'
 
 export default function ServicosPage() {
   const { profile, loading } = useAuth()
@@ -24,6 +24,8 @@ export default function ServicosPage() {
   const [expandido, setExpandido] = useState<string | null>(null)
   const [novaCategoria, setNovaCategoria] = useState('')
   const [editandoCategoria, setEditandoCategoria] = useState<any>(null)
+  const [copiado, setCopiado] = useState(false)
+
   const [form, setForm] = useState({
     nome: '', descricao: '', categoria: '', duracao_minutos: 60,
     sessoes: 1, preco: '', preco_minimo: '', custo_material: '',
@@ -63,6 +65,25 @@ export default function ServicosPage() {
     setCategorias(catsRes.data || [])
     setOrcamentos(orcsRes.data || [])
     setCarregando(false)
+  }
+
+  // ─── Ação de Compartilhar Catálogo / Preços ───────────────────────────
+  const linkCatalogo = typeof window !== 'undefined'
+    ? `${window.location.origin}/servicos?salao=${salao?.slug || salao?.id}`
+    : ''
+
+  function compartilharCatalogo() {
+    if (navigator.share) {
+      navigator.share({
+        title: salao?.nome || 'Catálogo de Serviços',
+        text: `Confira nossos serviços e valores no ${salao?.nome || 'salão'}:`,
+        url: linkCatalogo,
+      }).catch(() => {})
+    } else {
+      navigator.clipboard.writeText(linkCatalogo)
+      setCopiado(true)
+      setTimeout(() => setCopiado(false), 2500)
+    }
   }
 
   function abrirModal(s?: any) {
@@ -220,10 +241,17 @@ export default function ServicosPage() {
 
   return (
     <div className="min-h-screen pb-8 bg-[#f8f9fa]">
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
+      <div className="bg-white px-4 py-4 flex items-center gap-2 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Catálogo de Serviços</h1>
+        <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">Catálogo de Serviços</h1>
         
+        {/* BOTÃO COMPARTILHAR CATÁLOGO / PREÇOS */}
+        <button onClick={compartilharCatalogo}
+          title="Compartilhar Catálogo / Preços"
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center transition-colors">
+          {copiado ? <Check size={16} className="text-green-600" /> : <Share2 size={16} className="text-gray-600" />}
+        </button>
+
         {/* BOTÃO GERAR CATÁLOGO PDF */}
         <button onClick={() => router.push('/salao/catalogo')}
           title="Gerar Catálogo PDF"
@@ -233,17 +261,19 @@ export default function ServicosPage() {
 
         {orcamentos.length > 0 && (
           <button onClick={() => setModalOrcamento(orcamentos[0])}
-            className="relative flex items-center gap-1 px-3 py-1.5 rounded-xl text-white text-xs font-medium"
+            className="relative flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-white text-xs font-medium"
             style={{ backgroundColor: cor }}>
             <MessageSquare size={13} />
-            {orcamentos.length} orçamento{orcamentos.length > 1 ? 's' : ''}
+            {orcamentos.length}
           </button>
         )}
         <button onClick={() => setModalCategorias(true)}
+          title="Categorias"
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
           <Tag size={16} className="text-gray-600" />
         </button>
         <button onClick={() => abrirModal()}
+          title="Novo serviço"
           className="w-9 h-9 rounded-full flex items-center justify-center text-white"
           style={{ backgroundColor: cor }}>
           <Plus size={18} />
@@ -252,7 +282,7 @@ export default function ServicosPage() {
 
       <div className="px-4 py-4 flex flex-col gap-3">
         {categorias.length === 0 && (
-          <div className="card bg-yellow-50 border border-yellow-200">
+          <div className="card bg-yellow-50 border border-yellow-200 p-3 rounded-2xl">
             <p className="text-sm text-yellow-700">Crie uma categoria antes de adicionar serviços. Toque no ícone de etiqueta no topo.</p>
           </div>
         )}
@@ -268,7 +298,7 @@ export default function ServicosPage() {
         </div>
 
         {filtrados.length === 0 && categorias.length > 0 ? (
-          <div className="card text-center py-10">
+          <div className="card text-center py-10 bg-white rounded-2xl">
             <p className="text-gray-400">Nenhum serviço nesta categoria</p>
             <button onClick={() => abrirModal()} className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white" style={{ backgroundColor: cor }}>
               + Adicionar serviço
@@ -280,7 +310,7 @@ export default function ServicosPage() {
           const variavel = s.tipo_preco === 'variavel'
 
           return (
-            <div key={s.id} className="card flex flex-col gap-3">
+            <div key={s.id} className="card bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-3">
               {fotosServico.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
                   {fotosServico.map(f => (
@@ -382,13 +412,13 @@ export default function ServicosPage() {
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Valor do orçamento (R$)</label>
-              <input className="input-field" type="number" placeholder="Ex: 250,00"
+              <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 250,00"
                 value={respostaOrcamento.valor}
                 onChange={e => setRespostaOrcamento(p => ({ ...p, valor: e.target.value }))} />
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Mensagem para a cliente</label>
-              <textarea className="input-field resize-none" rows={3}
+              <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
                 placeholder="Ex: Com base na foto, ficará R$ 250. Posso atender na quinta às 14h."
                 value={respostaOrcamento.texto}
                 onChange={e => setRespostaOrcamento(p => ({ ...p, texto: e.target.value }))} />
@@ -413,7 +443,7 @@ export default function ServicosPage() {
               <button onClick={() => setModalCategorias(false)}><X size={20} className="text-gray-400" /></button>
             </div>
             <div className="flex gap-2">
-              <input className="input-field flex-1" placeholder="Nova categoria" value={novaCategoria} onChange={e => setNovaCategoria(e.target.value)} />
+              <input className="flex-1 border border-gray-200 rounded-xl px-3.5 py-2 text-sm outline-none" placeholder="Nova categoria" value={novaCategoria} onChange={e => setNovaCategoria(e.target.value)} />
               <button onClick={adicionarCategoria} className="px-4 rounded-xl text-white font-medium" style={{ backgroundColor: cor }}><Plus size={18} /></button>
             </div>
             <div className="flex flex-col gap-2">
@@ -450,7 +480,7 @@ export default function ServicosPage() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do serviço *</label>
-              <input className="input-field" placeholder="Ex: Corte Feminino"
+              <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" placeholder="Ex: Corte Feminino"
                 value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
             </div>
 
@@ -459,7 +489,7 @@ export default function ServicosPage() {
               {categorias.length === 0 ? (
                 <p className="text-xs text-red-500">Crie uma categoria primeiro.</p>
               ) : (
-                <select className="input-field" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}>
+                <select className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none bg-white" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}>
                   {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
                 </select>
               )}
@@ -467,7 +497,7 @@ export default function ServicosPage() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição</label>
-              <textarea className="input-field resize-none" rows={3}
+              <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
                 placeholder="Descreva o serviço, cuidados, contraindicações..."
                 value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
             </div>
@@ -496,7 +526,7 @@ export default function ServicosPage() {
             {form.tipo_preco === 'fixo' ? (
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Preço (R$) *</label>
-                <input className="input-field" type="number" placeholder="0,00"
+                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0,00"
                   value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} />
               </div>
             ) : (
@@ -504,12 +534,12 @@ export default function ServicosPage() {
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <label className="text-sm font-medium text-gray-700 mb-1 block">A partir de (R$) *</label>
-                    <input className="input-field" type="number" placeholder="Ex: 150,00"
+                    <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 150,00"
                       value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} />
                   </div>
                   <div className="flex-1">
                     <label className="text-sm font-medium text-gray-700 mb-1 block">Até (R$) opcional</label>
-                    <input className="input-field" type="number" placeholder="Ex: 400,00"
+                    <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 400,00"
                       value={form.preco_minimo} onChange={e => setForm(p => ({ ...p, preco_minimo: e.target.value }))} />
                   </div>
                 </div>
@@ -517,7 +547,7 @@ export default function ServicosPage() {
                   <label className="text-sm font-medium text-gray-700 mb-1 block flex items-center gap-1">
                     <Camera size={14} /> Regras da foto para orçamento
                   </label>
-                  <textarea className="input-field resize-none" rows={3}
+                  <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
                     placeholder="Ex: Tire uma foto com boa iluminação, de costas, com o cabelo solto e para frente."
                     value={form.regras_foto_orcamento}
                     onChange={e => setForm(p => ({ ...p, regras_foto_orcamento: e.target.value }))} />
@@ -529,12 +559,12 @@ export default function ServicosPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Duração (min)</label>
-                <input className="input-field" type="number"
+                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number"
                   value={form.duracao_minutos} onChange={e => setForm(p => ({ ...p, duracao_minutos: parseInt(e.target.value) }))} />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Sessões</label>
-                <input className="input-field" type="number" min="1"
+                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" min="1"
                   value={form.sessoes} onChange={e => setForm(p => ({ ...p, sessoes: parseInt(e.target.value) }))} />
               </div>
             </div>
@@ -542,12 +572,12 @@ export default function ServicosPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Comissão %</label>
-                <input className="input-field" type="number" placeholder="0"
+                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0"
                   value={form.comissao_percentual} onChange={e => setForm(p => ({ ...p, comissao_percentual: e.target.value }))} />
               </div>
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Custo material (R$)</label>
-                <input className="input-field" type="number" placeholder="0,00"
+                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0,00"
                   value={form.custo_material} onChange={e => setForm(p => ({ ...p, custo_material: e.target.value }))} />
               </div>
             </div>
