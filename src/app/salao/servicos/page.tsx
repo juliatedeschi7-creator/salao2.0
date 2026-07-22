@@ -1,11 +1,12 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText } from 'lucide-react'
 
 export default function ServicosPage() {
   const { profile, loading } = useAuth()
@@ -176,13 +177,13 @@ export default function ServicosPage() {
       resposta: respostaOrcamento.texto,
       valor_resposta: respostaOrcamento.valor ? parseFloat(respostaOrcamento.valor) : null,
     }).eq('id', modalOrcamento.id)
-await notificar({
-  destinatarioId: modalOrcamento.clientes?.profile_id,
-  titulo: 'Resposta ao seu orçamento!',
-  mensagem: `${salao?.nome} respondeu sua solicitação de orçamento para ${modalOrcamento.servicos?.nome}.`,
-  tipo: 'orcamento',
-  url: '/cliente/orcamentos'
-})
+    await notificar({
+      destinatarioId: modalOrcamento.clientes?.profile_id,
+      titulo: 'Resposta ao seu orçamento!',
+      mensagem: `${salao?.nome} respondeu sua solicitação de orçamento para ${modalOrcamento.servicos?.nome}.`,
+      tipo: 'orcamento',
+      url: '/cliente/orcamentos'
+    })
     setSalvandoOrcamento(false)
     setModalOrcamento(null)
     setRespostaOrcamento({ texto: '', valor: '' })
@@ -222,6 +223,14 @@ await notificar({
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1">Catálogo de Serviços</h1>
+        
+        {/* BOTÃO GERAR CATÁLOGO PDF */}
+        <button onClick={() => router.push('/salao/catalogo')}
+          title="Gerar Catálogo PDF"
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+          <FileText size={16} className="text-gray-600" />
+        </button>
+
         {orcamentos.length > 0 && (
           <button onClick={() => setModalOrcamento(orcamentos[0])}
             className="relative flex items-center gap-1 px-3 py-1.5 rounded-xl text-white text-xs font-medium"
