@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase'
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import type { Profile } from '@/lib/supabase'
+import { CheckSquare } from 'lucide-react'
 
 interface Props {
   profile: Profile
@@ -39,7 +40,8 @@ const MENU_DONO = [
   { icon: Heart, label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros' },
   { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
   { icon: Clock, label: 'Horários', href: '/salao/horarios', grupo: 'Outros' },
-  { icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' }
+  { icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' }, 
+  { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' }, // 👈 Adicionado aqui!
 ]
 
 const MENU_ADMIN = [
