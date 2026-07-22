@@ -56,14 +56,6 @@ export default function ClientePerfilPage() {
     setCarregando(false)
   }
 
-  async function salvarObservacoes() {
-    setSalvandoObs(true)
-    await supabase.from('clientes').update({ observacoes_internas: obsText }).eq('id', clienteId)
-    setCliente((prev: any) => ({ ...prev, observacoes_internas: obsText }))
-    setSalvandoObs(false)
-    setEditandoObs(false)
-  }
-
   const cor = salao?.cor_primaria || '#E91E8C'
   const totalSessoes = pacotes.filter(p => p.status === 'ativo').reduce((acc, p) => acc + (p.sessoes_total - p.sessoes_usadas), 0)
 
