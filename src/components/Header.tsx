@@ -38,8 +38,8 @@ const MENU_DONO = [
   { icon: Sparkles, label: 'Sugestões IA', href: '/salao/ia', grupo: 'Outros' },
   { icon: Heart, label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros' },
   { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
-{ icon: Clock, label: 'Horários', href: '/salao/horarios', grupo: 'Outros' },
-{ icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' }
+  { icon: Clock, label: 'Horários', href: '/salao/horarios', grupo: 'Outros' },
+  { icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' }
 ]
 
 const MENU_ADMIN = [
@@ -61,6 +61,38 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
   async function logout() {
     await supabase.auth.signOut()
     window.location.href = '/login'
+  }
+
+  // ─── Ação ao clicar em uma notificação ─────────────────────────────────
+  async function handleClicarNotificacao(n: any) {
+    if (!n.lida) {
+      marcarComoLida(n.id)
+    }
+
+    setNotifAberta(false)
+
+    let destino = n.url
+
+    // Fallbacks inteligentes caso n.url não venha preenchida do banco
+    if (!destino) {
+      const titulo = (n.titulo || '').toLowerCase()
+      const tipo = (n.tipo || '').toLowerCase()
+      const clienteId = n.cliente_id || n.dados_extras?.cliente_id
+
+      if (tipo === 'duplicado' || titulo.includes('duplicado')) {
+        destino = clienteId ? `/salao/clientes?mesclar=${clienteId}` : '/salao/clientes'
+      } else if (tipo === 'agendamento' || titulo.includes('agendamento')) {
+        destino = '/salao/agenda'
+      } else if (tipo === 'pacote' || titulo.includes('pacote')) {
+        destino = '/salao/pacotes'
+      } else {
+        destino = '/salao'
+      }
+    }
+
+    if (destino) {
+      router.push(destino)
+    }
   }
 
   return (
@@ -107,8 +139,8 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
               {notificacoes.length === 0
                 ? <p className="text-center text-gray-400 py-8 text-sm">Nenhuma notificação</p>
                 : notificacoes.map(n => (
-                  <div key={n.id} onClick={() => marcarComoLida(n.id)}
-                    className={'px-4 py-3 border-b cursor-pointer ' + (!n.lida ? 'bg-pink-50' : 'hover:bg-gray-50')}>
+                  <div key={n.id} onClick={() => handleClicarNotificacao(n)}
+                    className={'px-4 py-3 border-b cursor-pointer transition-colors ' + (!n.lida ? 'bg-pink-50' : 'hover:bg-gray-50')}>
                     <p className="font-medium text-gray-900 text-sm">{n.titulo}</p>
                     <p className="text-gray-500 text-xs mt-0.5">{n.mensagem}</p>
                     <p className="text-gray-400 text-xs mt-1">{new Date(n.created_at).toLocaleDateString('pt-BR')}</p>
