@@ -1,15 +1,21 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Search, UserPlus, Copy, Check, Users, QrCode, X, CheckCircle, XCircle, Clock, Share } from 'lucide-react'
+import { 
+  ArrowLeft, Search, UserPlus, Copy, Check, Users, QrCode, 
+  X, CheckCircle, XCircle, Clock, Share, GitMerge, AlertCircle 
+} from 'lucide-react'
 
-export default function ClientesPage() {
+function ClientesConteudo() {
   const { profile, loading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const clienteMesclarId = searchParams.get('mesclar')
+
   const [salao, setSalao] = useState<any>(null)
   const [clientes, setClientes] = useState<any[]>([])
   const [pendentes, setPendentes] = useState<any[]>([])
@@ -19,12 +25,15 @@ export default function ClientesPage() {
   const [modalQR, setModalQR] = useState(false)
   const [modalIOS, setModalIOS] = useState(false)
   const [aprovando, setAprovando] = useState<string | null>(null)
-  // Fallback fixo pro build/SSR, onde "window" não existe. É substituído
-  // pela origem real assim que o componente monta no navegador.
   const [origem, setOrigem] = useState('https://organize-seusalao.vercel.app')
 
+  // ─── Estados para Mesclagem de Clientes ───────────────────────────────────
+  const [modalMesclar, setModalMesclar] = useState(false)
+  const [clienteDuplicado, setClienteDuplicado] = useState<any>(null)
+  const [clientePrincipal, setClientePrincipal] = useState<any>(null)
+  const [mesclando, setMesclando] = useState(false)
+
   useEffect(() => {
-    // Só roda no navegador — aqui "window" já existe com segurança
     setOrigem(window.location.origin)
   }, [])
 
@@ -34,7 +43,6 @@ export default function ClientesPage() {
     if (!temAcessoTotal(profile)) { router.push('/login'); return }
     if (profile.salao_id) carregarDados()
 
-    // Detecta se é iOS e se ainda não foi instalado como PWA
     const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
     const isStandalone = (window.navigator as any).standalone === true
     const jaViu = localStorage.getItem('ios_install_banner_visto')
@@ -56,6 +64,61 @@ export default function ClientesPage() {
     const pends = (clis || []).filter((c: any) => c.profiles?.aprovado === false && c.profile_id)
     setClientes(ativos)
     setPendentes(pends)
+
+    // Se veio o parâmetro ?mesclar=ID na URL, abre o modal de mesclagem automaticamente
+    if (clienteMesclarId && ativos.length > 0) {
+      const dup = ativos.find((c: any) => c.id === clienteMesclarId)
+      if (dup) {
+        setClienteDuplicado(dup)
+        
+        // Tenta sugerir um cliente principal com nome parecido
+        const similar = ativos.find((c: any) => 
+          c.id !== dup.id && 
+          c.nome.toLowerCase().includes(dup.nome.split(' ')[0].toLowerCase())
+        )
+        setClientePrincipal(similar || null)
+        setModalMesclar(true)
+      }
+    }
+  }
+
+  // ─── Função de Executar Mesclagem (Supabase RPC) ──────────────────────────
+  async function executarMesclagem() {
+    if (!clienteDuplicado || !clientePrincipal) {
+      alert('Selecione ambos os clientes para realizar a mesclagem.')
+      return
+    }
+
+    if (clienteDuplicado.id === clientePrincipal.id) {
+      alert('O cliente duplicado e o principal não podem ser o mesmo.')
+      return
+    }
+
+    setMesclando(true)
+
+    try {
+      const { error } = await supabase.rpc('mesclar_clientes', {
+        id_origem: clienteDuplicado.id,  // Vai sumir
+        id_destino: clientePrincipal.id  // Vai receber os dados
+      })
+
+      if (error) throw error
+
+      alert('Clientes mesclados com sucesso! Todo o histórico foi transferido.')
+      
+      setModalMesclar(false)
+      setClienteDuplicado(null)
+      setClientePrincipal(null)
+
+      // Limpa a URL removendo o parâmetro ?mesclar
+      router.replace('/salao/clientes')
+      carregarDados()
+    } catch (err: any) {
+      console.error('Erro ao mesclar clientes:', err)
+      alert('Erro ao mesclar clientes: ' + (err.message || 'Verifique se a função SQL foi criada no Supabase.'))
+    } finally {
+      setMesclando(false)
+    }
   }
 
   async function aprovarCliente(cliente: any) {
@@ -66,18 +129,19 @@ export default function ClientesPage() {
       setAprovando(null)
       return
     }
-await notificar({
-  salaoId: profile!.salao_id,
-  remetenteId: profile!.id,
-  destinatarioId: cliente.profile_id,
-  titulo: '✅ Cadastro aprovado!',
-  mensagem: `Seu cadastro no ${salao?.nome} foi aprovado! Já pode acessar sua área de cliente.`,
-  tipo: 'sistema',
-  url: '/cliente'
-})
-setAprovando(null)
-carregarDados() 
+    await notificar({
+      salaoId: profile!.salao_id,
+      remetenteId: profile!.id,
+      destinatarioId: cliente.profile_id,
+      titulo: '✅ Cadastro aprovado!',
+      mensagem: `Seu cadastro no ${salao?.nome} foi aprovado! Já pode acessar sua área de cliente.`,
+      tipo: 'sistema',
+      url: '/cliente'
+    })
+    setAprovando(null)
+    carregarDados() 
   }
+
   async function rejeitarCliente(cliente: any) {
     setAprovando(cliente.id)
     const { error } = await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', cliente.profile_id)
@@ -195,23 +259,37 @@ carregarDados()
                 <p className="text-gray-400">Nenhuma cliente encontrada</p>
               </div>
             ) : clientesFiltrados.map(c => (
-              <button key={c.id}
-                onClick={() => router.push('/salao/clientes/' + c.id)}
-                className="card flex items-center gap-3 active:scale-95 transition-all text-left">
-                <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0 text-lg"
-                  style={{ backgroundColor: cor }}>
-                  {c.nome?.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 truncate">{c.nome}</p>
-                  <p className="text-xs text-gray-400 truncate">{c.email}</p>
-                  {c.data_nascimento && (
-                    <p className="text-xs text-gray-400">
-                      Nasc: {new Date(c.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')}
-                    </p>
-                  )}
-                </div>
-              </button>
+              <div key={c.id} className="card flex items-center justify-between gap-3">
+                <button 
+                  onClick={() => router.push('/salao/clientes/' + c.id)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left active:scale-95 transition-all">
+                  <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0 text-lg"
+                    style={{ backgroundColor: cor }}>
+                    {c.nome?.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 truncate">{c.nome}</p>
+                    <p className="text-xs text-gray-400 truncate">{c.email}</p>
+                    {c.data_nascimento && (
+                      <p className="text-xs text-gray-400">
+                        Nasc: {new Date(c.data_nascimento + 'T12:00:00').toLocaleDateString('pt-BR')}
+                      </p>
+                    )}
+                  </div>
+                </button>
+
+                {/* Botão para iniciar mesclagem manual */}
+                <button
+                  title="Mesclar cadastro duplicado"
+                  onClick={() => {
+                    setClienteDuplicado(c)
+                    setClientePrincipal(null)
+                    setModalMesclar(true)
+                  }}
+                  className="w-9 h-9 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 shrink-0">
+                  <GitMerge size={16} />
+                </button>
+              </div>
             ))}
           </>
         )}
@@ -261,6 +339,90 @@ carregarDados()
           </>
         )}
       </div>
+
+      {/* Modal de Mesclagem de Clientes */}
+      {modalMesclar && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GitMerge size={20} style={{ color: cor }} />
+                <h3 className="font-bold text-gray-900 text-lg">Mesclar cadastros</h3>
+              </div>
+              <button onClick={() => setModalMesclar(false)}><X size={20} className="text-gray-400" /></button>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2.5">
+              <AlertCircle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-relaxed">
+                Todos os agendamentos, pacotes e histórico financeiro do perfil <strong>duplicado</strong> serão transferidos para o perfil <strong>principal</strong>.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {/* Cadastro a ser desativado */}
+              <div className="border border-red-200 bg-red-50/50 rounded-2xl p-3">
+                <p className="text-xs font-bold text-red-600 uppercase tracking-wider mb-2">
+                  ❌ Cadastro Duplicado (Será removido)
+                </p>
+                {clienteDuplicado ? (
+                  <div>
+                    <p className="font-semibold text-gray-900">{clienteDuplicado.nome}</p>
+                    <p className="text-xs text-gray-500">{clienteDuplicado.email || 'Sem e-mail'}</p>
+                  </div>
+                ) : (
+                  <select 
+                    className="input-field text-sm"
+                    onChange={e => setClienteDuplicado(clientes.find(c => c.id === e.target.value))}>
+                    <option value="">Selecione o cliente duplicado...</option>
+                    {clientes.map(c => (
+                      <option key={c.id} value={c.id}>{c.nome} ({c.email || 'Sem e-mail'})</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Cadastro Principal */}
+              <div className="border border-green-200 bg-green-50/50 rounded-2xl p-3">
+                <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">
+                  ✅ Cadastro Principal (Manterá todos os dados)
+                </p>
+                <select 
+                  className="input-field text-sm"
+                  value={clientePrincipal?.id || ''}
+                  onChange={e => setClientePrincipal(clientes.find(c => c.id === e.target.value))}>
+                  <option value="">Selecione o cliente definitivo...</option>
+                  {clientes.filter(c => c.id !== clienteDuplicado?.id).map(c => (
+                    <option key={c.id} value={c.id}>{c.nome} ({c.email || 'Sem e-mail'})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-2">
+              <button 
+                onClick={() => setModalMesclar(false)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
+                Cancelar
+              </button>
+              <button 
+                onClick={executarMesclagem} 
+                disabled={mesclando || !clienteDuplicado || !clientePrincipal}
+                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40 flex items-center justify-center gap-2"
+                style={{ backgroundColor: cor }}>
+                {mesclando ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <GitMerge size={16} />
+                    Confirmar e Mesclar
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal QR Code */}
       {modalQR && (
@@ -328,5 +490,17 @@ carregarDados()
         </div>
       )}
     </div>
+  )
+}
+
+export default function ClientesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <ClientesConteudo />
+    </Suspense>
   )
 }
