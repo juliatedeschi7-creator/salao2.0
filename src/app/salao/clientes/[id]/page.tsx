@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
-import { ArrowLeft, Mail, Calendar, Package, ClipboardList, Camera, Edit2, Check, X, Lock } from 'lucide-react'
+import { ArrowLeft, Mail, Calendar, Package, ClipboardList, Check, X, Lock } from 'lucide-react'
 
 export default function ClientePerfilPage() {
   const { profile, loading } = useAuth()
@@ -56,6 +56,14 @@ export default function ClientePerfilPage() {
     setCarregando(false)
   }
 
+  async function salvarObservacoes() {
+    setSalvandoObs(true)
+    await supabase.from('clientes').update({ observacoes_internas: obsText }).eq('id', clienteId)
+    setCliente((prev: any) => ({ ...prev, observacoes_internas: obsText }))
+    setSalvandoObs(false)
+    setEditandoObs(false)
+  }
+
   const cor = salao?.cor_primaria || '#E91E8C'
   const totalSessoes = pacotes.filter(p => p.status === 'ativo').reduce((acc, p) => acc + (p.sessoes_total - p.sessoes_usadas), 0)
 
@@ -99,10 +107,6 @@ export default function ClientePerfilPage() {
               </div>
             )}
           </div>
-          <button onClick={() => router.push('/salao/clientes/' + clienteId + '/editar')}
-            className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-            <Edit2 size={16} className="text-white" />
-          </button>
         </div>
       </div>
 
@@ -127,7 +131,7 @@ export default function ClientePerfilPage() {
       {/* Contato rápido */}
       {cliente?.telefone && (
         <div className="px-4 mb-4">
-          <a href={`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}`} target="_blank"
+          <a href={`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"
             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-white font-medium text-sm"
             style={{ backgroundColor: '#25D366' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
