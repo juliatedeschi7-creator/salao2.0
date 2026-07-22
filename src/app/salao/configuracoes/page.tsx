@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Bell, Link, Copy, Check, LogOut, Palette, Smartphone, Clock, ChevronRight, UserCheck, Edit3, Save, X } from 'lucide-react'
+import { ArrowLeft, Bell, Link, Copy, Check, LogOut, Palette, Smartphone, Clock, ChevronRight, UserCheck, Edit3, Save, X, ShieldCheck } from 'lucide-react'
 import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
 
 const CORES = [
@@ -42,6 +42,17 @@ export default function ConfiguracoesPage() {
   const [salvandoModulos, setSalvandoModulos] = useState(false)
   const [modulosSalvos, setModulosSalvos] = useState(false)
 
+  // Permissões de funcionários simples
+  const [permissoesFunc, setPermissoesFunc] = useState({
+    ver_faturamento: false,
+    ver_clientes: true,
+    ver_servicos: true,
+    ver_financeiro: false,
+    ver_agenda_todos: false,
+  })
+  const [salvandoPermissoesFunc, setSalvandoPermissoesFunc] = useState(false)
+  const [permissoesFuncSalvas, setPermissoesFuncSalvas] = useState(false)
+
   // Edição de informações
   const [editandoInfo, setEditandoInfo] = useState(false)
   const [formInfo, setFormInfo] = useState({ nome: '', telefone: '', instagram: '', cidade: '', descricao: '' })
@@ -65,6 +76,8 @@ export default function ConfiguracoesPage() {
     setCorSelecionada(sal?.cor_primaria || '#E91E8C')
     setAprovacaoAutomatica(sal?.aprovacao_automatica_clientes === true)
     if (sal?.modulos_cliente) setModulos(prev => ({ ...prev, ...sal.modulos_cliente }))
+    if (sal?.permissoes_funcionario) setPermissoesFunc(prev => ({ ...prev, ...sal.permissoes_funcionario }))
+    
     setFormInfo({
       nome: sal?.nome || '', telefone: sal?.telefone || '',
       instagram: sal?.instagram || '', cidade: sal?.cidade || '', descricao: sal?.descricao || '',
@@ -116,6 +129,14 @@ export default function ConfiguracoesPage() {
     setTimeout(() => setModulosSalvos(false), 2500)
   }
 
+  async function salvarPermissoesFunc() {
+    setSalvandoPermissoesFunc(true)
+    await supabase.from('saloes').update({ permissoes_funcionario: permissoesFunc }).eq('id', profile!.salao_id!)
+    setSalvandoPermissoesFunc(false)
+    setPermissoesFuncSalvas(true)
+    setTimeout(() => setPermissoesFuncSalvas(false), 2500)
+  }
+
   async function toggleAprovacaoAutomatica() {
     const novoValor = !aprovacaoAutomatica
     setSalvandoAprovacao(true)
@@ -124,55 +145,48 @@ export default function ConfiguracoesPage() {
     setSalvandoAprovacao(false)
   }
 
-async function ativarPush() {
-  setAtivandoPush(true)
-  
-  // 1. Chamamos passando apenas 1 argumento (o ID do profile)
-  // 2. Como ela retorna true ou false, guardamos direto na variável 'ok'
-  const ok = await registrarPush(profile!.id)
-  
-  setPushAtivo(ok)
-  setAtivandoPush(false)
-  
-  // 3. Adaptamos a mensagem de erro para não tentar ler 'resultado.motivo' (já que é um booleano)
-  setResultadoPush(ok
-    ? { ok: true, msg: 'Push ativado! Agora clique em testar.' }
-    : { ok: false, msg: 'Não foi possível ativar. Verifique se o navegador permite notificações.' }
-  )
-  
-  setTimeout(() => setResultadoPush(null), 4000)
-}
-
-async function testarPush() {
-  setTestandoPush(true)
-  setResultadoPush(null)
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 15000)
-const res = await fetch('/api/push/test/', { // 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profileId: profile!.id }),
-      signal: controller.signal
-    })
-    clearTimeout(timeout)
-    
-    const json = await res.json()
-    setResultadoPush({
-      ok: json.ok,
-      msg: json.ok
-        ? '✓ Push enviado! Aguarde a notificação chegar.'
-        : '✗ Erro: ' + (json.erro || JSON.stringify(json))
-    })
-  } catch (err: any) {
-    if (err.name === 'AbortError') {
-      setResultadoPush({ ok: false, msg: 'Timeout — servidor demorou demais. Tente novamente.' })
-    } else {
-      setResultadoPush({ ok: false, msg: 'Erro de conexão: ' + err.message })
-    }
+  async function ativarPush() {
+    setAtivandoPush(true)
+    const ok = await registrarPush(profile!.id)
+    setPushAtivo(ok)
+    setAtivandoPush(false)
+    setResultadoPush(ok
+      ? { ok: true, msg: 'Push ativado! Agora clique em testar.' }
+      : { ok: false, msg: 'Não foi possível ativar. Verifique se o navegador permite notificações.' }
+    )
+    setTimeout(() => setResultadoPush(null), 4000)
   }
-  setTestandoPush(false)
-}
+
+  async function testarPush() {
+    setTestandoPush(true)
+    setResultadoPush(null)
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
+      const res = await fetch('/api/push/test/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: profile!.id }),
+        signal: controller.signal
+      })
+      clearTimeout(timeout)
+      
+      const json = await res.json()
+      setResultadoPush({
+        ok: json.ok,
+        msg: json.ok
+          ? '✓ Push enviado! Aguarde a notificação chegar.'
+          : '✗ Erro: ' + (json.erro || JSON.stringify(json))
+      })
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setResultadoPush({ ok: false, msg: 'Timeout — servidor demorou demais. Tente novamente.' })
+      } else {
+        setResultadoPush({ ok: false, msg: 'Erro de conexão: ' + err.message })
+      }
+    }
+    setTestandoPush(false)
+  }
 
   function copiarTexto(texto: string, id: string) {
     navigator.clipboard.writeText(texto)
@@ -300,6 +314,37 @@ const res = await fetch('/api/push/test/', { //
           <ChevronRight size={18} className="text-gray-300 shrink-0" />
         </button>
 
+        {/* Permissões de Funcionários */}
+        <div className="card flex flex-col gap-4">
+          <div>
+            <p className="font-bold text-gray-900 flex items-center gap-2"><ShieldCheck size={18} />Permissões de Funcionários</p>
+            <p className="text-xs text-gray-400 mt-1">Defina o que os funcionários simples podem ver no app</p>
+          </div>
+          {[
+            { key: 'ver_faturamento', label: 'Resumo Financeiro do Dia', desc: 'Exibe o faturamento total do dia na Home' },
+            { key: 'ver_clientes', label: 'Lista de Clientes', desc: 'Permite visualizar o menu e os perfis das clientes' },
+            { key: 'ver_servicos', label: 'Lista de Serviços', desc: 'Permite visualizar os serviços cadastrados' },
+            { key: 'ver_financeiro', label: 'Módulo Financeiro', desc: 'Permite o acesso completo à aba de financeiro' },
+            { key: 'ver_agenda_todos', label: 'Agenda Geral', desc: 'Permite ver os agendamentos dos outros profissionais' },
+          ].map(p => (
+            <div key={p.key} className="flex items-center justify-between">
+              <div className="flex-1 pr-4">
+                <p className="text-sm font-medium text-gray-800">{p.label}</p>
+                <p className="text-xs text-gray-400">{p.desc}</p>
+              </div>
+              <button onClick={() => setPermissoesFunc(prev => ({ ...prev, [p.key]: !prev[p.key as keyof typeof permissoesFunc] }))}
+                className="relative w-12 h-6 rounded-full transition-colors shrink-0"
+                style={{ backgroundColor: permissoesFunc[p.key as keyof typeof permissoesFunc] ? cor : '#d1d5db' }}>
+                <div className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (permissoesFunc[p.key as keyof typeof permissoesFunc] ? 'left-6' : 'left-0.5')} />
+              </button>
+            </div>
+          ))}
+          <button onClick={salvarPermissoesFunc} disabled={salvandoPermissoesFunc}
+            className="w-full py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>
+            {permissoesFuncSalvas ? '✓ Permissões salvas!' : salvandoPermissoesFunc ? 'Salvando...' : 'Salvar permissões'}
+          </button>
+        </div>
+
         {/* Paleta de Cores */}
         <div className="card flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Palette size={18} />Paleta de Cores</p>
@@ -333,7 +378,7 @@ const res = await fetch('/api/push/test/', { //
                 <p className="text-xs text-gray-400">{m.desc}</p>
               </div>
               <button onClick={() => setModulos(prev => ({ ...prev, [m.key]: !prev[m.key] }))}
-                className="relative w-12 h-6 rounded-full transition-colors"
+                className="relative w-12 h-6 rounded-full transition-colors shrink-0"
                 style={{ backgroundColor: modulos[m.key] ? cor : '#d1d5db' }}>
                 <div className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (modulos[m.key] ? 'left-6' : 'left-0.5')} />
               </button>
