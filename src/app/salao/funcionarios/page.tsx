@@ -111,7 +111,13 @@ export default function FuncionariosPage() {
             ))}
           </div>
         )}
-
+<button
+  onClick={() => router.push('/salao/funcionarios/permissoes')}
+  className="px-3 py-1.5 bg-pink-50 text-pink-600 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-pink-100 transition-colors"
+>
+  <ShieldCheck size={16} />
+  Permissões
+</button>
         <p className="text-sm font-semibold text-gray-700">Funcionarios ({funcionarios.length})</p>
         {funcionarios.length === 0 ? (
           <div className="card text-center py-10">
