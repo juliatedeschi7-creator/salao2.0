@@ -23,7 +23,7 @@ const MENU_DONO = [
   { icon: Home, label: 'Início', href: '/salao', grupo: '' },
   { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
-  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' }, // 👈 Adicionado
+  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' },
   { icon: Scissors, label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento' },
   { icon: Package, label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento' },
   { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento' },
@@ -49,7 +49,7 @@ const MENU_FUNCIONARIO = [
   { icon: Home, label: 'Início', href: '/funcionario', grupo: '' },
   { icon: Calendar, label: 'Minha Agenda', href: '/funcionario/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
-  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' }, // 👈 Adicionado para funcionários
+  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' },
   { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' },
   { icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' },
 ]
@@ -68,10 +68,13 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
   const router = useRouter()
   const pathname = usePathname()
 
+  // Converte a role para string para evitar erros de validação estrita no TypeScript durante o build
+  const userRole = profile?.role as string
+
   // Define qual menu exibir de acordo com o papel do usuário
-  const menuItems = profile.role === 'admin_geral'
+  const menuItems = userRole === 'admin_geral'
     ? MENU_ADMIN
-    : (profile.role === 'funcionario' || profile.role === 'profissional')
+    : (userRole === 'funcionario' || userRole === 'profissional')
     ? MENU_FUNCIONARIO
     : MENU_DONO
 
