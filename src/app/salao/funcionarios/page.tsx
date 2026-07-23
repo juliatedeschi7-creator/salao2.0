@@ -1,10 +1,10 @@
+
 'use client'
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { temAcessoTotal } from '@/lib/permissoes'
 import { 
   ShieldCheck, Plus, Trash2, ArrowLeft, X, Copy, Check, UserCog 
 } from 'lucide-react'
@@ -34,34 +34,53 @@ export default function FuncionariosPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
-    if (profile.salao_id) carregarDados()
-  }, [loading, profile])
+
+    if (!profile) {
+      router.push('/login')
+      return
+    }
+
+    // Validação robusta de Dono/Admin (evita o bug de ir para o login)
+    const roleUsuario = (profile.role || '').toLowerCase()
+    const ehDonoOuAdmin = ['dono', 'admin', 'admin_geral'].includes(roleUsuario)
+
+    if (!ehDonoOuAdmin) {
+      router.push('/salao') // Se não for dono, joga para a home do salão
+      return
+    }
+
+    if (profile.salao_id) {
+      carregarDados()
+    } else {
+      setCarregando(false)
+    }
+  }, [loading, profile, router])
 
   async function carregarDados() {
     setCarregando(true)
     
-    // Busca dados do salão, perfis filtrados e convites
-    const [salRes, funcRes, convRes] = await Promise.all([
-      supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
-      supabase
-        .from('profiles')
-        .select('*')
-        .eq('salao_id', profile!.salao_id!)
-        .neq('role', 'cliente') // FILTRO: Ignora clientes da lista de funcionários
-        .order('nome', { ascending: true }),
-      supabase.from('convites_funcionarios').select('*').eq('salao_id', profile!.salao_id!).eq('usado', false)
-    ])
+    try {
+      const [salRes, funcRes, convRes] = await Promise.all([
+        supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('salao_id', profile!.salao_id!)
+          .neq('role', 'cliente')
+          .order('nome', { ascending: true }),
+        supabase.from('convites_funcionarios').select('*').eq('salao_id', profile!.salao_id!).eq('usado', false)
+      ])
 
-    setSalao(salRes.data)
-    
-    // Filtro adicional de segurança no JS para garantir que nenhum cliente passe
-    const apenasEquipe = (funcRes.data || []).filter((u: any) => u.role !== 'cliente' && u.tipo !== 'cliente')
-    setFuncionarios(apenasEquipe)
-    
-    setConvites(convRes.data || [])
-    setCarregando(false)
+      setSalao(salRes.data)
+      
+      const apenasEquipe = (funcRes.data || []).filter((u: any) => u.role !== 'cliente' && u.tipo !== 'cliente')
+      setFuncionarios(apenasEquipe)
+      setConvites(convRes.data || [])
+    } catch (err) {
+      console.error('Erro ao carregar dados:', err)
+    } finally {
+      setCarregando(false)
+    }
   }
 
   async function handleSalvarCargo() {
@@ -101,21 +120,6 @@ export default function FuncionariosPage() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
 
-  function getBadgeCargo(role: string) {
-    const cargoObj = CARGOS.find(c => c.id === role?.toLowerCase()) || {
-      label: role || 'Sem Cargo',
-      corBg: 'bg-gray-100',
-      corTexto: 'text-gray-700',
-      corBorder: 'border-gray-200'
-    }
-
-    return (
-      <span className={`px-2.5 py-1 rounded-full text-xs font-bold border ${cargoObj.corBg} ${cargoObj.corTexto} ${cargoObj.corBorder}`}>
-        {cargoObj.label}
-      </span>
-    )
-  }
-
   if (loading || carregando) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] pb-8 p-4">
@@ -140,7 +144,7 @@ export default function FuncionariosPage() {
           onClick={() => router.push('/salao/funcionarios/novo')}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-white text-xs font-bold shadow-sm"
           style={{ backgroundColor: cor }}>
-          <Plus size={16} /> Convida
+          <Plus size={16} /> Convidar
         </button>
       </div>
 
