@@ -6,15 +6,18 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Plus, Shield, Check, X } from 'lucide-react'
 
-// LISTA DE TODAS AS PÁGINAS DO SISTEMA
-const TODAS_AS_PAGINAS = [
+// LISTA COMPLETA DE TODAS AS OPÇÕES E PÁGINAS DO SISTEMA
+const TODAS_AS_PERMISSOES = [
   { id: 'dashboard', nome: 'Painel / Dashboard', categoria: 'Geral', desc: 'Visão geral, métricas e estatísticas' },
-  { id: 'agenda', nome: 'Agenda de Serviços', categoria: 'Atendimento', desc: 'Visualizar, criar e remarcar agendamentos' },
+  { id: 'agenda_total', nome: 'Agenda Completa (Todos)', categoria: 'Agenda', desc: 'Visualizar os horários de toda a equipe' },
+  { id: 'agenda_propria', nome: 'Agenda Própria', categoria: 'Agenda', desc: 'Visualizar apenas os próprios agendamentos' },
   { id: 'clientes', nome: 'Gestão de Clientes', categoria: 'Atendimento', desc: 'Lista, cadastro e histórico de clientes' },
-  { id: 'funcionarios', nome: 'Gestão de Funcionários', categoria: 'Equipe', desc: 'Membros da equipe, cargos e convites' },
   { id: 'servicos', nome: 'Cadastro de Serviços', categoria: 'Configurações', desc: 'Adicionar e editar serviços, preços e durações' },
+  { id: 'pacotes', nome: 'Gestão de Pacotes', categoria: 'Atendimento', desc: 'Controle de pacotes de serviços dos clientes' },
   { id: 'produtos', nome: 'Estoque / Produtos', categoria: 'Configurações', desc: 'Controle de produtos e insumos' },
   { id: 'financeiro', nome: 'Financeiro / Caixa', categoria: 'Gestão', desc: 'Relatórios de faturamento, entradas e saídas' },
+  { id: 'avisos', nome: 'Avisos e Mural', categoria: 'Geral', desc: 'Visualizar recados e comunicados' },
+  { id: 'funcionarios', nome: 'Gestão de Funcionários', categoria: 'Equipe', desc: 'Membros da equipe, cargos e convites' },
   { id: 'configuracoes', nome: 'Configurações do Salão', categoria: 'Configurações', desc: 'Dados da empresa e horários' },
 ]
 
@@ -25,7 +28,7 @@ export default function FuncionariosPage() {
   const [funcionarios, setFuncionarios] = useState<any[]>([])
   const [carregando, setCarregando] = useState(true)
 
-  // Estado do Modal de Permissões Individuais
+  // Estado do Modal de Permissões Individuais Completas
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState<any>(null)
   const [permissoesCustom, setPermissoesCustom] = useState<Record<string, boolean>>({})
   const [salvando, setSalvando] = useState(false)
@@ -67,23 +70,22 @@ export default function FuncionariosPage() {
     }
   }
 
-  // Abrir o modal de permissões de um funcionário específico
+  // Abrir o modal carregando as permissões atuais do funcionário
   function abrirPermissoesIndividuais(func: any) {
     setFuncionarioSelecionado(func)
     
-    // Se o funcionário já tem permissões salvas, carrega elas. Senão, libera todas por padrão.
     if (func.permissoes_paginas) {
       setPermissoesCustom(func.permissoes_paginas)
     } else {
       const padrao: Record<string, boolean> = {}
-      TODAS_AS_PAGINAS.forEach(p => {
-        padrao[p.id] = true // Padrão: com acesso
+      TODAS_AS_PERMISSOES.forEach(p => {
+        padrao[p.id] = true // Padrão: com acesso total
       })
       setPermissoesCustom(padrao)
     }
   }
 
-  // Salvar as permissões individuais no banco
+  // Salvar as permissões completas no banco
   async function salvarPermissoesIndividuais() {
     if (!funcionarioSelecionado) return
     setSalvando(true)
@@ -96,7 +98,7 @@ export default function FuncionariosPage() {
 
       if (error) throw error
 
-      alert('Permissões individuais atualizadas com sucesso!')
+      alert('Permissões atualizadas com sucesso!')
       setFuncionarioSelecionado(null)
       carregarDados()
     } catch (err: any) {
@@ -145,13 +147,13 @@ export default function FuncionariosPage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-        {/* INSTRUÇÃO PARA O USUÁRIO */}
+        {/* INSTRUÇÃO */}
         <div className="bg-pink-50 border border-pink-100 p-4 rounded-2xl flex items-start gap-3">
           <Shield size={20} className="text-pink-600 shrink-0 mt-0.5" />
           <div className="text-xs text-pink-900 leading-relaxed">
-            <p className="font-bold mb-0.5">Controle Individual por Página</p>
+            <p className="font-bold mb-0.5">Controle Completo de Acessos</p>
             <p className="text-pink-700">
-              Clique em cima de qualquer funcionário abaixo para abrir o menu detalhado e escolher exatamente quais páginas ele pode ou não acessar.
+              Clique em cima de qualquer funcionário para abrir o painel e configurar individualmente cada agenda, página e recurso do sistema.
             </p>
           </div>
         </div>
@@ -198,7 +200,7 @@ export default function FuncionariosPage() {
         })}
       </div>
 
-      {/* MODAL DE PERMISSÕES INDIVIDUAIS POR PÁGINA */}
+      {/* MODAL DE PERMISSÕES COMPLETAS POR FUNCIONÁRIO */}
       {funcionarioSelecionado && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
@@ -214,28 +216,28 @@ export default function FuncionariosPage() {
             </div>
 
             <p className="text-xs text-gray-500">
-              Defina abaixo se este funcionário pode ou não visualizar cada uma das páginas do sistema:
+              Escolha quais recursos e páginas este funcionário pode visualizar ou gerenciar:
             </p>
 
             <div className="flex flex-col gap-2.5 max-h-[50vh] overflow-y-auto pr-1">
-              {TODAS_AS_PAGINAS.map(pagina => {
-                const permitido = permissoesCustom[pagina.id] ?? true
+              {TODAS_AS_PERMISSOES.map(item => {
+                const permitido = permissoesCustom[item.id] ?? true
                 return (
-                  <div key={pagina.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 flex items-center justify-between gap-3">
+                  <div key={item.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 flex items-center justify-between gap-3">
                     <div className="overflow-hidden">
                       <div className="flex items-center gap-2">
-                        <p className="font-bold text-gray-900 text-xs">{pagina.nome}</p>
+                        <p className="font-bold text-gray-900 text-xs">{item.nome}</p>
                         <span className="text-[10px] bg-white text-gray-500 px-2 py-0.5 rounded-md border border-gray-200 font-medium">
-                          {pagina.categoria}
+                          {item.categoria}
                         </span>
                       </div>
-                      <p className="text-[11px] text-gray-400 truncate mt-0.5">{pagina.desc}</p>
+                      <p className="text-[11px] text-gray-400 truncate mt-0.5">{item.desc}</p>
                     </div>
 
                     <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [pagina.id]: true }))}
+                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [item.id]: true }))}
                         className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                           permitido ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
                         }`}>
@@ -243,7 +245,7 @@ export default function FuncionariosPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [pagina.id]: false }))}
+                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [item.id]: false }))}
                         className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                           !permitido ? 'bg-red-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
                         }`}>
