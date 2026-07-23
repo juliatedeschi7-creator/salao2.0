@@ -40,7 +40,6 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (loading) return
-    // Apenas redireciona para o login se realmente não houver perfil logado
     if (!profile) {
       router.push('/login')
       return
@@ -65,13 +64,14 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
   }
 
   const corPrimaria = salao?.cor_primaria || '#E91E8C'
-  const eDono = (profile.role as string) === 'dono'
-  const permissoes = profile.permissoes_paginas || {}
+  const eDono = ((profile.role as string) || '').toLowerCase() === 'dono' || ((profile.role as string) || '').toLowerCase() === 'admin'
+  const permissoes = (profile as any).permissoes || (profile as any).permissoes_paginas || {}
 
-  // Se for dono vê tudo. Se for funcionário, valida se a permissão não está explicitamente false.
   const menuFiltrado = MENU_ITEMS.filter(item => {
     if (eDono) return true
-    if (permissoes[item.id] === false) return false
+    const permItem = permissoes[item.id]
+    if (typeof permItem === 'boolean' && permItem === false) return false
+    if (permItem && typeof permItem === 'object' && permItem.acesso === false) return false
     return true
   })
 
@@ -183,3 +183,4 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
     </div>
   )
 }
+
