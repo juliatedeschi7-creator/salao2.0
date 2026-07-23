@@ -5,8 +5,10 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
-import { ShieldCheck, Plus, Edit2, Trash2, UserCheck, 
-  ArrowLeft, Search, X, Mail, Phone, Key, Lock, User
+import { 
+  ShieldCheck, Plus, Edit2, Trash2, UserCheck, 
+  ArrowLeft, Search, X, Mail, Phone, Key, Lock, User,
+  Check, Copy
 } from 'lucide-react'
 
 export default function FuncionariosPage() {
