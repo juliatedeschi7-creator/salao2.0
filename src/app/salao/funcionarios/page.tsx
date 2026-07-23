@@ -1,10 +1,13 @@
 'use client'
+
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, Plus, Edit2, Trash2, ... } from 'lucide-react'
-
+import { temAcessoTotal } from '@/lib/permissoes'
+import { ShieldCheck, Plus, Edit2, Trash2, UserCheck, 
+  ArrowLeft, Search, X, Mail, Phone, Key, Lock, User
+} from 'lucide-react'
 
 export default function FuncionariosPage() {
   const { profile, loading } = useAuth()
