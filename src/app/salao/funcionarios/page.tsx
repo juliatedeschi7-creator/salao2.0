@@ -40,35 +40,34 @@ export default function FuncionariosPage() {
       return
     }
 
-    // Validação robusta de Dono/Admin (evita o bug de ir para o login)
     const roleUsuario = (profile.role || '').toLowerCase()
     const ehDonoOuAdmin = ['dono', 'admin', 'admin_geral'].includes(roleUsuario)
 
     if (!ehDonoOuAdmin) {
-      router.push('/salao') // Se não for dono, joga para a home do salão
+      router.push('/salao')
       return
     }
 
     if (profile.salao_id) {
-      carregarDados()
+      carregarDados(profile.salao_id)
     } else {
       setCarregando(false)
     }
-  }, [loading, profile, router])
+  }, [loading]) // 👈 Apenas [loading] para rodar apenas na inicialização e evitar loop
 
-  async function carregarDados() {
+  async function carregarDados(salaoId: string) {
     setCarregando(true)
     
     try {
       const [salRes, funcRes, convRes] = await Promise.all([
-        supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
+        supabase.from('saloes').select('*').eq('id', salaoId).single(),
         supabase
           .from('profiles')
           .select('*')
-          .eq('salao_id', profile!.salao_id!)
+          .eq('salao_id', salaoId)
           .neq('role', 'cliente')
           .order('nome', { ascending: true }),
-        supabase.from('convites_funcionarios').select('*').eq('salao_id', profile!.salao_id!).eq('usado', false)
+        supabase.from('convites_funcionarios').select('*').eq('salao_id', salaoId).eq('usado', false)
       ])
 
       setSalao(salRes.data)
@@ -96,7 +95,9 @@ export default function FuncionariosPage() {
       if (error) throw error
 
       setModalCargo(null)
-      carregarDados()
+      if (profile?.salao_id) {
+        carregarDados(profile.salao_id)
+      }
     } catch (err: any) {
       alert('Erro ao atualizar cargo: ' + (err.message || 'Tente novamente.'))
     } finally {
