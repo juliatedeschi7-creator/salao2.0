@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, Plus, Edit2, Trash2, Search, GitMerge, 
-  AlertTriangle, X, Check, User, Phone, Mail 
+  AlertTriangle, X, User, Phone, Mail 
 } from 'lucide-react'
 
 export default function ClientesPage() {
@@ -50,7 +50,8 @@ export default function ClientesPage() {
     }
 
     // Verificação de permissão individual para a página de 'clientes'
-    if (profile.permissoes_paginas && profile.permissoes_paginas['clientes'] === false) {
+    const perfilObj = profile as any
+    if (perfilObj.permissoes_paginas && perfilObj.permissoes_paginas['clientes'] === false) {
       alert('Você não tem permissão para acessar a página de Clientes.')
       router.push('/salao')
       return
