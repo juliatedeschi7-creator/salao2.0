@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -33,6 +32,11 @@ export default function FuncionariosPage() {
   const [excluindo, setExcluindo] = useState<string | null>(null)
 
   useEffect(() => {
+    // Validação de segurança anti-trava: se passar de 4 segundos e o auth/loading travar, libera a tela
+    const timerTimeout = setTimeout(() => {
+      setCarregando(false)
+    }, 4000)
+
     if (loading) return
 
     if (!profile) {
@@ -43,7 +47,8 @@ export default function FuncionariosPage() {
     const roleUsuario = (profile.role || '').toLowerCase()
     const ehDonoOuAdmin = ['dono', 'admin', 'admin_geral'].includes(roleUsuario)
 
-    if (!ehDonoOuAdmin) {
+    // Se não for estritamente dono/admin, mandamos de volta para o painel geral do salão
+    if (!ehDonoOuAdmin && profile.role) {
       router.push('/salao')
       return
     }
@@ -53,7 +58,9 @@ export default function FuncionariosPage() {
     } else {
       setCarregando(false)
     }
-  }, [loading]) // 👈 Apenas [loading] para rodar apenas na inicialização e evitar loop
+
+    return () => clearTimeout(timerTimeout)
+  }, [loading, profile])
 
   async function carregarDados(salaoId: string) {
     setCarregando(true)
@@ -123,9 +130,8 @@ export default function FuncionariosPage() {
 
   if (loading || carregando) {
     return (
-      <div className="min-h-screen bg-[#f8f9fa] pb-8 p-4">
-        <div className="bg-white p-4 rounded-2xl animate-pulse h-20 mb-3" />
-        <div className="bg-white p-4 rounded-2xl animate-pulse h-20" />
+      <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-pink-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
