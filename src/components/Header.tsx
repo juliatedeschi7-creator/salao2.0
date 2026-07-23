@@ -23,7 +23,6 @@ const MENU_DONO = [
   { icon: Home, label: 'Início', href: '/salao', grupo: '' },
   { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
-  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' },
   { icon: Scissors, label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento' },
   { icon: Package, label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento' },
   { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento' },
@@ -49,7 +48,6 @@ const MENU_FUNCIONARIO = [
   { icon: Home, label: 'Início', href: '/funcionario', grupo: '' },
   { icon: Calendar, label: 'Minha Agenda', href: '/funcionario/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
-  { icon: Scissors, label: 'Procedimentos', href: '/salao/procedimentos', grupo: 'Atendimento' },
   { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' },
   { icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' },
 ]
