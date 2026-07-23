@@ -4,10 +4,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { temAcessoTotal } from '@/lib/permissoes'
 import { 
   ArrowLeft, Plus, Edit2, Trash2, Search, GitMerge, 
-  AlertTriangle, X, Check, User, Phone, Mail, FileText 
+  AlertTriangle, X, Check, User, Phone, Mail 
 } from 'lucide-react'
 
 export default function ClientesPage() {
@@ -38,35 +37,58 @@ export default function ClientesPage() {
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
+    // Válvula de segurança para não travar no login se o auth demorar
+    const timer = setTimeout(() => {
+      if (loading) setCarregando(false)
+    }, 3000)
+
     if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
-    if (profile.salao_id) carregarDados()
+
+    if (!profile) {
+      router.push('/login')
+      return
+    }
+
+    // Verificação de permissão individual para a página de 'clientes'
+    if (profile.permissoes_paginas && profile.permissoes_paginas['clientes'] === false) {
+      alert('Você não tem permissão para acessar a página de Clientes.')
+      router.push('/salao')
+      return
+    }
+
+    if (profile.salao_id) {
+      carregarDados()
+    } else {
+      setCarregando(false)
+    }
+
+    return () => clearTimeout(timer)
   }, [loading, profile])
 
   async function carregarDados() {
     setCarregando(true)
-    const [salRes, cliRes] = await Promise.all([
-      supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
-      supabase.from('clientes').select('*').eq('salao_id', profile!.salao_id!).order('nome', { ascending: true })
-    ])
+    try {
+      const [salRes, cliRes] = await Promise.all([
+        supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
+        supabase.from('clientes').select('*').eq('salao_id', profile!.salao_id!).order('nome', { ascending: true })
+      ])
 
-    setSalao(salRes.data)
-    const listaClientes = cliRes.data || []
-    setClientes(listaClientes)
-    
-    // Executa verificação de duplicados por NOME
-    detectarDuplicadosPorNome(listaClientes)
-    setCarregando(false)
+      setSalao(salRes.data)
+      const listaClientes = cliRes.data || []
+      setClientes(listaClientes)
+      detectarDuplicadosPorNome(listaClientes)
+    } catch (err) {
+      console.error('Erro ao carregar dados:', err)
+    } finally {
+      setCarregando(false)
+    }
   }
 
-  // ─── LÓGICA DE DETECÇÃO POR NOME IGUAL (2 OU MAIS) ───────────────────
   function detectarDuplicadosPorNome(lista: any[]) {
     const mapaNomes: Record<string, any[]> = {}
 
     lista.forEach(cliente => {
       if (!cliente.nome) return
-      // Limpa espaços extras e padroniza para minúsculo
       const nomeNormalizado = cliente.nome.trim().toLowerCase().replace(/\s+/g, ' ')
 
       if (!mapaNomes[nomeNormalizado]) {
@@ -75,27 +97,21 @@ export default function ClientesPage() {
       mapaNomes[nomeNormalizado].push(cliente)
     })
 
-    // Filtra apenas grupos que possuem 2 ou mais contatos com o mesmo nome
     const gruposDuplicados = Object.values(mapaNomes).filter(grupo => grupo.length >= 2)
     setDuplicados(gruposDuplicados)
   }
 
-  // ─── AÇÃO DE MESCLAR CONTATOS ─────────────────────────────────────────
   async function executarMesclagem() {
     if (!modalMesclar || !manterId) return
     setMesclando(true)
 
-    // Pega todos os IDs que serão DESCARTADOS
     const idsDescartados = modalMesclar.map(c => c.id).filter(id => id !== manterId)
 
     try {
       for (const idDescartado of idsDescartados) {
-        // 1. Redireciona históricos/agendamentos/pacotes para o ID que vai PERMANECER
         await supabase.from('agendamentos').update({ cliente_id: manterId }).eq('cliente_id', idDescartado)
         await supabase.from('pacotes_cliente').update({ cliente_id: manterId }).eq('cliente_id', idDescartado)
         await supabase.from('fichas_anamnese').update({ cliente_id: manterId }).eq('cliente_id', idDescartado)
-
-        // 2. Apaga o cadastro duplicado
         await supabase.from('clientes').delete().eq('id', idDescartado)
       }
 
@@ -108,7 +124,6 @@ export default function ClientesPage() {
     }
   }
 
-  // ─── AÇÕES DE FORMULÁRIO (CRIAR / EDITAR) ─────────────────────────────
   function abrirModal(c?: any) {
     setErroSalvar('')
     if (c) {
@@ -168,7 +183,6 @@ export default function ClientesPage() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
 
-  // Filtro de busca por nome ou telefone
   const clientesFiltrados = clientes.filter(c => {
     const termo = termoBusca.toLowerCase()
     return (
@@ -198,9 +212,9 @@ export default function ClientesPage() {
 
   return (
     <div className="min-h-screen pb-8 bg-[#f8f9fa]">
-      {/* ─── HEADER DA PÁGINA ────────────────────────────────────────── */}
-      <div className="bg-white px-4 py-4 flex items-center gap-2 shadow-sm">
-        <button onClick={() => router.back()}>
+      {/* HEADER DA PÁGINA */}
+      <div className="bg-white px-4 py-4 flex items-center gap-2 shadow-sm sticky top-0 z-10">
+        <button onClick={() => router.push('/salao')}>
           <ArrowLeft size={22} className="text-gray-700" />
         </button>
         <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">Clientes</h1>
@@ -208,14 +222,14 @@ export default function ClientesPage() {
         <button 
           onClick={() => abrirModal()}
           title="Novo cliente"
-          className="w-9 h-9 rounded-full flex items-center justify-center text-white"
+          className="w-9 h-9 rounded-full flex items-center justify-center text-white shadow-sm"
           style={{ backgroundColor: cor }}>
           <Plus size={18} />
         </button>
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-        {/* ─── BARRA DE BUSCA ───────────────────────────────────────── */}
+        {/* BARRA DE BUSCA */}
         <div className="relative">
           <Search size={18} className="absolute left-3.5 top-3 text-gray-400" />
           <input 
@@ -223,11 +237,11 @@ export default function ClientesPage() {
             placeholder="Buscar por nome ou telefone..."
             value={termoBusca}
             onChange={e => setTermoBusca(e.target.value)}
-            className="w-full bg-white border border-gray-200 rounded-2xl pl-10 pr-4 py-2.5 text-sm outline-none shadow-sm"
+            className="w-full bg-white border border-gray-200 rounded-2xl pl-10 pr-4 py-2.5 text-sm outline-none shadow-sm focus:border-pink-500"
           />
         </div>
 
-        {/* ─── PAINEL DE ALERTA PARA NOMES DUPLICADOS ──────────────────── */}
+        {/* PAINEL DE ALERTA PARA NOMES DUPLICADOS */}
         {duplicados.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col gap-3">
             <div className="flex items-center gap-2 text-amber-800 font-bold text-sm">
@@ -245,7 +259,7 @@ export default function ClientesPage() {
                   <button 
                     onClick={() => {
                       setModalMesclar(grupo)
-                      setManterId(grupo[0].id) // Define o 1º como padrão
+                      setManterId(grupo[0].id)
                     }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-semibold shrink-0"
                     style={{ backgroundColor: cor }}>
@@ -257,14 +271,14 @@ export default function ClientesPage() {
           </div>
         )}
 
-        {/* ─── LISTA DE CLIENTES ─────────────────────────────────────── */}
+        {/* LISTA DE CLIENTES */}
         {clientesFiltrados.length === 0 ? (
-          <div className="bg-white text-center py-10 rounded-2xl border border-gray-100">
+          <div className="bg-white text-center py-10 rounded-2xl border border-gray-100 shadow-sm">
             <User size={32} className="mx-auto text-gray-300 mb-2" />
             <p className="text-gray-400 text-sm">Nenhum cliente encontrado</p>
             <button 
               onClick={() => abrirModal()} 
-              className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white" 
+              className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white shadow-sm" 
               style={{ backgroundColor: cor }}>
               + Cadastrar cliente
             </button>
@@ -311,7 +325,7 @@ export default function ClientesPage() {
         )}
       </div>
 
-      {/* ─── MODAL DE MESCLAGEM DE CONTATOS ────────────────────────────── */}
+      {/* MODAL DE MESCLAGEM */}
       {modalMesclar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
@@ -325,7 +339,7 @@ export default function ClientesPage() {
             </div>
 
             <p className="text-xs text-gray-500 leading-relaxed">
-              Encontramos <strong>{modalMesclar.length} cadastros</strong> com o nome <strong>"{modalMesclar[0]?.nome}"</strong>. Escolha qual é o perfil <strong>verdadeiro</strong> que continuará ativo:
+              Encontramos <strong>{modalMesclar.length} cadastros</strong> com o nome <strong>"{modalMesclar[0]?.nome}"</strong>. Escolha qual perfil continuará ativo:
             </p>
 
             <div className="flex flex-col gap-2">
@@ -342,11 +356,6 @@ export default function ClientesPage() {
                     <p className="text-xs text-gray-500">
                       {c.telefone || 'Sem telefone'} • {c.email || 'Sem e-mail'}
                     </p>
-                    {c.created_at && (
-                      <p className="text-[10px] text-gray-400 mt-0.5">
-                        Cadastrado em: {new Date(c.created_at).toLocaleDateString('pt-BR')}
-                      </p>
-                    )}
                   </div>
                   <input 
                     type="radio" 
@@ -359,10 +368,6 @@ export default function ClientesPage() {
               ))}
             </div>
 
-            <p className="text-[11px] text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-100">
-              💡 <strong>Aviso:</strong> Os agendamentos e históricos dos outros cadastros serão transferidos para o perfil selecionado acima antes de serem apagados.
-            </p>
-
             <div className="flex gap-3 pt-1">
               <button 
                 onClick={() => setModalMesclar(null)} 
@@ -372,7 +377,7 @@ export default function ClientesPage() {
               <button 
                 onClick={executarMesclagem} 
                 disabled={mesclando}
-                className="flex-1 py-3 rounded-2xl text-white text-sm font-medium" 
+                className="flex-1 py-3 rounded-2xl text-white text-sm font-medium shadow-sm" 
                 style={{ backgroundColor: cor }}>
                 {mesclando ? 'Mesclando...' : 'Confirmar e Unir'}
               </button>
@@ -381,7 +386,7 @@ export default function ClientesPage() {
         </div>
       )}
 
-      {/* ─── MODAL NOVO / EDITAR CLIENTE (CADASTRO RÁPIDO) ─────────────── */}
+      {/* MODAL NOVO / EDITAR CLIENTE */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
@@ -403,7 +408,7 @@ export default function ClientesPage() {
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do cliente *</label>
               <input 
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" 
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-pink-500" 
                 placeholder="Ex: Maria Silva"
                 value={form.nome} 
                 onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} 
@@ -413,7 +418,7 @@ export default function ClientesPage() {
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Telefone (opcional)</label>
               <input 
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" 
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-pink-500" 
                 placeholder="(16) 99999-9999"
                 value={form.telefone} 
                 onChange={e => setForm(p => ({ ...p, telefone: e.target.value }))} 
@@ -423,7 +428,7 @@ export default function ClientesPage() {
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">E-mail (opcional)</label>
               <input 
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" 
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-pink-500" 
                 placeholder="cliente@email.com"
                 value={form.email} 
                 onChange={e => setForm(p => ({ ...p, email: e.target.value }))} 
@@ -433,7 +438,7 @@ export default function ClientesPage() {
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Observações (opcional)</label>
               <textarea 
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" 
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none focus:border-pink-500" 
                 rows={2}
                 placeholder="Preferências, alergias, restrições..."
                 value={form.observacoes} 
@@ -450,7 +455,7 @@ export default function ClientesPage() {
               <button 
                 onClick={handleSalvar} 
                 disabled={salvando} 
-                className="flex-1 py-3 rounded-2xl text-white font-medium text-sm" 
+                className="flex-1 py-3 rounded-2xl text-white font-medium text-sm shadow-sm" 
                 style={{ backgroundColor: cor }}>
                 {salvando ? 'Salvando...' : 'Salvar'}
               </button>
