@@ -59,8 +59,6 @@ export default function ClientePage() {
       .eq('cliente_id', cli?.id)
     setContasCount(contas || 0)
 
-    // Lembrete chamativo: se as notificações não estão ativas neste
-    // dispositivo, mostra o modal assim que ela entra no perfil.
     const pushAtivo = await verificarPushAtivo()
     if (!pushAtivo) setModalPushLembrete(true)
   }
@@ -68,14 +66,21 @@ export default function ClientePage() {
   async function ativarPushAgora() {
     setAtivandoPush(true)
     setErroPush('')
-    const resultado = await registrarPush(profile!.id)
-    setAtivandoPush(false)
-    
-    if (resultado) { // <--- Mudamos de 'resultado.ok' para apenas 'resultado'
-      setModalPushLembrete(false)
-    } else {
-      // Como o resultado é apenas false se der errado, usamos a mensagem de erro direta
-      setErroPush('Não foi possível ativar. Verifique as permissões do navegador.')
+
+    try {
+      const resultado = await registrarPush(profile!.id)
+      
+      if (resultado) {
+        setModalPushLembrete(false)
+      } else {
+        setErroPush('Não foi possível ativar. Verifique as permissões de notificação do seu navegador.')
+      }
+    } catch (err: any) {
+      console.error('Erro ao ativar push:', err)
+      setErroPush('Ocorreu um erro ao ativar. Tente novamente.')
+    } finally {
+      // Garante que a bolinha para de rodar independentemente de erro ou sucesso
+      setAtivandoPush(false)
     }
   }
 
@@ -104,19 +109,20 @@ export default function ClientePage() {
     { icon: Scissors, label: 'Serviços', sub: 'Valores e opções', href: '/cliente/servicos', badge: null },
     mostrarPacotes ? { icon: Package, label: 'Meus pacotes', sub: 'Datas e sessões', href: '/cliente/pacotes', badge: pacotesAtivos > 0 ? pacotesAtivos : null } : null,
     mostrarQuestionarios ? { icon: ClipboardList, label: 'Questionários', sub: 'Dados de saúde', href: '/cliente/anamnese', badge: null } : null,
-{ icon: Clock, label: 'Horários', sub: 'Vagas e funcionamento', href: '/cliente/horarios', badge: null },
+    { icon: Clock, label: 'Horários', sub: 'Vagas e funcionamento', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
 
-if (loading || !cliente || !salao) {
-  return (
-    <div
-      className="min-h-screen flex items-center justify-center"
-      style={{ backgroundColor: cor }}
-    >
-      <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
-}
+  if (loading || !cliente || !salao) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: cor }}
+      >
+        <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f0f0f5' }}>
       <link
@@ -163,9 +169,9 @@ if (loading || !cliente || !salao) {
           }}>
             {nomePrincipal}
           </p>
-       {nomeSecundario && (
-  <p className="text-white/60 text-[10px] uppercase tracking-[0.2em] font-medium mt-2">{nomeSecundario}</p>
-)}
+          {nomeSecundario && (
+            <p className="text-white/60 text-[10px] uppercase tracking-[0.2em] font-medium mt-2">{nomeSecundario}</p>
+          )}
           {salao?.descricao && (
             <p className="text-white/60 text-[10px] uppercase tracking-[0.15em] font-medium mt-2">
               {salao.descricao}
@@ -241,7 +247,6 @@ if (loading || !cliente || !salao) {
           </button>
         )}
 
-        {/* Contratos — só aparece se a cliente tiver algum */}
         {contratosCount > 0 && (
           <button onClick={() => router.push('/cliente/contratos')}
             className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left">
@@ -257,7 +262,6 @@ if (loading || !cliente || !salao) {
           </button>
         )}
 
-        {/* Minhas Contas — só aparece se a cliente tiver algum lançamento */}
         {contasCount > 0 && (
           <button onClick={() => router.push('/cliente/contas')}
             className="bg-white rounded-3xl px-5 py-4 flex items-center gap-4 shadow-sm active:scale-[0.98] transition-all text-left">
@@ -326,7 +330,6 @@ if (loading || !cliente || !salao) {
         </button>
       </div>
 
-      {/* Lembrete chamativo de notificações desativadas */}
       {modalPushLembrete && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-end">
           <div className="bg-white w-full rounded-t-3xl overflow-hidden flex flex-col">
