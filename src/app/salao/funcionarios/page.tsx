@@ -4,70 +4,62 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { 
-  ShieldCheck, Plus, Trash2, ArrowLeft, X, Copy, Check, UserCog 
-} from 'lucide-react'
+import { ArrowLeft, Plus, Shield, Check, X } from 'lucide-react'
 
-const CARGOS = [
-  { id: 'dono', label: 'Dono / Acesso Total', corBg: 'bg-pink-100', corTexto: 'text-pink-700', corBorder: 'border-pink-300' },
-  { id: 'gerente', label: 'Gerente', corBg: 'bg-purple-100', corTexto: 'text-purple-700', corBorder: 'border-purple-300' },
-  { id: 'recepcionista', label: 'Recepcionista', corBg: 'bg-blue-100', corTexto: 'text-blue-700', corBorder: 'border-blue-300' },
-  { id: 'profissional', label: 'Profissional / Atendente', corBg: 'bg-gray-800', corTexto: 'text-white', corBorder: 'border-gray-800' },
-  { id: 'auxiliar', label: 'Auxiliar', corBg: 'bg-amber-100', corTexto: 'text-amber-700', corBorder: 'border-amber-300' }
+// LISTA DE TODAS AS PÁGINAS DO SISTEMA
+const TODAS_AS_PAGINAS = [
+  { id: 'dashboard', nome: 'Painel / Dashboard', categoria: 'Geral', desc: 'Visão geral, métricas e estatísticas' },
+  { id: 'agenda', nome: 'Agenda de Serviços', categoria: 'Atendimento', desc: 'Visualizar, criar e remarcar agendamentos' },
+  { id: 'clientes', nome: 'Gestão de Clientes', categoria: 'Atendimento', desc: 'Lista, cadastro e histórico de clientes' },
+  { id: 'funcionarios', nome: 'Gestão de Funcionários', categoria: 'Equipe', desc: 'Membros da equipe, cargos e convites' },
+  { id: 'servicos', nome: 'Cadastro de Serviços', categoria: 'Configurações', desc: 'Adicionar e editar serviços, preços e durações' },
+  { id: 'produtos', nome: 'Estoque / Produtos', categoria: 'Configurações', desc: 'Controle de produtos e insumos' },
+  { id: 'financeiro', nome: 'Financeiro / Caixa', categoria: 'Gestão', desc: 'Relatórios de faturamento, entradas e saídas' },
+  { id: 'configuracoes', nome: 'Configurações do Salão', categoria: 'Configurações', desc: 'Dados da empresa e horários' },
 ]
 
 export default function FuncionariosPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
-  
   const [salao, setSalao] = useState<any>(null)
   const [funcionarios, setFuncionarios] = useState<any[]>([])
-  const [convites, setConvites] = useState<any[]>([])
   const [carregando, setCarregando] = useState(true)
 
-  const [modalCargo, setModalCargo] = useState<any | null>(null)
-  const [cargoSelecionado, setCargoSelecionado] = useState<string>('')
-  const [salvandoCargo, setSalvandoCargo] = useState(false)
-  const [copiado, setCopiado] = useState<string | null>(null)
-  const [excluindo, setExcluindo] = useState<string | null>(null)
+  // Estado do Modal de Permissões Individuais
+  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState<any>(null)
+  const [permissoesCustom, setPermissoesCustom] = useState<Record<string, boolean>>({})
+  const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    if (loading) return
+    const timer = setTimeout(() => {
+      if (loading) setCarregando(false)
+    }, 3000)
 
+    if (loading) return
     if (!profile) {
       router.push('/login')
       return
     }
 
-    // LIBERADO: Removido o bloqueio rígido que te mandava de volta para o menu /salao.
-    // Agora qualquer usuário logado com salao_id consegue entrar na página.
     if (profile.salao_id) {
-      carregarDados(profile.salao_id)
+      carregarDados()
     } else {
       setCarregando(false)
     }
+
+    return () => clearTimeout(timer)
   }, [loading, profile])
 
-  async function carregarDados(salaoId: string) {
+  async function carregarDados() {
     setCarregando(true)
-    
     try {
-      const [salRes, funcRes, convRes] = await Promise.all([
-        supabase.from('saloes').select('*').eq('id', salaoId).single(),
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('salao_id', salaoId)
-          .neq('role', 'cliente')
-          .order('nome', { ascending: true }),
-        supabase.from('convites_funcionarios').select('*').eq('salao_id', salaoId).eq('usado', false)
+      const [salRes, funcRes] = await Promise.all([
+        supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
+        supabase.from('profiles').select('*').eq('salao_id', profile!.salao_id!).order('nome', { ascending: true })
       ])
 
       setSalao(salRes.data)
-      
-      const apenasEquipe = (funcRes.data || []).filter((u: any) => u.role !== 'cliente' && u.tipo !== 'cliente')
-      setFuncionarios(apenasEquipe)
-      setConvites(convRes.data || [])
+      setFuncionarios(funcRes.data || [])
     } catch (err) {
       console.error('Erro ao carregar dados:', err)
     } finally {
@@ -75,221 +67,209 @@ export default function FuncionariosPage() {
     }
   }
 
-  async function handleSalvarCargo() {
-    if (!modalCargo || !cargoSelecionado) return
-    setSalvandoCargo(true)
+  // Abrir o modal de permissões de um funcionário específico
+  function abrirPermissoesIndividuais(func: any) {
+    setFuncionarioSelecionado(func)
+    
+    // Se o funcionário já tem permissões salvas, carrega elas. Senão, libera todas por padrão.
+    if (func.permissoes_paginas) {
+      setPermissoesCustom(func.permissoes_paginas)
+    } else {
+      const padrao: Record<string, boolean> = {}
+      TODAS_AS_PAGINAS.forEach(p => {
+        padrao[p.id] = true // Padrão: com acesso
+      })
+      setPermissoesCustom(padrao)
+    }
+  }
+
+  // Salvar as permissões individuais no banco
+  async function salvarPermissoesIndividuais() {
+    if (!funcionarioSelecionado) return
+    setSalvando(true)
 
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ role: cargoSelecionado, cargo: cargoSelecionado })
-        .eq('id', modalCargo.id)
+        .update({ permissoes_paginas: permissoesCustom })
+        .eq('id', funcionarioSelecionado.id)
 
       if (error) throw error
 
-      setModalCargo(null)
-      if (profile?.salao_id) {
-        carregarDados(profile.salao_id)
-      }
+      alert('Permissões individuais atualizadas com sucesso!')
+      setFuncionarioSelecionado(null)
+      carregarDados()
     } catch (err: any) {
-      alert('Erro ao atualizar cargo: ' + (err.message || 'Tente novamente.'))
+      alert('Erro ao salvar permissões: ' + (err.message || 'Tente novamente.'))
     } finally {
-      setSalvandoCargo(false)
+      setSalvando(false)
     }
-  }
-
-  function copiarConvite(token: string) {
-    const link = `${window.location.origin}/cadastro-funcionario?token=${token}`
-    navigator.clipboard.writeText(link)
-    setCopiado(token)
-    setTimeout(() => setCopiado(null), 2000)
-  }
-
-  async function excluirConvite(id: string) {
-    setExcluindo(id)
-    await supabase.from('convites_funcionarios').delete().eq('id', id)
-    setConvites(prev => prev.filter(c => c.id !== id))
-    setExcluindo(null)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
 
   if (loading || carregando) {
     return (
-      <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-pink-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen pb-8 bg-[#f8f9fa]">
+        <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
+          <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
+          <h1 className="font-bold text-gray-900 text-lg flex-1">Funcionários</h1>
+        </div>
+        <div className="px-4 py-4 flex flex-col gap-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="bg-white rounded-2xl p-4 animate-pulse flex flex-col gap-2">
+              <div className="h-4 bg-gray-100 rounded w-1/2" />
+              <div className="h-3 bg-gray-100 rounded w-1/3" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-8">
+    <div className="min-h-screen pb-12 bg-[#f8f9fa]">
       {/* HEADER */}
-      <div className="bg-white px-4 py-4 flex items-center justify-between shadow-sm sticky top-0 z-10">
-        <div className="flex items-center gap-2">
-          <button onClick={() => router.back()}>
-            <ArrowLeft size={22} className="text-gray-700" />
-          </button>
-          <h1 className="font-bold text-gray-900 text-lg">Funcionários</h1>
-        </div>
-
-        <button
-          onClick={() => router.push('/salao/funcionarios/novo')}
+      <div className="bg-white px-4 py-4 flex items-center gap-2 shadow-sm sticky top-0 z-10">
+        <button onClick={() => router.push('/salao')}>
+          <ArrowLeft size={22} className="text-gray-700" />
+        </button>
+        <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">Funcionários</h1>
+        
+        <button 
+          onClick={() => router.push('/salao/funcionarios/convidar')}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-white text-xs font-bold shadow-sm"
           style={{ backgroundColor: cor }}>
           <Plus size={16} /> Convidar
         </button>
       </div>
 
-      <div className="p-4 space-y-5">
-
-        {/* ATALHO PARA PERMISSÕES */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-pink-50 text-pink-600 flex items-center justify-center">
-              <ShieldCheck size={20} />
-            </div>
-            <div>
-              <p className="font-bold text-gray-900 text-sm">Permissões de Acesso</p>
-              <p className="text-xs text-gray-400">Configure o acesso por cargo</p>
-            </div>
+      <div className="px-4 py-4 flex flex-col gap-3">
+        {/* INSTRUÇÃO PARA O USUÁRIO */}
+        <div className="bg-pink-50 border border-pink-100 p-4 rounded-2xl flex items-start gap-3">
+          <Shield size={20} className="text-pink-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-pink-900 leading-relaxed">
+            <p className="font-bold mb-0.5">Controle Individual por Página</p>
+            <p className="text-pink-700">
+              Clique em cima de qualquer funcionário abaixo para abrir o menu detalhado e escolher exatamente quais páginas ele pode ou não acessar.
+            </p>
           </div>
-          <button 
-            onClick={() => router.push('/salao/permissoes')}
-            className="px-3 py-1.5 bg-pink-50 text-pink-600 rounded-xl text-xs font-bold hover:bg-pink-100 transition-colors">
-            Permissões
-          </button>
         </div>
 
-        {/* LINKS DE CONVITE PENDENTES */}
-        {convites.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Links de convite pendentes</p>
-            {convites.map(c => (
-              <div key={c.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 flex items-center justify-between gap-2 shadow-sm">
-                <div>
-                  <p className="text-xs font-bold text-gray-800">Funcionário comum</p>
-                  <p className="text-[11px] text-gray-400">{new Date(c.created_at).toLocaleDateString('pt-BR')}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => copiarConvite(c.token)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-white"
-                    style={{ backgroundColor: cor }}>
-                    {copiado === c.token ? <Check size={14} /> : <Copy size={14} />}
-                    {copiado === c.token ? 'Copiado' : 'Copiar'}
-                  </button>
-                  <button 
-                    onClick={() => excluirConvite(c.id)}
-                    disabled={excluindo === c.id}
-                    className="p-1.5 text-gray-400 hover:text-red-600 border rounded-xl">
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1">
+          Equipe Cadastrada ({funcionarios.length})
+        </p>
 
-        {/* LISTA DE INTEGRANTES DA EQUIPE */}
-        <div className="space-y-3">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-            Funcionários ({funcionarios.length})
-          </p>
-
-          {funcionarios.map(f => {
-            const ehUsuarioAtual = f.id === profile?.id
-            return (
-              <div key={f.id} className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between gap-3 shadow-sm">
-                <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
-                    style={{ backgroundColor: cor }}>
-                    {f.nome?.charAt(0).toUpperCase() || 'U'}
-                  </div>
-                  
-                  <div className="overflow-hidden">
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold text-gray-900 text-sm truncate">{f.nome}</p>
-                      {ehUsuarioAtual && (
-                        <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
-                          Ativo
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400 truncate mb-1.5">{f.email}</p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setModalCargo(f)
-                    setCargoSelecionado(f.role || f.cargo || 'profissional')
-                  }}
-                  className="px-3.5 py-2 rounded-full text-xs font-bold text-white shrink-0 shadow-sm"
+        {/* LISTA DE FUNCIONÁRIOS */}
+        {funcionarios.map(f => {
+          const eDono = f.role === 'dono'
+          return (
+            <div 
+              key={f.id} 
+              onClick={() => abrirPermissoesIndividuais(f)}
+              className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between gap-3 shadow-sm cursor-pointer hover:border-pink-300 transition-all">
+              
+              <div className="flex items-center gap-3 overflow-hidden">
+                <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0 shadow-sm"
                   style={{ backgroundColor: cor }}>
-                  {f.role === 'dono' || f.role === 'gerente' ? 'Acesso Total ✓' : 'Dar acesso'}
-                </button>
+                  {f.nome ? f.nome.charAt(0).toUpperCase() : 'U'}
+                </div>
+                
+                <div className="overflow-hidden">
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-gray-900 text-sm truncate">{f.nome || 'Sem nome'}</p>
+                    {eDono && (
+                      <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-100">
+                        Dono
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 truncate mt-0.5">{f.email}</p>
+                </div>
               </div>
-            )
-          })}
-        </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-semibold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-100">
+                  Configurar Acessos ➔
+                </span>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      {/* MODAL DE SELEÇÃO DE CARGO */}
-      {modalCargo && (
+      {/* MODAL DE PERMISSÕES INDIVIDUAIS POR PÁGINA */}
+      {funcionarioSelecionado && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                <UserCog size={20} style={{ color: cor }} /> Definir Cargo do Funcionário
-              </h3>
-              <button onClick={() => setModalCargo(null)}>
-                <X size={20} className="text-gray-400" />
+          <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">Permissões de Acesso</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Funcionário: <span className="font-semibold text-gray-800">{funcionarioSelecionado.nome}</span></p>
+              </div>
+              <button onClick={() => setFuncionarioSelecionado(null)} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                <X size={18} className="text-gray-500" />
               </button>
             </div>
 
             <p className="text-xs text-gray-500">
-              Selecione o cargo para <strong>{modalCargo.nome}</strong>:
+              Defina abaixo se este funcionário pode ou não visualizar cada uma das páginas do sistema:
             </p>
 
-            <div className="flex flex-col gap-2">
-              {CARGOS.map(c => (
-                <label 
-                  key={c.id}
-                  onClick={() => setCargoSelecionado(c.id)}
-                  className={`border p-3.5 rounded-2xl flex items-center justify-between cursor-pointer transition-all ${
-                    cargoSelecionado === c.id ? 'border-2 bg-pink-50/40' : 'border-gray-200'
-                  }`}
-                  style={{ borderColor: cargoSelecionado === c.id ? cor : undefined }}>
-                  <div className="flex items-center gap-2.5">
-                    <span className={`w-3 h-3 rounded-full ${c.corBg} border ${c.corBorder}`} />
-                    <span className="text-sm font-bold text-gray-800">{c.label}</span>
+            <div className="flex flex-col gap-2.5 max-h-[50vh] overflow-y-auto pr-1">
+              {TODAS_AS_PAGINAS.map(pagina => {
+                const permitido = permissoesCustom[pagina.id] ?? true
+                return (
+                  <div key={pagina.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 flex items-center justify-between gap-3">
+                    <div className="overflow-hidden">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-gray-900 text-xs">{pagina.nome}</p>
+                        <span className="text-[10px] bg-white text-gray-500 px-2 py-0.5 rounded-md border border-gray-200 font-medium">
+                          {pagina.categoria}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 truncate mt-0.5">{pagina.desc}</p>
+                    </div>
+
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [pagina.id]: true }))}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                          permitido ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
+                        }`}>
+                        <Check size={12} /> Sim
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [pagina.id]: false }))}
+                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                          !permitido ? 'bg-red-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
+                        }`}>
+                        <X size={12} /> Não
+                      </button>
+                    </div>
                   </div>
-                  <input 
-                    type="radio" 
-                    name="cargoOpcao"
-                    checked={cargoSelecionado === c.id} 
-                    onChange={() => setCargoSelecionado(c.id)}
-                    className="w-4 h-4"
-                  />
-                </label>
-              ))}
+                )
+              })}
             </div>
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex gap-3 pt-2 border-t">
               <button 
-                onClick={() => setModalCargo(null)} 
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium">
+                onClick={() => setFuncionarioSelecionado(null)} 
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-xs">
                 Cancelar
               </button>
               <button 
-                onClick={handleSalvarCargo} 
-                disabled={salvandoCargo}
-                className="flex-1 py-3 rounded-2xl text-white text-sm font-medium" 
+                onClick={salvarPermissoesIndividuais} 
+                disabled={salvando} 
+                className="flex-1 py-3 rounded-2xl text-white font-bold text-xs shadow-sm" 
                 style={{ backgroundColor: cor }}>
-                {salvandoCargo ? 'Salvando...' : 'Confirmar Cargo'}
+                {salvando ? 'Salvando...' : 'Salvar Alterações'}
               </button>
             </div>
+
           </div>
         </div>
       )}
