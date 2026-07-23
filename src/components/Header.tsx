@@ -4,7 +4,7 @@ import {
   Home, Calendar, Users, BarChart2, Settings,
   Scissors, Package, FileText, UserCheck, Box,
   Sparkles, CreditCard, DollarSign, Clock, Heart,
-  CheckSquare
+  CheckSquare, Notebook
 } from 'lucide-react'
 import { useNotificacoes } from '@/lib/hooks/useNotificacoes'
 import { supabase } from '@/lib/supabase'
@@ -23,6 +23,7 @@ const MENU_DONO = [
   { icon: Home, label: 'Início', href: '/salao', grupo: '' },
   { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
+  { icon: Notebook, label: 'Guia', href: '/salao/guia', grupo: 'Atendimento' },
   { icon: Scissors, label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento' },
   { icon: Package, label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento' },
   { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento' },
@@ -48,6 +49,7 @@ const MENU_FUNCIONARIO = [
   { icon: Home, label: 'Início', href: '/funcionario', grupo: '' },
   { icon: Calendar, label: 'Minha Agenda', href: '/funcionario/agenda', grupo: 'Atendimento' },
   { icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' },
+  { icon: Notebook, label: 'Guia', href: '/salao/guia', grupo: 'Atendimento' },
   { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' },
   { icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' },
 ]
@@ -66,10 +68,8 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
   const router = useRouter()
   const pathname = usePathname()
 
-  // Converte a role para string para evitar erros de validação estrita no TypeScript durante o build
   const userRole = profile?.role as string
 
-  // Define qual menu exibir de acordo com o papel do usuário
   const menuItems = userRole === 'admin_geral'
     ? MENU_ADMIN
     : (userRole === 'funcionario' || userRole === 'profissional')
@@ -83,7 +83,6 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
     window.location.href = '/login'
   }
 
-  // ─── Ação ao clicar em uma notificação ─────────────────────────────────
   async function handleClicarNotificacao(n: any) {
     if (!n.lida) {
       marcarComoLida(n.id)
@@ -93,7 +92,6 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
 
     let destino = n.url
 
-    // Fallbacks inteligentes caso n.url não venha preenchida do banco
     if (!destino) {
       const titulo = (n.titulo || '').toLowerCase()
       const tipo = (n.tipo || '').toLowerCase()
