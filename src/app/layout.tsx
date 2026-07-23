@@ -65,7 +65,7 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
   }
 
   const corPrimaria = salao?.cor_primaria || '#E91E8C'
-  const eDono = profile.role === 'dono'
+  const eDono = (profile.role as string) === 'dono'
   const permissoes = profile.permissoes_paginas || {}
 
   // Se for dono vê tudo. Se for funcionário, valida se a permissão não está explicitamente false.
