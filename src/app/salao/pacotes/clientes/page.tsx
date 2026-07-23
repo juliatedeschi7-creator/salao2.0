@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Search, Plus, Calendar, CheckCircle, Clock, X } from 'lucide-react'
 
 function hojeISO() {
@@ -44,9 +43,13 @@ export default function PacotesClientesPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
-    if (profile.salao_id) carregarDados()
+    if (!profile) {
+      router.push('/login')
+      return
+    }
+    if (profile.salao_id) {
+      carregarDados()
+    }
   }, [loading, profile])
 
   async function carregarDados() {
