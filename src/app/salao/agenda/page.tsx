@@ -1,384 +1,469 @@
+O codigo como estava funcionando: 
 'use client'
-
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Calendar as CalendarIcon, Plus, Clock, User, Scissors, Trash2, Check, X, ArrowLeft } from 'lucide-react'
+import { temAcessoTotal } from '@/lib/permissoes'
+import { notificar } from '@/lib/notificar'
+import { ArrowLeft, Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Clock, X, Check, Calendar } from 'lucide-react'
 
-function hojeISO() {
-  return new Date().toISOString().slice(0, 10)
+type Agendamento = {
+  id: string
+  cliente_id: string
+  servico_id: string
+  servicos_ids?: string[]
+  profissional_id?: string
+  data_hora: string
+  duracao_minutos: number
+  status: string
+  observacoes?: string
+  valor?: number
+  clientes?: { nome: string }
+  servicos?: { nome: string; preco: number }
+  profiles?: { nome: string }
+  servicos_detalhes?: { id: string; nome: string; preco: number; duracao_minutos: number }[]
 }
+
+function formatarDuracao(min: number) {
+  if (!min) return ''
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60), m = min % 60
+  return m === 0 ? `${h}h` : `${h}h${m}min`
+}
+
+const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+const DIAS_COMPLETOS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
+const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 export default function AgendaPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [dataSelecionada, setDataSelecionada] = useState(hojeISO())
-  const [agendamentos, setAgendamentos] = useState<any[]>([])
-  const [profissionais, setProfissionais] = useState<any[]>([])
-  const [servicos, setServicos] = useState<any[]>([])
-  const [clientes, setClientes] = useState<any[]>([])
-  const [profissionalFiltro, setProfissionalFiltro] = useState('todos')
-  
-  const [modalNovo, setModalNovo] = useState(false)
-  const [clienteId, setClienteId] = useState('')
-  const [servicoId, setServicoId] = useState('')
-  const [profissionalId, setProfissionalId] = useState('')
-  const [horario, setHorario] = useState('09:00')
-  const [precoEditavel, setPrecoEditavel] = useState('')
-  const [observacoes, setObservacoes] = useState('')
+  const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
+  const [todosServicos, setTodosServicos] = useState<any[]>([])
+  const [view, setView] = useState<'semana' | 'mes'>('semana')
+  const [dataBase, setDataBase] = useState(new Date())
+  const [carregando, setCarregando] = useState(true)
+  const [modalEditar, setModalEditar] = useState<Agendamento | null>(null)
+  const [formEditar, setFormEditar] = useState({ status: '', observacoes: '', valor: '' })
   const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState('')
+  const [diaSelecionado, setDiaSelecionado] = useState<Date | null>(null)
 
   useEffect(() => {
     if (loading) return
-    if (!profile) {
-      router.push('/login')
-      return
-    }
-    if (profile.salao_id) {
-      carregarDadosSalao()
-    }
+    if (!profile) return
+    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (profile.salao_id) carregarDados()
   }, [loading, profile])
 
-  useEffect(() => {
-    if (profile?.salao_id) {
-      carregarAgenda()
-    }
-  }, [dataSelecionada, profissionalFiltro, profile])
-
-  async function carregarDadosSalao() {
+  async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    const { data: profs } = await supabase.from('profiles').select('*').eq('salao_id', profile!.salao_id!)
-    setProfissionais(profs || [])
+    const { data: srvs } = await supabase.from('servicos').select('id, nome, preco, duracao_minutos')
+      .eq('salao_id', profile!.salao_id!).eq('ativo', true)
+    setTodosServicos(srvs || [])
 
-    const { data: serv } = await supabase.from('servicos').select('*').eq('salao_id', profile!.salao_id!)
-    setServicos(serv || [])
-
-    const { data: clis } = await supabase.from('clientes').select('*').eq('salao_id', profile!.salao_id!).order('nome')
-    setClientes(clis || [])
+    await carregarAgendamentos()
+    setCarregando(false)
   }
 
-  async function carregarAgenda() {
-    let query = supabase
-      .from('agendamentos')
-      .select('*, clientes(nome, telefone), servicos(nome, preco, duracao_minutos), profiles(nome)')
+  async function carregarAgendamentos() {
+    const inicio = getInicioSemana(dataBase)
+    const fim = new Date(inicio); fim.setDate(fim.getDate() + 60)
+
+    const { data: ags } = await supabase.from('agendamentos')
+      .select('*, clientes(nome), servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
       .eq('salao_id', profile!.salao_id!)
-      .eq('data', dataSelecionada)
-      .order('horario')
+      .gte('data_hora', inicio.toISOString())
+      .lte('data_hora', fim.toISOString())
+      .order('data_hora')
 
-    if (profissionalFiltro !== 'todos') {
-      query = query.eq('profissional_id', profissionalFiltro)
-    }
-
-    const { data, error } = await query
-    if (error) {
-      console.error('Erro ao carregar agenda:', error)
-    } else {
-      setAgendamentos(data || [])
-    }
+    setAgendamentos(ags || [])
   }
 
-  function abrirModalNovo() {
-    setClienteId('')
-    setServicoId('')
-    setProfissionalId(profile?.id || '')
-    setHorario('09:00')
-    setPrecoEditavel('')
-    setObservacoes('')
-    setErro('')
-    setModalNovo(true)
+  useEffect(() => {
+    if (profile?.salao_id) carregarAgendamentos()
+  }, [dataBase])
+
+  function getInicioSemana(d: Date) {
+    const dia = new Date(d)
+    const dow = dia.getDay()
+    dia.setDate(dia.getDate() - dow)
+    dia.setHours(0, 0, 0, 0)
+    return dia
   }
 
-  function handleServicoChange(idServico: string) {
-    setServicoId(idServico)
-    const serv = servicos.find(s => s.id === idServico)
-    if (serv) {
-      setPrecoEditavel(serv.preco ? serv.preco.toString() : '')
-    } else {
-      setPrecoEditavel('')
-    }
+  function getDiasSemana() {
+    const inicio = getInicioSemana(dataBase)
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(inicio); d.setDate(d.getDate() + i); return d
+    })
   }
 
-  async function criarAgendamento() {
-    if (!clienteId || !servicoId || !profissionalId || !horario) {
-      setErro('Preencha todos os campos obrigatórios.')
-      return
-    }
-
-    setSalvando(true)
-    setErro('')
-
-    const dadosInsercao: any = {
-      salao_id: profile!.salao_id,
-      cliente_id: clienteId,
-      servico_id: servicoId,
-      profissional_id: profissionalId,
-      data: dataSelecionada,
-      horario,
-      status: 'pendente',
-      observacoes
-    }
-
-    if (precoEditavel !== '') {
-      dadosInsercao.preco_personalizado = Number(precoEditavel)
-    }
-
-    const { error } = await supabase.from('agendamentos').insert(dadosInsercao)
-
-    if (error) {
-      setErro('Erro ao criar agendamento: ' + error.message)
-      setSalvando(false)
-      return
-    }
-
-    setModalNovo(false)
-    setSalvando(false)
-    carregarAgenda()
+  function getDiasMes() {
+    const ano = dataBase.getFullYear(), mes = dataBase.getMonth()
+    const primeiro = new Date(ano, mes, 1)
+    const ultimo = new Date(ano, mes + 1, 0)
+    const dias: Date[] = []
+    for (let d = new Date(primeiro); d <= ultimo; d.setDate(d.getDate() + 1)) dias.push(new Date(d))
+    return dias
   }
 
-  async function atualizarStatus(id: string, novoStatus: string) {
-    const { error } = await supabase
-      .from('agendamentos')
-      .update({ status: novoStatus })
-      .eq('id', id)
+  function agendamentosDoDia(dia: Date) {
+    return agendamentos.filter(ag => {
+      const d = new Date(ag.data_hora)
+      return d.getFullYear() === dia.getFullYear() && d.getMonth() === dia.getMonth() && d.getDate() === dia.getDate()
+    })
+  }
 
-    if (error) {
-      alert('Erro ao atualizar status: ' + error.message)
-    } else {
-      carregarAgenda()
+  function getServicosDetalhados(ag: Agendamento) {
+    if (ag.servicos_ids && ag.servicos_ids.length > 1) {
+      return todosServicos.filter(s => ag.servicos_ids!.includes(s.id))
     }
+    return ag.servicos ? [ag.servicos] : []
   }
 
   async function excluirAgendamento(id: string) {
-    if (!confirm('Deseja realmente excluir este agendamento?')) return
+    await supabase.from('agendamentos').delete().eq('id', id)
+    carregarAgendamentos()
+  }
 
-    const { error } = await supabase
-      .from('agendamentos')
-      .delete()
-      .eq('id', id)
+  async function salvarEdicao() {
+    if (!modalEditar) return
+    setSalvando(true)
+    await supabase.from('agendamentos').update({
+      status: formEditar.status,
+      observacoes: formEditar.observacoes || null,
+      valor: formEditar.valor ? parseFloat(formEditar.valor) : null
+    }).eq('id', modalEditar.id)
+    setModalEditar(null); setSalvando(false); carregarAgendamentos()
+  }
 
-    if (error) {
-      alert('Erro ao excluir: ' + error.message)
-    } else {
-      carregarAgenda()
-    }
+  const statusConfig: Record<string, { label: string; cor: string; bg: string }> = {
+    confirmado: { label: 'Confirmado', cor: '#16a34a', bg: '#f0fdf4' },
+    pendente: { label: 'Pendente', cor: '#d97706', bg: '#fffbeb' },
+    concluido: { label: 'Concluído', cor: '#6b7280', bg: '#f9fafb' },
+    cancelado: { label: 'Cancelado', cor: '#dc2626', bg: '#fef2f2' },
+    aguardando_confirmacao: { label: 'Aguardando', cor: '#2563eb', bg: '#eff6ff' },
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
+  const hoje = new Date()
+  const diasSemana = getDiasSemana()
+  const diasMes = getDiasMes()
+  const diaVer = diaSelecionado || (view === 'semana' ? diasSemana[0] : hoje)
 
-  if (loading) {
+  function CardAgendamento({ ag }: { ag: Agendamento }) {
+    const st = statusConfig[ag.status] || statusConfig.pendente
+    const inicio = new Date(ag.data_hora)
+    const fim = new Date(inicio.getTime() + (ag.duracao_minutos || 60) * 60000)
+    const horaInicio = inicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const horaFim = fim.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const servicosDetalhados = getServicosDetalhados(ag)
+    const temMultiplos = servicosDetalhados.length > 1
+    const precoTotal = ag.valor || servicosDetalhados.reduce((acc, s) => acc + (s.preco || 0), 0)
+
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-600" />
+      <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-gray-900 leading-tight">{ag.clientes?.nome}</p>
+
+            {/* Serviços — lista se múltiplos */}
+            {temMultiplos ? (
+              <div className="mt-1 flex flex-col gap-0.5">
+                {servicosDetalhados.map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cor }} />
+                    <p className="text-sm text-gray-500">{s.nome}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500 mt-0.5">{ag.servicos?.nome}</p>
+            )}
+
+            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+              <div className="flex items-center gap-1 text-gray-400">
+                <Clock size={12} />
+                <p className="text-xs">{horaInicio} – {horaFim}</p>
+              </div>
+              {ag.profiles?.nome && (
+                <p className="text-xs text-gray-400">Prof: {ag.profiles.nome}</p>
+              )}
+            </div>
+
+            {precoTotal > 0 && (
+              <p className="text-sm font-bold mt-1" style={{ color: cor }}>
+                R$ {precoTotal.toFixed(2).replace('.', ',')}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+              style={{ color: st.cor, backgroundColor: st.bg }}>
+              {st.label.toUpperCase()}
+            </span>
+            <div className="flex gap-1.5">
+              <button onClick={() => {
+                setModalEditar(ag)
+                setFormEditar({ status: ag.status, observacoes: ag.observacoes || '', valor: ag.valor?.toString() || '' })
+              }} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+                <Edit2 size={13} className="text-gray-500" />
+              </button>
+              <button onClick={() => excluirAgendamento(ag.id)}
+                className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+                <Trash2 size={13} className="text-red-400" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {ag.observacoes && (
+          <p className="text-xs text-gray-400 bg-gray-50 rounded-xl px-3 py-2">{ag.observacoes}</p>
+        )}
       </div>
     )
   }
 
+  if (loading || carregando) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    </div>
+  )
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* HEADER */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b border-gray-100">
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/salao')} className="p-1 hover:bg-gray-100 rounded-lg transition">
-            <ArrowLeft size={20} className="text-gray-700" />
-          </button>
-          <div>
-            <h1 className="font-bold text-gray-900 text-base leading-tight">Agenda</h1>
-            <p className="text-[11px] text-gray-400">Gerencie os horários e compromissos do salão.</p>
-          </div>
-        </div>
-        <button 
-          onClick={abrirModalNovo}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-xs font-semibold shadow-xs transition active:scale-95"
-          style={{ backgroundColor: cor }}
-        >
-          <Plus size={16} /> Novo
+    <div className="min-h-screen bg-[#f8f9fa] pb-24">
+      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
+        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Agenda</h1>
+        <button onClick={() => router.push('/salao/agenda/novo')}
+          className="w-9 h-9 rounded-full flex items-center justify-center text-white"
+          style={{ backgroundColor: cor }}>
+          <Plus size={18} />
         </button>
       </div>
 
-      <div className="px-4 py-4 max-w-2xl mx-auto flex flex-col gap-4">
-        {/* FILTROS */}
-        <div className="bg-white p-3.5 rounded-2xl border border-gray-100 shadow-xs flex flex-col gap-3">
-          <div>
-            <label className="text-[11px] font-semibold text-gray-500 mb-1 block">Data</label>
-            <input 
-              type="date" 
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" 
-              value={dataSelecionada} 
-              onChange={e => setDataSelecionada(e.target.value)} 
-            />
-          </div>
-          <div>
-            <label className="text-[11px] font-semibold text-gray-500 mb-1 block">Profissional</label>
-            <select 
-              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" 
-              value={profissionalFiltro} 
-              onChange={e => setProfissionalFiltro(e.target.value)}
-            >
-              <option value="todos">Todos os profissionais</option>
-              {profissionais.map(p => (
-                <option key={p.id} value={p.id}>{p.nome}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* LISTA DE AGENDAMENTOS */}
-        <div className="flex flex-col gap-3">
-          {agendamentos.length === 0 ? (
-            <div className="bg-white rounded-2xl p-8 text-center border border-gray-100 shadow-xs">
-              <CalendarIcon size={36} className="mx-auto text-gray-300 mb-2 stroke-[1.5]" />
-              <p className="font-semibold text-gray-700 text-xs">Nenhum agendamento encontrado para este salão.</p>
-              <p className="text-[11px] text-gray-400 mt-0.5">Toque em "Novo" para adicionar um horário.</p>
-            </div>
-          ) : (
-            agendamentos.map(ag => {
-              const statusBadge = 
-                ag.status === 'concluido' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                ag.status === 'cancelado' ? 'bg-rose-50 text-rose-700 border-rose-100' : 
-                'bg-amber-50 text-amber-700 border-amber-100'
-
-              const precoFinal = ag.preco_personalizado !== null && ag.preco_personalizado !== undefined 
-                ? Number(ag.preco_personalizado) 
-                : Number(ag.servicos?.preco || 0)
-
-              return (
-                <div key={ag.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-xs flex flex-col gap-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-gray-900 text-xs bg-gray-100 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                        <Clock size={13} className="text-gray-500" /> {ag.horario?.slice(0, 5)}
-                      </span>
-                      <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${statusBadge}`}>
-                        {ag.status}
-                      </span>
-                    </div>
-                    <button 
-                      onClick={() => excluirAgendamento(ag.id)}
-                      className="text-gray-400 hover:text-rose-600 p-1 transition"
-                      title="Excluir"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <h3 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
-                      <User size={14} className="text-gray-400" /> {ag.clientes?.nome || 'Cliente'}
-                    </h3>
-                    <p className="text-xs text-gray-500 flex items-center gap-1.5">
-                      <Scissors size={13} className="text-gray-400" /> {ag.servicos?.nome || 'Serviço'} • <span className="font-bold text-gray-800">R$ {precoFinal.toFixed(2)}</span>
-                      {ag.preco_personalizado !== null && ag.preco_personalizado !== undefined && (
-                        <span className="text-[10px] text-pink-600 bg-pink-50 px-1.5 py-0.2 rounded font-medium">personalizado</span>
-                      )}
-                    </p>
-                    <p className="text-[11px] text-gray-400">
-                      Profissional: <span className="font-medium text-gray-700">{ag.profiles?.nome || 'Não atribuído'}</span>
-                    </p>
-                    {ag.observacoes && (
-                      <p className="text-[11px] text-gray-500 bg-gray-50 p-2 rounded-xl mt-1">
-                        Obs: {ag.observacoes}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                    <button 
-                      onClick={() => atualizarStatus(ag.id, 'concluido')}
-                      className="flex-1 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition flex items-center justify-center gap-1"
-                    >
-                      <Check size={13} /> Concluir
-                    </button>
-                    <button 
-                      onClick={() => atualizarStatus(ag.id, 'cancelado')}
-                      className="flex-1 py-1.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-semibold hover:bg-rose-100 transition flex items-center justify-center gap-1"
-                    >
-                      <X size={13} /> Cancelar
-                    </button>
-                  </div>
-                </div>
-              )
-            })
-          )}
+      {/* Toggle semana/mês */}
+      <div className="px-4 py-3 bg-white border-b border-gray-100">
+        <div className="flex bg-gray-100 rounded-2xl p-1">
+          {(['semana', 'mes'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
+              style={view === v ? { backgroundColor: cor, color: 'white' } : { color: '#6b7280' }}>
+              {v === 'semana' ? 'Semana' : 'Mês'}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* MODAL NOVO AGENDAMENTO */}
-      {modalNovo && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 flex flex-col gap-3.5 max-h-[90vh] overflow-y-auto shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-2.5">
-              <h3 className="font-bold text-gray-900 text-sm">Novo Agendamento</h3>
-              <button onClick={() => setModalNovo(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={18} />
+      {/* Navegação de semana */}
+      {view === 'semana' && (
+        <>
+          <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
+            <button onClick={() => { const d = new Date(dataBase); d.setDate(d.getDate() - 7); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronLeft size={16} className="text-gray-600" />
+            </button>
+            <p className="text-sm font-semibold text-gray-700">
+              {diasSemana[0].getDate()} {MESES[diasSemana[0].getMonth()]} – {diasSemana[6].getDate()} {MESES[diasSemana[6].getMonth()]}
+            </p>
+            <button onClick={() => { const d = new Date(dataBase); d.setDate(d.getDate() + 7); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronRight size={16} className="text-gray-600" />
+            </button>
+          </div>
+
+          <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
+            {diasSemana.map((dia, i) => {
+              const ehHoje = dia.toDateString() === hoje.toDateString()
+              const selecionado = diaSelecionado?.toDateString() === dia.toDateString()
+              const count = agendamentosDoDia(dia).length
+              return (
+                <button key={i} onClick={() => setDiaSelecionado(selecionado ? null : dia)}
+                  className="flex-1 flex flex-col items-center py-2 gap-0.5 relative">
+                  <p className="text-xs text-gray-400">{DIAS[dia.getDay()]}</p>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
+                    style={ehHoje || selecionado
+                      ? { backgroundColor: cor, color: 'white' }
+                      : { color: '#111827' }}>
+                    {dia.getDate()}
+                  </div>
+                  {count > 0 && (
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Navegação de mês */}
+      {view === 'mes' && (
+        <>
+          <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
+            <button onClick={() => { const d = new Date(dataBase); d.setMonth(d.getMonth() - 1); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronLeft size={16} className="text-gray-600" />
+            </button>
+            <p className="text-sm font-semibold text-gray-700">
+              {MESES[dataBase.getMonth()]} {dataBase.getFullYear()}
+            </p>
+            <button onClick={() => { const d = new Date(dataBase); d.setMonth(d.getMonth() + 1); setDataBase(d) }}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
+              <ChevronRight size={16} className="text-gray-600" />
+            </button>
+          </div>
+
+          <div className="bg-white border-b border-gray-100 px-2 pb-2">
+            <div className="grid grid-cols-7 mb-1">
+              {DIAS.map(d => <p key={d} className="text-center text-xs text-gray-400 py-1">{d}</p>)}
+            </div>
+            <div className="grid grid-cols-7 gap-y-1">
+              {Array.from({ length: new Date(dataBase.getFullYear(), dataBase.getMonth(), 1).getDay() }).map((_, i) => (
+                <div key={i} />
+              ))}
+              {diasMes.map((dia, i) => {
+                const ehHoje = dia.toDateString() === hoje.toDateString()
+                const selecionado = diaSelecionado?.toDateString() === dia.toDateString()
+                const count = agendamentosDoDia(dia).length
+                return (
+                  <button key={i} onClick={() => setDiaSelecionado(selecionado ? null : dia)}
+                    className="flex flex-col items-center py-1 gap-0.5">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
+                      style={ehHoje || selecionado
+                        ? { backgroundColor: cor, color: 'white' }
+                        : { color: '#111827' }}>
+                      {dia.getDate()}
+                    </div>
+                    {count > 0 && (
+                      <div className="w-1 h-1 rounded-full" style={{ backgroundColor: cor }} />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Lista de agendamentos */}
+      <div className="px-4 py-4 flex flex-col gap-3">
+
+    {/* Botão liberar horário */}
+<button onClick={() => router.push('/salao/horarios-vagos')}
+  className="w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold"
+  style={{ borderColor: cor, color: cor }}>
+  <Plus size={16} />Liberar horário para clientes
+</button>
+
+        {(() => {
+          const diasParaMostrar = diaSelecionado
+            ? [diaSelecionado]
+            : view === 'semana'
+              ? diasSemana
+              : diasMes.filter(d => agendamentosDoDia(d).length > 0)
+
+          const temAlgum = diasParaMostrar.some(d => agendamentosDoDia(d).length > 0)
+
+          if (!temAlgum) return (
+            <div className="card text-center py-10 flex flex-col items-center gap-3">
+              <Calendar size={36} className="text-gray-300" />
+              <p className="text-gray-400">Nenhum agendamento</p>
+              <button onClick={() => router.push('/salao/agenda/novo')}
+                className="px-4 py-2 rounded-full text-sm font-medium text-white"
+                style={{ backgroundColor: cor }}>
+                + Novo agendamento
               </button>
             </div>
+          )
 
-            <div>
-              <label className="text-[11px] font-bold text-gray-700 mb-1 block">Cliente</label>
-              <select className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" value={clienteId} onChange={e => setClienteId(e.target.value)}>
-                <option value="">Selecione a cliente...</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-gray-700 mb-1 block">Serviço</label>
-              <select className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" value={servicoId} onChange={e => handleServicoChange(e.target.value)}>
-                <option value="">Selecione o serviço...</option>
-                {servicos.map(s => <option key={s.id} value={s.id}>{s.nome} - R$ {Number(s.preco).toFixed(2)}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-gray-700 mb-1 block">Preço do Atendimento (R$)</label>
-              <input 
-                type="number" 
-                step="0.01" 
-                className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" 
-                value={precoEditavel} 
-                onChange={e => setPrecoEditavel(e.target.value)} 
-                placeholder="Ex: 50.00" 
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-gray-700 mb-1 block">Profissional Responsável</label>
-              <select className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" value={profissionalId} onChange={e => setProfissionalId(e.target.value)}>
-                <option value="">Selecione o profissional...</option>
-                {profissionais.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="text-[11px] font-bold text-gray-700 mb-1 block">Data</label>
-                <input type="date" className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" value={dataSelecionada} onChange={e => setDataSelecionada(e.target.value)} />
+          return diasParaMostrar.map(dia => {
+            const ags = agendamentosDoDia(dia)
+            if (ags.length === 0) return null
+            return (
+              <div key={dia.toISOString()}>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-white shrink-0"
+                    style={{ backgroundColor: dia.toDateString() === hoje.toDateString() ? cor : '#9ca3af' }}>
+                    {dia.getDate()}
+                  </div>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {DIAS_COMPLETOS[dia.getDay()]}, {dia.getDate()} de {MESES[dia.getMonth()]}
+                    {dia.toDateString() === hoje.toDateString() && (
+                      <span className="ml-2 text-xs font-normal" style={{ color: cor }}>(hoje)</span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 ml-10">
+                  {ags.map(ag => <CardAgendamento key={ag.id} ag={ag} />)}
+                </div>
               </div>
-              <div>
-                <label className="text-[11px] font-bold text-gray-700 mb-1 block">Horário</label>
-                <input type="time" className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20" value={horario} onChange={e => setHorario(e.target.value)} />
-              </div>
+            )
+          })
+        })()}
+      </div>
+
+      {/* Modal editar */}
+      {modalEditar && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">Editar agendamento</h3>
+              <button onClick={() => setModalEditar(null)}><X size={20} className="text-gray-400" /></button>
             </div>
 
-            <div>
-              <label className="text-[11px] font-bold text-gray-700 mb-1 block">Observações (opcional)</label>
-              <textarea className="w-full bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-500/20 resize-none" rows={2} value={observacoes} onChange={e => setObservacoes(e.target.value)} placeholder="Ex: Cliente prefere atendimento com secador morno..." />
-            </div>
+            <p className="text-sm text-gray-500">{modalEditar.clientes?.nome}</p>
 
-            {erro && (
-              <div className="bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">
-                <p className="text-rose-600 text-xs font-bold">{erro}</p>
+            {getServicosDetalhados(modalEditar).length > 1 && (
+              <div className="bg-gray-50 rounded-xl p-3 flex flex-col gap-1">
+                <p className="text-xs font-medium text-gray-500 mb-1">Serviços:</p>
+                {getServicosDetalhados(modalEditar).map((s, i) => (
+                  <div key={i} className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
+                    <p className="text-sm text-gray-700">{s.nome}</p>
+                  </div>
+                ))}
               </div>
             )}
 
-            <div className="flex gap-2.5 pt-2">
-              <button onClick={() => setModalNovo(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-bold transition hover:bg-gray-50">Cancelar</button>
-              <button onClick={criarAgendamento} disabled={salvando} className="flex-1 py-2.5 rounded-xl text-white text-xs font-bold shadow-sm transition active:scale-95" style={{ backgroundColor: cor }}>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Status</label>
+              <select className="input-field" value={formEditar.status}
+                onChange={e => setFormEditar(p => ({ ...p, status: e.target.value }))}>
+                <option value="confirmado">Confirmado</option>
+                <option value="pendente">Pendente</option>
+                <option value="concluido">Concluído</option>
+                <option value="cancelado">Cancelado</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor cobrado (R$)</label>
+              <input className="input-field" type="number" placeholder="0,00"
+                value={formEditar.valor}
+                onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Observações</label>
+              <textarea className="input-field resize-none" rows={2}
+                value={formEditar.observacoes}
+                onChange={e => setFormEditar(p => ({ ...p, observacoes: e.target.value }))} />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalEditar(null)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
+                Cancelar
+              </button>
+              <button onClick={salvarEdicao} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
+                style={{ backgroundColor: cor }}>
                 {salvando ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
