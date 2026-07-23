@@ -6,12 +6,9 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
 import { 
-  ShieldCheck, Plus, Edit2, Trash2, UserCheck, 
-  ArrowLeft, Search, X, Mail, Phone, Key, Lock, User,
-  Check, Copy, UserCog, Sparkles
+  ShieldCheck, Plus, Trash2, ArrowLeft, X, Copy, Check, UserCog 
 } from 'lucide-react'
 
-// Opções de cargos disponíveis
 const CARGOS = [
   { id: 'dono', label: 'Dono / Acesso Total', corBg: 'bg-pink-100', corTexto: 'text-pink-700', corBorder: 'border-pink-300' },
   { id: 'gerente', label: 'Gerente', corBg: 'bg-purple-100', corTexto: 'text-purple-700', corBorder: 'border-purple-300' },
@@ -29,7 +26,6 @@ export default function FuncionariosPage() {
   const [convites, setConvites] = useState<any[]>([])
   const [carregando, setCarregando] = useState(true)
 
-  // Estados de ações
   const [modalCargo, setModalCargo] = useState<any | null>(null)
   const [cargoSelecionado, setCargoSelecionado] = useState<string>('')
   const [salvandoCargo, setSalvandoCargo] = useState(false)
@@ -45,19 +41,29 @@ export default function FuncionariosPage() {
 
   async function carregarDados() {
     setCarregando(true)
+    
+    // Busca dados do salão, perfis filtrados e convites
     const [salRes, funcRes, convRes] = await Promise.all([
       supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
-      supabase.from('profiles').select('*').eq('salao_id', profile!.salao_id!).order('nome', { ascending: true }),
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('salao_id', profile!.salao_id!)
+        .neq('role', 'cliente') // FILTRO: Ignora clientes da lista de funcionários
+        .order('nome', { ascending: true }),
       supabase.from('convites_funcionarios').select('*').eq('salao_id', profile!.salao_id!).eq('usado', false)
     ])
 
     setSalao(salRes.data)
-    setFuncionarios(funcRes.data || [])
+    
+    // Filtro adicional de segurança no JS para garantir que nenhum cliente passe
+    const apenasEquipe = (funcRes.data || []).filter((u: any) => u.role !== 'cliente' && u.tipo !== 'cliente')
+    setFuncionarios(apenasEquipe)
+    
     setConvites(convRes.data || [])
     setCarregando(false)
   }
 
-  // ─── SALVAR NOVO CARGO DO FUNCIONÁRIO ──────────────────────────────
   async function handleSalvarCargo() {
     if (!modalCargo || !cargoSelecionado) return
     setSalvandoCargo(true)
@@ -79,7 +85,6 @@ export default function FuncionariosPage() {
     }
   }
 
-  // Copiar link de convite
   function copiarConvite(token: string) {
     const link = `${window.location.origin}/cadastro-funcionario?token=${token}`
     navigator.clipboard.writeText(link)
@@ -87,7 +92,6 @@ export default function FuncionariosPage() {
     setTimeout(() => setCopiado(null), 2000)
   }
 
-  // Excluir convite
   async function excluirConvite(id: string) {
     setExcluindo(id)
     await supabase.from('convites_funcionarios').delete().eq('id', id)
@@ -114,16 +118,9 @@ export default function FuncionariosPage() {
 
   if (loading || carregando) {
     return (
-      <div className="min-h-screen bg-[#f8f9fa] pb-8">
-        <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-          <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-          <h1 className="font-bold text-gray-900 text-lg">Equipe e Cargos</h1>
-        </div>
-        <div className="p-4 space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="bg-white p-4 rounded-2xl animate-pulse h-20" />
-          ))}
-        </div>
+      <div className="min-h-screen bg-[#f8f9fa] pb-8 p-4">
+        <div className="bg-white p-4 rounded-2xl animate-pulse h-20 mb-3" />
+        <div className="bg-white p-4 rounded-2xl animate-pulse h-20" />
       </div>
     )
   }
@@ -136,7 +133,7 @@ export default function FuncionariosPage() {
           <button onClick={() => router.back()}>
             <ArrowLeft size={22} className="text-gray-700" />
           </button>
-          <h1 className="font-bold text-gray-900 text-lg">Equipe & Cargos</h1>
+          <h1 className="font-bold text-gray-900 text-lg">Funcionários</h1>
         </div>
 
         <button
@@ -149,33 +146,33 @@ export default function FuncionariosPage() {
 
       <div className="p-4 space-y-5">
 
-        {/* ATALHO PARA PERMISSÕES DETALHADAS */}
+        {/* ATALHO PARA PERMISSÕES */}
         <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-pink-50 text-pink-600 flex items-center justify-center">
               <ShieldCheck size={20} />
             </div>
             <div>
-              <p className="font-bold text-gray-900 text-sm">Matriz de Permissões</p>
-              <p className="text-xs text-gray-400">Configure o que cada cargo pode ver ou editar</p>
+              <p className="font-bold text-gray-900 text-sm">Permissões de Acesso</p>
+              <p className="text-xs text-gray-400">Configure o acesso por cargo</p>
             </div>
           </div>
           <button 
             onClick={() => router.push('/salao/permissoes')}
             className="px-3 py-1.5 bg-pink-50 text-pink-600 rounded-xl text-xs font-bold hover:bg-pink-100 transition-colors">
-            Ajustar Telas
+            Permissões
           </button>
         </div>
 
         {/* LINKS DE CONVITE PENDENTES */}
         {convites.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Convites Pendentes</p>
+            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Links de convite pendentes</p>
             {convites.map(c => (
-              <div key={c.id} className="bg-white p-3.5 rounded-2xl border border-amber-200/60 bg-amber-50/30 flex items-center justify-between gap-2">
+              <div key={c.id} className="bg-white p-3.5 rounded-2xl border border-gray-100 flex items-center justify-between gap-2 shadow-sm">
                 <div>
-                  <p className="text-xs font-bold text-gray-800">Link de Acesso Criado</p>
-                  <p className="text-[11px] text-gray-400">Criado em: {new Date(c.created_at).toLocaleDateString('pt-BR')}</p>
+                  <p className="text-xs font-bold text-gray-800">Funcionário comum</p>
+                  <p className="text-[11px] text-gray-400">{new Date(c.created_at).toLocaleDateString('pt-BR')}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button 
@@ -188,7 +185,7 @@ export default function FuncionariosPage() {
                   <button 
                     onClick={() => excluirConvite(c.id)}
                     disabled={excluindo === c.id}
-                    className="p-1.5 text-red-400 hover:text-red-600">
+                    className="p-1.5 text-gray-400 hover:text-red-600 border rounded-xl">
                     <Trash2 size={16} />
                   </button>
                 </div>
@@ -199,11 +196,9 @@ export default function FuncionariosPage() {
 
         {/* LISTA DE INTEGRANTES DA EQUIPE */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Integrantes da Equipe ({funcionarios.length})
-            </p>
-          </div>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+            Funcionários ({funcionarios.length})
+          </p>
 
           {funcionarios.map(f => {
             const ehUsuarioAtual = f.id === profile?.id
@@ -219,13 +214,12 @@ export default function FuncionariosPage() {
                     <div className="flex items-center gap-2">
                       <p className="font-bold text-gray-900 text-sm truncate">{f.nome}</p>
                       {ehUsuarioAtual && (
-                        <span className="text-[10px] bg-gray-100 text-gray-500 font-bold px-1.5 py-0.5 rounded">
-                          Você
+                        <span className="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                          Ativo
                         </span>
                       )}
                     </div>
                     <p className="text-xs text-gray-400 truncate mb-1.5">{f.email}</p>
-                    {getBadgeCargo(f.role || f.cargo)}
                   </div>
                 </div>
 
@@ -234,8 +228,9 @@ export default function FuncionariosPage() {
                     setModalCargo(f)
                     setCargoSelecionado(f.role || f.cargo || 'profissional')
                   }}
-                  className="flex items-center gap-1 px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-100 shrink-0">
-                  <UserCog size={14} className="text-gray-500" /> Alterar Cargo
+                  className="px-3.5 py-2 rounded-full text-xs font-bold text-white shrink-0 shadow-sm"
+                  style={{ backgroundColor: cor }}>
+                  {f.role === 'dono' || f.role === 'gerente' ? 'Acesso Total ✓' : 'Dar acesso'}
                 </button>
               </div>
             )
@@ -243,13 +238,13 @@ export default function FuncionariosPage() {
         </div>
       </div>
 
-      {/* ─── MODAL DE SELEÇÃO DE CARGO ──────────────────────────────── */}
+      {/* MODAL DE SELEÇÃO DE CARGO */}
       {modalCargo && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4">
+          <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 shadow-2xl">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-base flex items-center gap-2">
-                <UserCog size={20} style={{ color: cor }} /> Definir Função / Cargo
+                <UserCog size={20} style={{ color: cor }} /> Definir Cargo do Funcionário
               </h3>
               <button onClick={() => setModalCargo(null)}>
                 <X size={20} className="text-gray-400" />
@@ -257,7 +252,7 @@ export default function FuncionariosPage() {
             </div>
 
             <p className="text-xs text-gray-500">
-              Selecione o cargo oficial para <strong>{modalCargo.nome}</strong> no salão:
+              Selecione o cargo para <strong>{modalCargo.nome}</strong>:
             </p>
 
             <div className="flex flex-col gap-2">
