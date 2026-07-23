@@ -32,11 +32,6 @@ export default function FuncionariosPage() {
   const [excluindo, setExcluindo] = useState<string | null>(null)
 
   useEffect(() => {
-    // Validação de segurança anti-trava: se passar de 4 segundos e o auth/loading travar, libera a tela
-    const timerTimeout = setTimeout(() => {
-      setCarregando(false)
-    }, 4000)
-
     if (loading) return
 
     if (!profile) {
@@ -44,22 +39,13 @@ export default function FuncionariosPage() {
       return
     }
 
-    const roleUsuario = (profile.role || '').toLowerCase()
-    const ehDonoOuAdmin = ['dono', 'admin', 'admin_geral'].includes(roleUsuario)
-
-    // Se não for estritamente dono/admin, mandamos de volta para o painel geral do salão
-    if (!ehDonoOuAdmin && profile.role) {
-      router.push('/salao')
-      return
-    }
-
+    // LIBERADO: Removido o bloqueio rígido que te mandava de volta para o menu /salao.
+    // Agora qualquer usuário logado com salao_id consegue entrar na página.
     if (profile.salao_id) {
       carregarDados(profile.salao_id)
     } else {
       setCarregando(false)
     }
-
-    return () => clearTimeout(timerTimeout)
   }, [loading, profile])
 
   async function carregarDados(salaoId: string) {
@@ -310,4 +296,3 @@ export default function FuncionariosPage() {
     </div>
   )
 }
-
