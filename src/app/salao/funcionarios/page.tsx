@@ -58,7 +58,14 @@ export default function FuncionariosPage() {
     try {
       const [salRes, funcRes] = await Promise.all([
         supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
-        supabase.from('profiles').select('*').eq('salao_id', profile!.salao_id!).order('nome', { ascending: true })
+        // FILTRANDO APENAS QUEM É DA EQUIPE (excluindo clientes da mesma tabela profiles)
+        // Se na sua tabela o cargo/tipo for diferente, ajuste o filtro abaixo (ex: .neq('role', 'cliente') ou .in('role', ['dono', 'funcionario']))
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('salao_id', profile!.salao_id!)
+          .neq('role', 'cliente') // <- Garante que clientes não apareçam na lista de funcionários
+          .order('nome', { ascending: true })
       ])
 
       setSalao(salRes.data)
@@ -162,7 +169,7 @@ export default function FuncionariosPage() {
           Equipe Cadastrada ({funcionarios.length})
         </p>
 
-        {/* LISTA DE FUNCIONÁRIOS */}
+        {/* LISTA DE FUNCIONÁRIOS (SEM CLIENTES) */}
         {funcionarios.map(f => {
           const eDono = f.role === 'dono'
           return (
