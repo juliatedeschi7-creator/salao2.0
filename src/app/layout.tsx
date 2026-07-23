@@ -19,7 +19,6 @@ import {
   Home
 } from 'lucide-react'
 
-// Itens do menu com as chaves correspondentes de permissão
 const MENU_ITEMS = [
   { id: 'dashboard', label: 'Painel / Home', href: '/salao', icon: Home },
   { id: 'agenda_total', label: 'Agenda', href: '/salao/agenda', icon: Calendar },
@@ -41,6 +40,7 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (loading) return
+    // Apenas redireciona para o login se realmente não houver perfil logado
     if (!profile) {
       router.push('/login')
       return
@@ -65,15 +65,12 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
   }
 
   const corPrimaria = salao?.cor_primaria || '#E91E8C'
-
-  // Dono tem acesso total a tudo. Funcionário checa o JSON `permissoes_paginas`.
   const eDono = profile.role === 'dono'
   const permissoes = profile.permissoes_paginas || {}
 
-  // Filtra o menu dinamicamente: Dono vê tudo; funcionário vê apenas o que estiver true (ou padrão true se não configurado)
+  // Se for dono vê tudo. Se for funcionário, valida se a permissão não está explicitamente false.
   const menuFiltrado = MENU_ITEMS.filter(item => {
     if (eDono) return true
-    // Se a permissão específica estiver explicitamente 'false', oculta do menu
     if (permissoes[item.id] === false) return false
     return true
   })
@@ -117,7 +114,6 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
         fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-gray-100 flex flex-col transition-transform duration-300 ease-in-out md:static md:translate-x-0
         ${sidebarOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}
       `}>
-        {/* LOGO / CABEÇALHO DO MENU */}
         <div className="p-6 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-3 overflow-hidden">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-white font-black text-lg shadow-md shrink-0"
@@ -137,7 +133,6 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
           </button>
         </div>
 
-        {/* LISTA DE LINKS DO MENU */}
         <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto">
           {menuFiltrado.map(item => {
             const Icon = item.icon
@@ -162,7 +157,6 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
           })}
         </nav>
 
-        {/* RODAPÉ DO MENU / PERFIL E SAÍDA */}
         <div className="p-4 border-t border-gray-100 bg-gray-50/50">
           <div className="flex items-center gap-3 mb-3 px-2">
             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-sm"
@@ -183,7 +177,6 @@ export default function SalaoLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      {/* CONTEÚDO PRINCIPAL DA PÁGINA */}
       <main className="flex-1 min-w-0 overflow-y-auto">
         {children}
       </main>
