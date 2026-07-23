@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, UserCheck, Copy, Check, Plus, Trash2 } from 'lucide-react'
+import { ShieldCheck, Plus, Edit2, Trash2, ... } from 'lucide-react'
+
 
 export default function FuncionariosPage() {
   const { profile, loading } = useAuth()
