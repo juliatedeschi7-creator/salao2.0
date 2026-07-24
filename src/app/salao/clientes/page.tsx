@@ -38,11 +38,11 @@ export default function ClientesPage() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    // Clientes ativos (aprovados)
+    // Clientes ativos (trazendo tanto os que têm status 'ativo' quanto os antigos sem status definido)
     const { data: cls } = await supabase.from('clientes')
       .select('*')
       .eq('salao_id', profile!.salao_id!)
-      .eq('status', 'ativo')
+      .or('status.eq.ativo,status.is.null')
       .order('nome', { ascending: true })
     setClientes(cls || [])
 
@@ -377,4 +377,3 @@ export default function ClientesPage() {
     </div>
   )
 }
- 
