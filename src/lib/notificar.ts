@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 
 interface NotificarParams {
   salaoId?: string | null
-  remetenteId: string | null | undefined
+  remetenteId?: string | null
   destinatarioId: string | null | undefined
   titulo: string
   mensagem: string
