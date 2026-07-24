@@ -3,95 +3,134 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Calendar, CheckCircle, XCircle } from 'lucide-react'
+import { ArrowLeft, Calendar as CalendarIcon, Clock, User, Scissors } from 'lucide-react'
 
-export default function FuncionarioAgendaPage() {
+export default function AgendaFuncionarioPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
-  const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
-  const [dataSelecionada, setDataSelecionada] = useState(new Date())
+  const [carregando, setCarregando] = useState(true)
+  const [salao, setSalao] = useState<any>(null)
+  const [dataSelecionada, setDataSelecionada] = useState(new Date().toISOString().slice(0, 10))
 
   useEffect(() => {
-    if (!loading && profile?.salao_id) carregarDados()
-  }, [loading, dataSelecionada])
+    if (loading) return
+    if (!profile) { router.push('/login'); return }
+    if (profile.salao_id) {
+      carregarAgendaGeral()
+    }
+  }, [loading, profile, dataSelecionada])
 
-  async function carregarDados() {
+  async function carregarAgendaGeral() {
+    setCarregando(true)
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
-    const inicio = new Date(dataSelecionada); inicio.setHours(0, 0, 0, 0)
-    const fim = new Date(dataSelecionada); fim.setHours(23, 59, 59, 999)
-    const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome), servicos(nome)')
-      .eq('salao_id', profile!.salao_id!)
-      .eq('profissional_id', profile!.id)
-      .gte('data_hora', inicio.toISOString()).lte('data_hora', fim.toISOString()).order('data_hora')
-    setAgendamentos(ags || [])
-  }
 
-  async function concluir(id: string) {
-    await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', id)
-    carregarDados()
+    // Busca a agenda geral do salão para a data selecionada
+    const inicioDia = `${dataSelecionada}T00:00:00`
+    const fimDia = `${dataSelecionada}T23:59:59`
+
+    const { data, error } = await supabase
+      .from('agendamentos')
+      .select('*, clientes(nome, telefone), servicos(nome, duracao_minutos), profiles:profissional_id(nome)')
+      .eq('salao_id', profile!.salao_id!)
+      .gte('data_hora', inicioDia)
+      .lte('data_hora', fimDia)
+      .order('data_hora', { ascending: true })
+
+    if (!error) {
+      setAgendamentos(data || [])
+    }
+    setCarregando(false)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-
-  function diasSemana() {
-    const dias = []
-    const inicio = new Date(dataSelecionada)
-    inicio.setDate(inicio.getDate() - inicio.getDay() + 1)
-    for (let i = 0; i < 7; i++) { const d = new Date(inicio); d.setDate(inicio.getDate() + i); dias.push(d) }
-    return dias
-  }
-  const labels = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D']
+  const isFuncionarioComum = profile?.cargo === 'funcionario' || profile?.tipo === 'funcionario'
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-8">
+    <div className="min-h-screen bg-[#f8f9fa] pb-8">
+      {/* Cabeçalho */}
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg">Minha Agenda</h1>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Agenda Geral do Salão</h1>
       </div>
-      <div className="bg-white px-4 pb-3">
-        <div className="flex gap-2 overflow-x-auto pt-3 pb-1">
-          {diasSemana().map((dia, i) => {
-            const sel = dia.toDateString() === dataSelecionada.toDateString()
-            return (
-              <button key={i} onClick={() => setDataSelecionada(dia)}
-                className="flex flex-col items-center gap-1 px-3 py-2 rounded-2xl min-w-[44px] transition-all"
-                style={sel ? { backgroundColor: cor } : {}}>
-                <span className={'text-xs font-medium ' + (sel ? 'text-white' : 'text-gray-400')}>{labels[i]}</span>
-                <span className={'text-base font-bold ' + (sel ? 'text-white' : 'text-gray-900')}>{dia.getDate()}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {agendamentos.length === 0 ? (
-          <div className="card text-center py-10"><Calendar size={36} className="text-gray-300 mx-auto mb-2" /><p className="text-gray-400">Nenhum atendimento</p></div>
-        ) : agendamentos.map(ag => (
-          <div key={ag.id} className="card flex flex-col gap-3">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
-                <p className="text-sm text-gray-500">{ag.servicos?.nome}</p>
-                <p className="text-xs text-gray-400">{new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
-              </div>
-              <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
-                (ag.status === 'confirmado' ? 'bg-green-50 text-green-600' :
-                ag.status === 'concluido' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-50 text-yellow-600')}>
-                {ag.status}
-              </span>
-            </div>
-            {ag.status === 'confirmado' && (
-              <button onClick={() => concluir(ag.id)}
-                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-sm font-medium"
-                style={{ backgroundColor: cor }}>
-                <CheckCircle size={16} />Marcar como concluido
-              </button>
-            )}
+
+      <div className="px-4 py-4 flex flex-col gap-4">
+        {/* Seletor de Data */}
+        <div className="bg-white p-3 rounded-2xl shadow-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CalendarIcon size={18} style={{ color: cor }} />
+            <span className="text-sm font-semibold text-gray-700">Data do atendimento:</span>
           </div>
-        ))}
+          <input 
+            type="date" 
+            className="input-field text-sm py-1 px-2 w-auto" 
+            value={dataSelecionada} 
+            onChange={e => setDataSelecionada(e.target.value)} 
+          />
+        </div>
+
+        {/* Aviso se for funcionário comum (Modo Somente Visualização) */}
+        {isFuncionarioComum && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+            <p className="text-xs text-blue-700 font-medium text-center">
+              👁️ Modo de visualização: Você está acessando a agenda geral em modo somente leitura.
+            </p>
+          </div>
+        )}
+
+        {/* Lista de Agendamentos */}
+        {carregando ? (
+          <div className="flex justify-center py-12">
+            <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+          </div>
+        ) : agendamentos.length === 0 ? (
+          <div className="card text-center py-12">
+            <CalendarIcon size={36} className="text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-400 text-sm">Nenhum agendamento para esta data.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {agendamentos.map(ag => (
+              <div key={ag.id} className="card flex flex-col gap-2.5 bg-white border border-gray-100 shadow-sm rounded-2xl p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs" style={{ backgroundColor: cor }}>
+                      {ag.clientes?.nome?.charAt(0) || 'C'}
+                    </div>
+                    <div>
+                      <p className="font-bold text-gray-900 text-sm">{ag.clientes?.nome || 'Cliente'}</p>
+                      <p className="text-xs text-gray-400">{ag.clientes?.telefone || 'Sem telefone'}</p>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase ${
+                    ag.status === 'confirmado' ? 'bg-green-50 text-green-600' :
+                    ag.status === 'cancelado' ? 'bg-red-50 text-red-600' : 'bg-yellow-50 text-yellow-600'
+                  }`}>
+                    {ag.status}
+                  </span>
+                </div>
+
+                <div className="border-t border-gray-50 pt-2 flex flex-col gap-1.5 text-xs text-gray-600">
+                  <div className="flex items-center gap-1.5">
+                    <Clock size={14} className="text-gray-400" />
+                    <span className="font-semibold text-gray-800">
+                      {new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Scissors size={14} className="text-gray-400" />
+                    <span>{ag.servicos?.nome || 'Serviço'}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <User size={14} className="text-gray-400" />
+                    <span>Profissional: <strong className="text-gray-800">{ag.profiles?.nome || 'Não atribuído'}</strong></span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
