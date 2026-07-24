@@ -158,6 +158,44 @@ export default function NotificacoesDonoPage() {
     setCoberturas(covs)
     setCarregandoCoberturas(false)
   }
+// Trecho para adicionar dentro do modal de confirmação de atendimento existente
+
+const [fotoAntes, setFotoAntes] = useState<File | null>(null)
+const [fotoDepois, setFotoDepois] = useState<File | null>(null)
+
+async function uploadFoto(file: File, pasta: string) {
+  const fileExt = file.name.split('.').pop()
+  const fileName = `${Math.random()}.${fileExt}`
+  const filePath = `${pasta}/${fileName}`
+  
+  const { error } = await supabase.storage.from('evolucoes').upload(filePath, file)
+  if (error) throw error
+
+  const { data } = supabase.storage.from('evolucoes').getPublicUrl(filePath)
+  return data.publicUrl
+}
+
+let urlAntes = null
+let urlDepois = null
+
+if (fotoAntes) {
+  urlAntes = await uploadFoto(fotoAntes, 'antes')
+}
+if (fotoDepois) {
+  urlDepois = await uploadFoto(fotoDepois, 'depois')
+}
+
+// Salva na tabela de evoluções do cliente
+if (urlAntes || urlDepois) {
+  await supabase.from('evolucao_fotos').insert({
+    salao_id: profile!.salao_id,
+    cliente_id: modalConfirmar.cliente_id,
+    agendamento_id: modalConfirmar.id,
+    foto_antes: urlAntes,
+    foto_depois: urlDepois,
+    observacao: servicoRealizado
+  })
+}
 
   function alterarPacoteServico(servicoId: string, clientePacoteId: string | null) {
     setCoberturas(prev => prev.map(c =>
