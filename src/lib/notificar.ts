@@ -1,25 +1,31 @@
-type NotificarParams = {
-  salaoId?: string | null
-  remetenteId?: string | null
-  destinatarioId: string
+import { supabase } from './supabase'
+
+interface NotificarParams {
+  salaoId: string | null | undefined
+  remetenteId: string | null | undefined
+  destinatarioId: string | null | undefined
   titulo: string
   mensagem: string
-  tipo?: string
+  tipo: string
   url?: string
 }
 
-// Chama a rota central: grava a notificação no sininho E dispara o push de verdade.
-// Use esta função em vez de "supabase.from('notificacoes').insert(...)" direto.
-export async function notificar(params: NotificarParams) {
+export async function notificar({
+  salaoId, remetenteId, destinatarioId, titulo, mensagem, tipo, url,
+}: NotificarParams): Promise<void> {
+  if (!destinatarioId || !salaoId || !remetenteId) return
   try {
-    const res = await fetch('/api/notificar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params)
+    await supabase.from('notificacoes').insert({
+      salao_id: salaoId,
+      remetente_id: remetenteId,
+      destinatario_id: destinatarioId,
+      titulo,
+      mensagem,
+      tipo,
+      lida: false,
+      url: url || null,
     })
-    return await res.json()
-  } catch (err) {
-    console.error('Erro ao notificar:', err)
-    return { ok: false }
+  } catch {
+    // silencioso
   }
 }
