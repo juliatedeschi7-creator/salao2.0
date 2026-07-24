@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Mail, Calendar, Package, ClipboardList, Camera, Edit2, Check, X, Lock } from 'lucide-react'
+import { ArrowLeft, Mail, Calendar, Package, ClipboardList, Check, X, Lock } from 'lucide-react'
 
 export default function ClientePerfilPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const params = useParams()
-  const clienteId = params.id as string
+  
+  const clienteId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string)
 
   const [salao, setSalao] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
@@ -28,35 +29,43 @@ export default function ClientePerfilPage() {
       router.push('/login')
       return
     }
-    if (profile.salao_id) {
+    if (profile.salao_id && clienteId) {
       carregarDados()
     }
   }, [loading, profile, clienteId])
 
   async function carregarDados() {
-    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
-    setSalao(sal)
+    try {
+      const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
+      setSalao(sal)
 
-    const { data: cli } = await supabase.from('clientes').select('*').eq('id', clienteId).single()
-    setCliente(cli)
-    setObsText(cli?.observacoes_internas || '')
+      const { data: cli, error: erroCli } = await supabase.from('clientes').select('*').eq('id', clienteId).single()
+      if (erroCli || !cli) {
+        setCarregando(false)
+        return
+      }
+      setCliente(cli)
+      setObsText(cli?.observacoes_internas || '')
 
-    const { data: ags } = await supabase.from('agendamentos')
-      .select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
-      .eq('cliente_id', clienteId).order('data_hora', { ascending: false })
-    setAgendamentos(ags || [])
+      const { data: ags } = await supabase.from('agendamentos')
+        .select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
+        .eq('cliente_id', clienteId).order('data_hora', { ascending: false })
+      setAgendamentos(ags || [])
 
-    const { data: pacs } = await supabase.from('cliente_pacotes')
-      .select('*, pacotes(nome, sessoes_inclusas), profiles!vendido_por(nome)')
-      .eq('cliente_id', clienteId).order('data_compra', { ascending: false })
-    setPacotes(pacs || [])
+      const { data: pacs } = await supabase.from('cliente_pacotes')
+        .select('*, pacotes(nome, sessoes_inclusas), profiles!vendido_por(nome)')
+        .eq('cliente_id', clienteId).order('data_compra', { ascending: false })
+      setPacotes(pacs || [])
 
-    const { data: ans } = await supabase.from('respostas_anamnese')
-      .select('*, fichas_anamnese(titulo)')
-      .eq('cliente_id', clienteId).order('created_at', { ascending: false })
-    setAnamneses(ans || [])
-
-    setCarregando(false)
+      const { data: ans } = await supabase.from('respostas_anamnese')
+        .select('*, fichas_anamnese(titulo)')
+        .eq('cliente_id', clienteId).order('created_at', { ascending: false })
+      setAnamneses(ans || [])
+    } catch (err) {
+      console.error('Erro ao carregar dados do cliente:', err)
+    } finally {
+      setCarregando(false)
+    }
   }
 
   async function salvarObservacoes() {
@@ -83,9 +92,17 @@ export default function ClientePerfilPage() {
     </div>
   )
 
+  if (!cliente) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-4">
+      <p className="text-gray-600 font-medium">Cliente não encontrado ou ID inválido.</p>
+      <button onClick={() => router.back()} className="px-4 py-2 rounded-xl text-white text-sm" style={{ backgroundColor: cor }}>
+        Voltar
+      </button>
+    </div>
+  )
+
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-8">
-
       {/* Header com gradiente */}
       <div className="relative overflow-hidden px-4 pt-12 pb-20"
         style={{ background: `linear-gradient(135deg, ${cor}, ${cor}bb)` }}>
@@ -110,10 +127,6 @@ export default function ClientePerfilPage() {
               </div>
             )}
           </div>
-          <button onClick={() => router.push('/salao/clientes/' + clienteId + '/editar')}
-            className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-            <Edit2 size={16} className="text-white" />
-          </button>
         </div>
       </div>
 
@@ -168,20 +181,16 @@ export default function ClientePerfilPage() {
       </div>
 
       <div className="px-4 flex flex-col gap-3">
-
         {/* RESUMO */}
         {aba === 'resumo' && (
           <>
-            {/* Observações internas */}
             <div className="card flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Lock size={14} style={{ color: cor }} />
                   <p className="text-sm font-semibold text-gray-700">Observações internas</p>
                 </div>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
-                  Gestão
-                </span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">Gestão</span>
               </div>
 
               {editandoObs ? (
@@ -189,7 +198,7 @@ export default function ClientePerfilPage() {
                   <textarea
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none resize-none"
                     rows={5}
-                    placeholder="Ex: Tintura 7.1, alérgica a amônia, prefere atendimento pela manhã, cabelo fino e quebradiço..."
+                    placeholder="Ex: Tintura 7.1, alérgica a amônia..."
                     value={obsText}
                     onChange={e => setObsText(e.target.value)}
                     autoFocus
@@ -209,19 +218,14 @@ export default function ClientePerfilPage() {
               ) : (
                 <button onClick={() => setEditandoObs(true)} className="text-left w-full">
                   {cliente?.observacoes_internas ? (
-                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                      {cliente.observacoes_internas}
-                    </p>
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{cliente.observacoes_internas}</p>
                   ) : (
-                    <p className="text-sm text-gray-300 italic">
-                      Toque para adicionar observações sobre esta cliente (tintura, preferências, alergias, etc.)
-                    </p>
+                    <p className="text-sm text-gray-300 italic">Toque para adicionar observações...</p>
                   )}
                 </button>
               )}
             </div>
 
-            {/* Dados pessoais */}
             <div className="card flex flex-col gap-2">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Dados pessoais</p>
               {cliente?.email && (
@@ -238,23 +242,7 @@ export default function ClientePerfilPage() {
                   </p>
                 </div>
               )}
-              <div className="flex items-center gap-2">
-                <Calendar size={14} className="text-gray-400 shrink-0" />
-                <p className="text-sm text-gray-400">
-                  Cliente desde {new Date(cliente?.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
-                </p>
-              </div>
             </div>
-
-            {agendamentos.length > 0 && (
-              <div className="card">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Último atendimento</p>
-                <p className="font-medium text-gray-900">{agendamentos[0].servicos?.nome}</p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {new Date(agendamentos[0].data_hora).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-                </p>
-              </div>
-            )}
           </>
         )}
 
@@ -276,8 +264,6 @@ export default function ClientePerfilPage() {
               <p className="text-xs text-gray-400">
                 {new Date(ag.data_hora).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
-              {ag.profiles?.nome && <p className="text-xs text-gray-400">Prof: {ag.profiles.nome}</p>}
-              {ag.valor && <p className="text-sm font-bold" style={{ color: cor }}>R$ {Number(ag.valor).toFixed(2).replace('.', ',')}</p>}
             </div>
           ))
         )}
@@ -289,29 +275,11 @@ export default function ClientePerfilPage() {
               <Package size={32} className="text-gray-300 mx-auto mb-2" />
               <p className="text-gray-400">Nenhum pacote</p>
             </div>
-          ) : pacotes.map(p => {
-            const progresso = p.sessoes_total > 0 ? (p.sessoes_usadas / p.sessoes_total) * 100 : 0
-            return (
-              <div key={p.id} className="card flex flex-col gap-2">
-                <div className="flex items-start justify-between">
-                  <p className="font-bold text-gray-900">{p.pacotes?.nome || 'Pacote manual'}</p>
-                  <span className={'text-xs px-2 py-0.5 rounded-full ' + (p.status === 'ativo' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500')}>
-                    {p.status}
-                  </span>
-                </div>
-                <div>
-                  <div className="flex justify-between text-xs text-gray-400 mb-1">
-                    <span>{p.sessoes_usadas} usadas</span>
-                    <span>{p.sessoes_total - p.sessoes_usadas} restantes</span>
-                  </div>
-                  <div className="h-2 bg-gray-100 rounded-full">
-                    <div className="h-2 rounded-full" style={{ width: progresso + '%', backgroundColor: cor }} />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400">Vendido por: {p.profiles?.nome || 'Não informado'}</p>
-              </div>
-            )
-          })
+          ) : pacotes.map(p => (
+            <div key={p.id} className="card flex flex-col gap-2">
+              <p className="font-bold text-gray-900">{p.pacotes?.nome || 'Pacote manual'}</p>
+            </div>
+          ))
         )}
 
         {/* ANAMNESE */}
@@ -324,13 +292,6 @@ export default function ClientePerfilPage() {
           ) : anamneses.map(a => (
             <div key={a.id} className="card flex flex-col gap-2">
               <p className="font-semibold text-gray-900">{a.fichas_anamnese?.titulo}</p>
-              <p className="text-xs text-gray-400">{new Date(a.created_at).toLocaleDateString('pt-BR')}</p>
-              {a.respostas && typeof a.respostas === 'object' && Object.entries(a.respostas).map(([k, v]) => (
-                <div key={k} className="flex justify-between text-sm border-t border-gray-50 pt-1.5">
-                  <span className="text-gray-500">{k}</span>
-                  <span className="font-medium text-gray-900">{String(v)}</span>
-                </div>
-              ))}
             </div>
           ))
         )}
