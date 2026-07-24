@@ -26,7 +26,6 @@ export default function AgendaFuncionarioPage() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    // Busca a agenda geral do salão para a data selecionada
     const inicioDia = `${dataSelecionada}T00:00:00`
     const fimDia = `${dataSelecionada}T23:59:59`
 
@@ -45,18 +44,17 @@ export default function AgendaFuncionarioPage() {
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const isFuncionarioComum = profile?.cargo === 'funcionario' || profile?.tipo === 'funcionario'
+  const p = profile as any
+  const isFuncionarioComum = p?.tipo === 'funcionario' || p?.nivel === 'funcionario'
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-8">
-      {/* Cabeçalho */}
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1">Agenda Geral do Salão</h1>
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-4">
-        {/* Seletor de Data */}
         <div className="bg-white p-3 rounded-2xl shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CalendarIcon size={18} style={{ color: cor }} />
@@ -70,7 +68,6 @@ export default function AgendaFuncionarioPage() {
           />
         </div>
 
-        {/* Aviso se for funcionário comum (Modo Somente Visualização) */}
         {isFuncionarioComum && (
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
             <p className="text-xs text-blue-700 font-medium text-center">
@@ -79,7 +76,6 @@ export default function AgendaFuncionarioPage() {
           </div>
         )}
 
-        {/* Lista de Agendamentos */}
         {carregando ? (
           <div className="flex justify-center py-12">
             <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
