@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
-import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Mail, Calendar, Package, ClipboardList, Camera, Edit2, Check, X, Lock } from 'lucide-react'
 
 export default function ClientePerfilPage() {
@@ -25,9 +24,13 @@ export default function ClientePerfilPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
-    carregarDados()
+    if (!profile) {
+      router.push('/login')
+      return
+    }
+    if (profile.salao_id) {
+      carregarDados()
+    }
   }, [loading, profile, clienteId])
 
   async function carregarDados() {
@@ -169,7 +172,7 @@ export default function ClientePerfilPage() {
         {/* RESUMO */}
         {aba === 'resumo' && (
           <>
-            {/* Observações internas — VISÍVEL APENAS PARA DONOS */}
+            {/* Observações internas */}
             <div className="card flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -177,7 +180,7 @@ export default function ClientePerfilPage() {
                   <p className="text-sm font-semibold text-gray-700">Observações internas</p>
                 </div>
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
-                  Só você vê
+                  Gestão
                 </span>
               </div>
 
