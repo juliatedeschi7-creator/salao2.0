@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { temAcessoTotal } from '@/lib/permissoes'
 import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, Package } from 'lucide-react'
 
@@ -47,8 +46,10 @@ export default function NotificacoesDonoPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (!profile) {
+      router.push('/login')
+      return
+    }
     if (profile.salao_id) carregarDados()
   }, [loading, profile])
 
