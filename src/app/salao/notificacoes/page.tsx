@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, Package } from 'lucide-react'
+import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, Package, Camera } from 'lucide-react'
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 type PacoteOpcao = {
@@ -44,6 +44,8 @@ export default function NotificacoesDonoPage() {
   const [salvando, setSalvando] = useState(false)
   const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
   const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
+  const [fotoAntes, setFotoAntes] = useState<File | null>(null)
+  const [fotoDepois, setFotoDepois] = useState<File | null>(null)
 
   useEffect(() => {
     if (loading) return
@@ -153,49 +155,13 @@ export default function NotificacoesDonoPage() {
   async function abrirModalConfirmar(ag: any) {
     setModalConfirmar(ag)
     setServicoRealizado(ag.servicos?.nome || '')
+    setFotoAntes(null)
+    setFotoDepois(null)
     setCarregandoCoberturas(true)
     const covs = await montarCoberturas(ag)
     setCoberturas(covs)
     setCarregandoCoberturas(false)
   }
-// Trecho para adicionar dentro do modal de confirmação de atendimento existente
-
-const [fotoAntes, setFotoAntes] = useState<File | null>(null)
-const [fotoDepois, setFotoDepois] = useState<File | null>(null)
-
-async function uploadFoto(file: File, pasta: string) {
-  const fileExt = file.name.split('.').pop()
-  const fileName = `${Math.random()}.${fileExt}`
-  const filePath = `${pasta}/${fileName}`
-  
-  const { error } = await supabase.storage.from('evolucoes').upload(filePath, file)
-  if (error) throw error
-
-  const { data } = supabase.storage.from('evolucoes').getPublicUrl(filePath)
-  return data.publicUrl
-}
-
-let urlAntes = null
-let urlDepois = null
-
-if (fotoAntes) {
-  urlAntes = await uploadFoto(fotoAntes, 'antes')
-}
-if (fotoDepois) {
-  urlDepois = await uploadFoto(fotoDepois, 'depois')
-}
-
-// Salva na tabela de evoluções do cliente
-if (urlAntes || urlDepois) {
-  await supabase.from('evolucao_fotos').insert({
-    salao_id: profile!.salao_id,
-    cliente_id: modalConfirmar.cliente_id,
-    agendamento_id: modalConfirmar.id,
-    foto_antes: urlAntes,
-    foto_depois: urlDepois,
-    observacao: servicoRealizado
-  })
-}
 
   function alterarPacoteServico(servicoId: string, clientePacoteId: string | null) {
     setCoberturas(prev => prev.map(c =>
@@ -205,78 +171,126 @@ if (urlAntes || urlDepois) {
     ))
   }
 
+  async function uploadFoto(file: File, pasta: string) {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Math.random()}.${fileExt}`
+    const filePath = `${pasta}/${fileName}`
+    
+    const { error } = await supabase.storage.from('evolucoes').upload(filePath, file)
+    if (error) throw error
+
+    const { data } = supabase.storage.from('evolucoes').getPublicUrl(filePath)
+    return data.publicUrl
+  }
+
   // ─── Confirma e desconta dos pacotes escolhidos ──────────────────────────
   async function confirmarAtendimento() {
     if (!servicoRealizado || !modalConfirmar) return
     setSalvando(true)
 
-    await supabase.from('confirmacoes_atendimento').insert({
-      agendamento_id: modalConfirmar.id,
-      salao_id: profile!.salao_id,
-      confirmado_por: profile!.id,
-      servico_realizado: servicoRealizado
-    })
+    try {
+      let urlAntes = null
+      let urlDepois = null
 
-    await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', modalConfirmar.id)
+      if (fotoAntes) {
+        urlAntes = await uploadFoto(fotoAntes, 'antes')
+      }
+      if (fotoDepois) {
+        urlDepois = await uploadFoto(fotoDepois, 'depois')
+      }
 
-    const hoje = new Date().toISOString().slice(0, 10)
+      await supabase.from('confirmacoes_atendimento').insert({
+        agendamento_id: modalConfirmar.id,
+        salao_id: profile!.salao_id,
+        confirmado_por: profile!.id,
+        servico_realizado: servicoRealizado
+      })
 
-    const descontos: Record<string, { nome: string; peso: number }[]> = {}
-    for (const cob of coberturas) {
-      if (!cob.clientePacoteIdSelecionado) continue
-      if (!descontos[cob.clientePacoteIdSelecionado]) descontos[cob.clientePacoteIdSelecionado] = []
-      descontos[cob.clientePacoteIdSelecionado].push({ nome: cob.servicoNome, peso: cob.sessoesEquivalentes })
-    }
+      await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', modalConfirmar.id)
 
-    for (const [cpId, itens] of Object.entries(descontos)) {
-      const totalPeso = itens.reduce((acc, i) => acc + i.peso, 0)
+      if (urlAntes || urlDepois) {
+        await supabase.from('evolucao_fotos').insert({
+          salao_id: profile!.salao_id,
+          cliente_id: modalConfirmar.cliente_id,
+          agendamento_id: modalConfirmar.id,
+          foto_antes: urlAntes,
+          foto_depois: urlDepois,
+          observacao: servicoRealizado
+        })
+      }
 
-      const { data: cp } = await supabase.from('cliente_pacotes')
-        .select('sessoes_usadas, sessoes_total').eq('id', cpId).single()
-      if (!cp) continue
+      const hoje = new Date().toISOString().slice(0, 10)
 
-      const novasUsadas = cp.sessoes_usadas + totalPeso
-      await supabase.from('cliente_pacotes').update({
-        sessoes_usadas: novasUsadas,
-        status: novasUsadas >= cp.sessoes_total ? 'concluido' : 'ativo'
-      }).eq('id', cpId)
+      const descontos: Record<string, { nome: string; peso: number }[]> = {}
+      for (const cob of coberturas) {
+        if (!cob.clientePacoteIdSelecionado) continue
+        if (!descontos[cob.clientePacoteIdSelecionado]) descontos[cob.clientePacoteIdSelecionado] = []
+        descontos[cob.clientePacoteIdSelecionado].push({ nome: cob.servicoNome, peso: cob.sessoesEquivalentes })
+      }
 
-      for (const item of itens) {
-        for (let i = 0; i < item.peso; i++) {
-          await supabase.from('sessoes_pacote').insert({
-            cliente_pacote_id: cpId,
-            data_sessao: hoje,
-            servico_realizado: item.peso > 1 ? `${item.nome} (${i + 1}/${item.peso})` : item.nome,
-            profissional_id: profile!.id
-          })
+      for (const [cpId, itens] of Object.entries(descontos)) {
+        const totalPeso = itens.reduce((acc, i) => acc + i.peso, 0)
+
+        const { data: cp } = await supabase.from('cliente_pacotes')
+          .select('sessoes_usadas, sessoes_total').eq('id', cpId).single()
+        if (!cp) continue
+
+        const novasUsadas = cp.sessoes_usadas + totalPeso
+        await supabase.from('cliente_pacotes').update({
+          sessoes_usadas: novasUsadas,
+          status: novasUsadas >= cp.sessoes_total ? 'concluido' : 'ativo'
+        }).eq('id', cpId)
+
+        for (const item of itens) {
+          for (let i = 0; i < item.peso; i++) {
+            await supabase.from('sessoes_pacote').insert({
+              cliente_pacote_id: cpId,
+              data_sessao: hoje,
+              servico_realizado: item.peso > 1 ? `${item.nome} (${i + 1}/${item.peso})` : item.nome,
+              profissional_id: profile!.id
+            })
+          }
         }
       }
-    }
 
-    const totalDescontados = Object.values(descontos)
-      .reduce((acc, itens) => acc + itens.reduce((a, i) => a + i.peso, 0), 0)
+      const totalDescontados = Object.values(descontos)
+        .reduce((acc, itens) => acc + itens.reduce((a, i) => a + i.peso, 0), 0)
 
-    const { data: clienteInfo } = await supabase.from('clientes')
-      .select('profile_id').eq('id', modalConfirmar.cliente_id).single()
-    if (clienteInfo?.profile_id) {
-      await notificar({
+      const { data: clienteInfo } = await supabase.from('clientes')
+        .select('profile_id').eq('id', modalConfirmar.cliente_id).single()
+      if (clienteInfo?.profile_id) {
+        await notificar({
+          salaoId: profile!.salao_id,
+          remetenteId: profile!.id,
+          destinatarioId: clienteInfo.profile_id,
+          titulo: '✅ Atendimento confirmado!',
+          mensagem: totalDescontados > 0
+            ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
+            : 'Seu atendimento foi registrado com sucesso!',
+          tipo: 'confirmacao',
+          url: '/cliente/pacotes'
+        })
+      }
+
+      setModalConfirmar(null)
+      setServicoRealizado('')
+      setCoberturas([])
+      setFotoAntes(null)
+      setFotoDepois(null)
+      carregarDados()
+    } catch (error) {
+      console.error(error)
+      notificar({
         salaoId: profile!.salao_id,
         remetenteId: profile!.id,
-        destinatarioId: clienteInfo.profile_id,
-        titulo: '✅ Atendimento confirmado!',
-        mensagem: totalDescontados > 0
-          ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
-          : 'Seu atendimento foi registrado com sucesso!',
-        tipo: 'confirmacao',
-        url: '/cliente/pacotes'
+        destinatarioId: profile!.id,
+        titulo: 'Erro ao confirmar',
+        mensagem: 'Ocorreu um erro ao salvar as fotos ou confirmar o atendimento.',
+        tipo: 'sistema'
       })
+    } finally {
+      setSalvando(false)
     }
-
-    setModalConfirmar(null)
-    setServicoRealizado('')
-    setCoberturas([])
-    setSalvando(false)
-    carregarDados()
   }
 
   // ─── Demais funções ───────────────────────────────────────────────────────
@@ -667,7 +681,26 @@ if (urlAntes || urlDepois) {
                 value={servicoRealizado} onChange={e => setServicoRealizado(e.target.value)} />
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-2 border-t pt-3 mt-1">
+              <div className="flex items-center gap-1.5">
+                <Camera size={15} style={{ color: cor }} />
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">Fotos de Evolução (Antes e Depois)</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Foto Antes</label>
+                  <input type="file" accept="image/*" capture="environment" className="text-xs w-full file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100" onChange={e => setFotoAntes(e.target.files?.[0] || null)} />
+                  {fotoAntes && <span className="text-[10px] text-green-600 font-medium truncate">✓ {fotoAntes.name}</span>}
+                </div>
+                <div className="bg-gray-50 p-2.5 rounded-xl border border-gray-100 flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Foto Depois</label>
+                  <input type="file" accept="image/*" capture="environment" className="text-xs w-full file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-pink-50 file:text-pink-700 hover:file:bg-pink-100" onChange={e => setFotoDepois(e.target.files?.[0] || null)} />
+                  {fotoDepois && <span className="text-[10px] text-green-600 font-medium truncate">✓ {fotoDepois.name}</span>}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-2">
               <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
                 Cancelar
