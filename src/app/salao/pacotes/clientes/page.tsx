@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { temAcessoTotal } from '@/lib/permissoes'
-import { ArrowLeft, Search, Plus, Calendar, CheckCircle, Clock, X } from 'lucide-react'
+import { ArrowLeft, Search, Plus, Calendar, CheckCircle, Clock, X, Trash2 } from 'lucide-react'
 
 function hojeISO() {
   return new Date().toISOString().slice(0, 10)
@@ -26,17 +26,14 @@ export default function PacotesClientesPage() {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
 
-  // Vender Pacote (modelo atual)
   const [dataInicioVenda, setDataInicioVenda] = useState(hojeISO())
   const [sessoesJaRealizadasVenda, setSessoesJaRealizadasVenda] = useState('0')
 
-  // Pacote Antigo (histórico manual)
   const [formAntigo, setFormAntigo] = useState({ nome: '', sessoes_total: '1', observacoes: '' })
   const [sessoesAntigo, setSessoesAntigo] = useState<{ data: string; descricao: string }[]>([])
   const [novaSessaoData, setNovaSessaoData] = useState(hojeISO())
   const [novaSessaoDescricao, setNovaSessaoDescricao] = useState('')
 
-  // Adicionar sessão a um pacote já existente
   const [modalSessao, setModalSessao] = useState<any>(null)
   const [sessaoData, setSessaoData] = useState(hojeISO())
   const [sessaoDescricao, setSessaoDescricao] = useState('')
@@ -156,6 +153,30 @@ export default function PacotesClientesPage() {
     selecionarCliente(clienteSelecionado)
   }
 
+  // ─── NOVO: excluir pacote inteiro ────────────────────────────────────────
+  async function excluirPacote(pacote: any) {
+    if (!confirm(`Excluir "${pacote.pacotes?.nome || pacote.observacoes || 'este pacote'}"? Isso também remove o histórico de sessões dele. Não pode ser desfeito.`)) return
+    setSalvando(true)
+    setErro('')
+
+    const { error: errSess } = await supabase.from('sessoes_pacote').delete().eq('cliente_pacote_id', pacote.id)
+    if (errSess) {
+      setErro('Erro ao remover sessões do pacote: ' + errSess.message)
+      setSalvando(false)
+      return
+    }
+
+    const { error: errPac } = await supabase.from('cliente_pacotes').delete().eq('id', pacote.id)
+    if (errPac) {
+      setErro('Erro ao excluir pacote: ' + errPac.message)
+      setSalvando(false)
+      return
+    }
+
+    setSalvando(false)
+    selecionarCliente(clienteSelecionado)
+  }
+
   async function venderPacote() {
     if (!pacoteModeloId || !clienteSelecionado) return
     setSalvando(true)
@@ -265,6 +286,12 @@ export default function PacotesClientesPage() {
             </button>
           </div>
 
+          {erro && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <p className="text-red-600 text-sm">{erro}</p>
+            </div>
+          )}
+
           <p className="font-bold text-gray-900">Pacotes da cliente</p>
           {pacotesCliente.length === 0 ? (
             <div className="card text-center py-8"><p className="text-gray-400">Nenhum pacote ainda</p></div>
@@ -279,7 +306,13 @@ export default function PacotesClientesPage() {
                     <p className="font-bold text-gray-900">{p.pacotes?.nome || p.observacoes || 'Pacote'}</p>
                     {p.historico_manual && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">Cadastro manual</span>}
                   </div>
-                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (p.status === 'ativo' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500')}>{p.status}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (p.status === 'ativo' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500')}>{p.status}</span>
+                    <button onClick={() => excluirPacote(p)} disabled={salvando}
+                      className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center">
+                      <Trash2 size={13} className="text-red-400" />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
@@ -335,7 +368,6 @@ export default function PacotesClientesPage() {
           })}
         </div>
 
-        {/* Modal: Vender Pacote (modelo atual) */}
         {modalVenda && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
             <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
@@ -380,7 +412,6 @@ export default function PacotesClientesPage() {
           </div>
         )}
 
-        {/* Modal: Pacote Antigo (histórico manual) */}
         {modalAntigo && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
             <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
@@ -452,7 +483,6 @@ export default function PacotesClientesPage() {
           </div>
         )}
 
-        {/* Modal: Adicionar sessão a um pacote já existente */}
         {modalSessao && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
             <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
