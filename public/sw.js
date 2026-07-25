@@ -13,32 +13,45 @@ self.addEventListener('fetch', (event) => {
   return
 })
 
+// ======= SUBSTITUA A PARTIR DAQUI =======
 self.addEventListener('push', (event) => {
-  // Adicionado para inspecionar exatamente o que o backend está enviando
-  console.log('Push recebido bruto:', event.data ? event.data.text() : 'Sem dados')
+  console.log('[SW] Evento push disparado pelo navegador')
 
-  let data = { title: 'Organiza Salão', body: 'Você tem uma nova notificação!', url: '/' }
+  let data = { 
+    title: 'Organiza Salão', 
+    body: 'Você tem uma nova notificação!', 
+    url: '/' 
+  }
 
   if (event.data) {
     try {
       data = event.data.json()
+      console.log('[SW] Dados do push em JSON:', data)
     } catch (err) {
+      console.log('[SW] Dados do push em texto puro:', event.data.text())
       data.body = event.data.text()
     }
+  } else {
+    console.log('[SW] Push recebido sem dados (payload vazio)')
   }
 
   const options = {
-    body: data.body,
+    body: data.body || 'Nova mensagem',
     icon: '/logo.png',
     badge: '/logo.png',
     vibrate: [200, 100, 200],
-    data: { url: data.url || '/' }
+    data: { url: data.url || '/' },
+    tag: 'organiza-salao-notification',
+    renotify: true
   }
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title || 'Organiza Salão', options)
+      .then(() => console.log('[SW] Notificação exibida com sucesso na tela!'))
+      .catch((err) => console.error('[SW] Erro ao chamar showNotification:', err))
   )
 })
+// =========================================
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
