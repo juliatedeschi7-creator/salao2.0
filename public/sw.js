@@ -14,6 +14,9 @@ self.addEventListener('fetch', (event) => {
 })
 
 self.addEventListener('push', (event) => {
+  // Adicionado para inspecionar exatamente o que o backend está enviando
+  console.log('Push recebido bruto:', event.data ? event.data.text() : 'Sem dados')
+
   let data = { title: 'Organiza Salão', body: 'Você tem uma nova notificação!', url: '/' }
 
   if (event.data) {
