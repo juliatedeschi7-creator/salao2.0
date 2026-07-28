@@ -59,9 +59,8 @@ export default function ClientePage() {
       .eq('cliente_id', cli?.id)
     setContasCount(contas || 0)
 
-    const pushAtivo = await verificarPushAtivo()
-    if (!pushAtivo) setModalPushLembrete(true)
-  }
+const pushAtivo = await verificarPushAtivo(profile.id)
+
 
   async function ativarPushAgora() {
     setAtivandoPush(true)
