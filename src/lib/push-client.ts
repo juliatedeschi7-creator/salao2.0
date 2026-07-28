@@ -98,3 +98,28 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     return false
   }
 }
+
+export async function verificarPushAtivo(profileId: string): Promise<boolean> {
+  try {
+    if (typeof window === 'undefined') return false
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+
+    if (!subscription) return false
+
+    const { data, error } = await supabase
+      .from('push_subscriptions')
+      .select('id')
+      .eq('profile_id', profileId)
+      .maybeSingle()
+
+    if (error || !data) return false
+
+    return true
+  } catch (err) {
+    console.error('Erro ao verificar push ativo:', err)
+    return false
+  }
+}
