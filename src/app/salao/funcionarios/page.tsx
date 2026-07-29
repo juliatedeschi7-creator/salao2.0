@@ -44,8 +44,8 @@ export default function FuncionariosPage() {
   const [cargoSelecionado, setCargoSelecionado] = useState<string>('comum')
   const [permissoesCustom, setPermissoesCustom] = useState<Record<string, boolean>>({})
   
-  // Escala e Horários
-  const [escalaDias, setEscalaDias] = useState<Record<string, { ativo: bool; entrada: string; saida: string }>>({})
+  // Escala e Horários (Corrigido para 'boolean')
+  const [escalaDias, setEscalaDias] = useState<Record<string, { ativo: boolean; entrada: string; saida: string }>>({})
   
   // Registros de Ponto e Horas Extras (tabela registro_horas)
   const [registrosPonto, setRegistrosPonto] = useState<any[]>([])
