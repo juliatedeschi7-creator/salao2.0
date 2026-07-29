@@ -102,8 +102,7 @@ export default function ConfiguracoesPage() {
       descricao: sal?.descricao || '',
     })
 
-    const ativo = await verificarPushAtivo()
-    setPushAtivo(ativo)
+const ativo = await verificarPushAtivo(profile.id)
   }
 
   async function salvarInfo() {
