@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, Bell, Link, Copy, Check, LogOut, Palette, 
   Smartphone, Clock, ChevronRight, UserCheck, Edit3, Save, 
-  X, ShieldCheck, Users, AlertCircle, FileText
+  X, FileText
 } from 'lucide-react'
 import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
 
@@ -59,17 +59,6 @@ export default function ConfiguracoesPage() {
   const [salvandoModulos, setSalvandoModulos] = useState(false)
   const [modulosSalvos, setModulosSalvos] = useState(false)
 
-  // Permissões Rápidas de Funcionários
-  const [permissoesFunc, setPermissoesFunc] = useState({
-    ver_faturamento: false,
-    ver_clientes: true,
-    ver_servicos: true,
-    ver_financeiro: false,
-    ver_agenda_todos: false,
-  })
-  const [salvandoPermissoesFunc, setSalvandoPermissoesFunc] = useState(false)
-  const [permissoesFuncSalvas, setPermissoesFuncSalvas] = useState(false)
-
   // Aviso de Serviços
   const [avisoServicos, setAvisoServicos] = useState('')
   const [salvandoAviso, setSalvandoAviso] = useState(false)
@@ -92,7 +81,6 @@ export default function ConfiguracoesPage() {
     setAprovacaoAutomatica(sal?.aprovacao_automatica_clientes === true)
     
     if (sal?.modulos_cliente) setModulos(prev => ({ ...prev, ...sal.modulos_cliente }))
-    if (sal?.permissoes_funcionario) setPermissoesFunc(prev => ({ ...prev, ...sal.permissoes_funcionario }))
     
     setFormInfo({
       nome: sal?.nome || '', 
@@ -102,7 +90,10 @@ export default function ConfiguracoesPage() {
       descricao: sal?.descricao || '',
     })
 
-const ativo = await verificarPushAtivo(profile.id)
+    if (profile?.id) {
+      const ativo = await verificarPushAtivo(profile.id)
+      setPushAtivo(ativo)
+    }
   }
 
   async function salvarInfo() {
@@ -144,14 +135,6 @@ const ativo = await verificarPushAtivo(profile.id)
     setSalvandoModulos(false)
     setModulosSalvos(true)
     setTimeout(() => setModulosSalvos(false), 2500)
-  }
-
-  async function salvarPermissoesFunc() {
-    setSalvandoPermissoesFunc(true)
-    await supabase.from('saloes').update({ permissoes_funcionario: permissoesFunc }).eq('id', profile!.salao_id!)
-    setSalvandoPermissoesFunc(false)
-    setPermissoesFuncSalvas(true)
-    setTimeout(() => setPermissoesFuncSalvas(false), 2500)
   }
 
   async function toggleAprovacaoAutomatica() {
@@ -326,51 +309,7 @@ const ativo = await verificarPushAtivo(profile.id)
           <ChevronRight size={18} className="text-gray-300 shrink-0" />
         </button>
 
-        {/* 3. ATALHO NOVO: Matriz Completa de Permissões por Cargo (Sim / Não) */}
-        <button onClick={() => router.push('/salao/funcionarios/permissoes')}
-          className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 active:scale-98 transition-all text-left">
-          <div className="w-11 h-11 rounded-full bg-purple-50 flex items-center justify-center shrink-0">
-            <ShieldCheck size={20} className="text-purple-600" />
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-gray-900 text-sm">Permissões Detalhadas por Cargo</p>
-            <p className="text-xs text-gray-400 mt-0.5">Matriz completa de acesso Sim / Não para cada página</p>
-          </div>
-          <ChevronRight size={18} className="text-gray-300 shrink-0" />
-        </button>
-
-        {/* 4. Permissões Rápidas para Funcionários Simples */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
-          <div>
-            <p className="font-bold text-gray-900 flex items-center gap-2"><Users size={18} />Acessos Rápidos de Funcionários</p>
-            <p className="text-xs text-gray-400 mt-0.5">Visibilidade padrão para membros da equipe</p>
-          </div>
-          {[
-            { key: 'ver_faturamento', label: 'Resumo Financeiro do Dia', desc: 'Exibe o faturamento total na Home' },
-            { key: 'ver_clientes', label: 'Lista de Clientes', desc: 'Permite visualizar perfis de clientes' },
-            { key: 'ver_servicos', label: 'Lista de Serviços', desc: 'Permite visualizar serviços cadastrados' },
-            { key: 'ver_financeiro', label: 'Módulo Financeiro', desc: 'Permite acesso ao fluxo de caixa' },
-            { key: 'ver_agenda_todos', label: 'Agenda Geral', desc: 'Permite ver a agenda de outros colegas' },
-          ].map(p => (
-            <div key={p.key} className="flex items-center justify-between">
-              <div className="flex-1 pr-4">
-                <p className="text-sm font-medium text-gray-800">{p.label}</p>
-                <p className="text-xs text-gray-400">{p.desc}</p>
-              </div>
-              <button onClick={() => setPermissoesFunc(prev => ({ ...prev, [p.key]: !prev[p.key as keyof typeof permissoesFunc] }))}
-                className="relative w-12 h-6 rounded-full transition-colors shrink-0"
-                style={{ backgroundColor: permissoesFunc[p.key as keyof typeof permissoesFunc] ? cor : '#d1d5db' }}>
-                <div className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (permissoesFunc[p.key as keyof typeof permissoesFunc] ? 'left-6' : 'left-0.5')} />
-              </button>
-            </div>
-          ))}
-          <button onClick={salvarPermissoesFunc} disabled={salvandoPermissoesFunc}
-            className="w-full py-3 rounded-xl text-white font-semibold text-sm" style={{ backgroundColor: cor }}>
-            {permissoesFuncSalvas ? '✓ Salvo!' : salvandoPermissoesFunc ? 'Salvando...' : 'Salvar Acessos Rápidos'}
-          </button>
-        </div>
-
-        {/* 5. Paleta de Cores do App */}
+        {/* 3. Paleta de Cores do App */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Palette size={18} />Paleta de Cores do Salão</p>
           <div className="grid grid-cols-4 gap-3">
@@ -390,7 +329,7 @@ const ativo = await verificarPushAtivo(profile.id)
           )}
         </div>
 
-        {/* 6. Aparência do App do Cliente */}
+        {/* 4. Aparência do App do Cliente */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
           <div>
             <p className="font-bold text-gray-900 flex items-center gap-2"><Smartphone size={18} />Módulos Visíveis no App do Cliente</p>
@@ -415,7 +354,7 @@ const ativo = await verificarPushAtivo(profile.id)
           </button>
         </div>
 
-        {/* 7. Aprovação de Clientes */}
+        {/* 5. Aprovação de Clientes */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <UserCheck size={18} className="text-gray-700" />
@@ -436,7 +375,7 @@ const ativo = await verificarPushAtivo(profile.id)
           </div>
         </div>
 
-        {/* 8. Aviso em Serviços */}
+        {/* 6. Aviso em Serviços */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><FileText size={18} />Aviso na Página de Serviços</p>
           <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none" rows={4}
@@ -448,7 +387,7 @@ const ativo = await verificarPushAtivo(profile.id)
           </button>
         </div>
 
-        {/* 9. Links de Clientes */}
+        {/* 7. Links de Clientes */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Link size={18} />Links de Acesso para Clientes</p>
           <div className="flex flex-col gap-3">
@@ -471,7 +410,7 @@ const ativo = await verificarPushAtivo(profile.id)
           </div>
         </div>
 
-        {/* 10. Notificações Push */}
+        {/* 8. Notificações Push */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Bell size={18} />Notificações Push</p>
 
