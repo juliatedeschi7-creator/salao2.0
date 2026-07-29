@@ -40,39 +40,28 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     }
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('DEBUG: Push não suportado neste navegador/dispositivo.')
       return false
     }
 
     const permission = await Notification.requestPermission()
-    console.log('[PUSH DEBUG] Status da permissão:', permission)
-
     if (permission !== 'granted') {
-      alert('DEBUG: Permissão negada ou bloqueada pelo navegador. Status: ' + permission)
       return false
     }
 
     let registration: ServiceWorkerRegistration
     try {
       registration = await navigator.serviceWorker.register('/sw.js')
-    } catch (e: any) {
-      alert('DEBUG: Falha ao registrar Service Worker: ' + (e?.message || e))
+    } catch (e) {
       return false
     }
 
-    try {
-      registration = await comTimeout(
-        navigator.serviceWorker.ready, 
-        8000, 
-        'Timeout esperando o service worker ficar pronto'
-      )
-    } catch (e: any) {
-      alert('DEBUG: Service Worker demorou muito (Timeout): ' + (e?.message || e))
-      return false
-    }
+    registration = await comTimeout(
+      navigator.serviceWorker.ready, 
+      8000, 
+      'Timeout esperando o service worker ficar pronto'
+    )
 
     if (!vapidPublicKey) {
-      alert('DEBUG: Chave VAPID pública não configurada nas variáveis de ambiente.')
       return false
     }
 
@@ -92,28 +81,26 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
     const subJson = subscription.toJSON()
 
+    // Salvando usando exatamente os nomes das colunas da sua tabela
     const { error } = await supabase
       .from('push_subscriptions')
       .upsert({
         profile_id: profileId,
         user_id: profileId,
-        endpoint: subJson.endpoint,
-        p256dh: subJson.keys?.p256dh,
-        auth: subJson.keys?.auth,
-        subscripition: subJson,               
-        updataed_at: new Date().toISOString() 
+        subscripe: subJson,              // Nome exato da sua coluna JSON
+        updated_at: new Date().toISOString() 
       }, {
         onConflict: 'profile_id'
       })
 
     if (error) {
-      alert('DEBUG: Erro ao salvar no Supabase: ' + JSON.stringify(error))
+      console.error('Erro ao salvar no Supabase:', error)
       return false
     }
 
     return true
-  } catch (err: any) {
-    alert('DEBUG: Erro crítico no catch: ' + (err?.message || JSON.stringify(err)))
+  } catch (err) {
+    console.error('Erro crítico ao registrar push:', err)
     return false
   }
 }
