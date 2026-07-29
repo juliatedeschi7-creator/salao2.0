@@ -117,8 +117,9 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
     console.log('[PUSH DEBUG] Push registrado e salvo com sucesso!')
     return true
-  } catch (err) {
+  } catch (err: any) {
     console.error('[PUSH DEBUG] Erro crítico capturado no catch:', err)
+    alert('Erro no Push: ' + (err?.message || JSON.stringify(err)))
     return false
   }
 }
