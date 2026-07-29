@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Shield, Check, X } from 'lucide-react'
+import { ArrowLeft, Plus, Shield, Check, X, UserCheck, Crown } from 'lucide-react'
 
 // LISTA COMPLETA DE TODAS AS OPÇÕES E PÁGINAS DO SISTEMA
 const TODAS_AS_PERMISSOES = [
@@ -28,8 +28,9 @@ export default function FuncionariosPage() {
   const [funcionarios, setFuncionarios] = useState<any[]>([])
   const [carregando, setCarregando] = useState(true)
 
-  // Estado do Modal de Permissões Individuais Completas
+  // Estado do Modal de Cargo e Permissões Individuais
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState<any>(null)
+  const [cargoSelecionado, setCargoSelecionado] = useState<string>('comum')
   const [permissoesCustom, setPermissoesCustom] = useState<Record<string, boolean>>({})
   const [salvando, setSalvando] = useState(false)
 
@@ -58,13 +59,11 @@ export default function FuncionariosPage() {
     try {
       const [salRes, funcRes] = await Promise.all([
         supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
-        // FILTRANDO APENAS QUEM É DA EQUIPE (excluindo clientes da mesma tabela profiles)
-        // Se na sua tabela o cargo/tipo for diferente, ajuste o filtro abaixo (ex: .neq('role', 'cliente') ou .in('role', ['dono', 'funcionario']))
         supabase
           .from('profiles')
           .select('*')
           .eq('salao_id', profile!.salao_id!)
-          .neq('role', 'cliente') // <- Garante que clientes não apareçam na lista de funcionários
+          .neq('role', 'cliente')
           .order('nome', { ascending: true })
       ])
 
@@ -77,35 +76,49 @@ export default function FuncionariosPage() {
     }
   }
 
-  // Abrir o modal carregando as permissões atuais do funcionário
+  // Abrir o modal carregando o cargo e as permissões atuais do funcionário
   function abrirPermissoesIndividuais(func: any) {
     setFuncionarioSelecionado(func)
     
+    // Define se é 'socio' ou 'comum' (tratando o campo role ou propriedade de cargo)
+    const cargoAtual = func.role === 'socio' || func.cargo === 'socio' ? 'socio' : 'comum'
+    setCargoSelecionado(cargoAtual)
+
     if (func.permissoes_paginas) {
       setPermissoesCustom(func.permissoes_paginas)
     } else {
       const padrao: Record<string, boolean> = {}
       TODAS_AS_PERMISSOES.forEach(p => {
-        padrao[p.id] = true // Padrão: com acesso total
+        padrao[p.id] = true
       })
       setPermissoesCustom(padrao)
     }
   }
 
-  // Salvar as permissões completas no banco
+  // Salvar cargo, permissões e registrar quem alterou
   async function salvarPermissoesIndividuais() {
-    if (!funcionarioSelecionado) return
+    if (!funcionarioSelecionado || !profile) return
     setSalvando(true)
 
     try {
+      // Se for sócio, define todas as permissões como true automaticamente
+      const novasPermissoes = cargoSelecionado === 'socio'
+        ? TODAS_AS_PERMISSOES.reduce((acc, p) => ({ ...acc, [p.id]: true }), {})
+        : permissoesCustom
+
       const { error } = await supabase
         .from('profiles')
-        .update({ permissoes_paginas: permissoesCustom })
+        .update({ 
+          role: cargoSelecionado,
+          cargo: cargoSelecionado,
+          permissoes_paginas: novasPermissoes,
+          atualizado_por: profile.id // Registra quem fez a alteração
+        })
         .eq('id', funcionarioSelecionado.id)
 
       if (error) throw error
 
-      alert('Permissões atualizadas com sucesso!')
+      alert('Cargo e permissões atualizados com sucesso!')
       setFuncionarioSelecionado(null)
       carregarDados()
     } catch (err: any) {
@@ -158,9 +171,9 @@ export default function FuncionariosPage() {
         <div className="bg-pink-50 border border-pink-100 p-4 rounded-2xl flex items-start gap-3">
           <Shield size={20} className="text-pink-600 shrink-0 mt-0.5" />
           <div className="text-xs text-pink-900 leading-relaxed">
-            <p className="font-bold mb-0.5">Controle Completo de Acessos</p>
+            <p className="font-bold mb-0.5">Gestão de Cargos e Acessos</p>
             <p className="text-pink-700">
-              Clique em cima de qualquer funcionário para abrir o painel e configurar individualmente cada agenda, página e recurso do sistema.
+              Clique em qualquer funcionário para definir se ele é sócio/dono ou funcionário comum com acessos individuais por página.
             </p>
           </div>
         </div>
@@ -169,9 +182,9 @@ export default function FuncionariosPage() {
           Equipe Cadastrada ({funcionarios.length})
         </p>
 
-        {/* LISTA DE FUNCIONÁRIOS (SEM CLIENTES) */}
+        {/* LISTA DE FUNCIONÁRIOS */}
         {funcionarios.map(f => {
-          const eDono = f.role === 'dono'
+          const eSocio = f.role === 'socio' || f.cargo === 'socio' || f.role === 'dono'
           return (
             <div 
               key={f.id} 
@@ -187,11 +200,9 @@ export default function FuncionariosPage() {
                 <div className="overflow-hidden">
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-gray-900 text-sm truncate">{f.nome || 'Sem nome'}</p>
-                    {eDono && (
-                      <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-100">
-                        Dono
-                      </span>
-                    )}
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${eSocio ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
+                      {eSocio ? 'Sócio / Dono' : 'Comum'}
+                    </span>
                   </div>
                   <p className="text-xs text-gray-400 truncate mt-0.5">{f.email}</p>
                 </div>
@@ -199,7 +210,7 @@ export default function FuncionariosPage() {
 
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-xs font-semibold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-xl border border-pink-100">
-                  Configurar Acessos ➔
+                  Configurar ➔
                 </span>
               </div>
             </div>
@@ -207,62 +218,103 @@ export default function FuncionariosPage() {
         })}
       </div>
 
-      {/* MODAL DE PERMISSÕES COMPLETAS POR FUNCIONÁRIO */}
+      {/* MODAL DE CARGO E PERMISSÕES */}
       {funcionarioSelecionado && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
             
             <div className="flex items-center justify-between border-b pb-3">
               <div>
-                <h3 className="font-bold text-gray-900 text-base">Permissões de Acesso</h3>
-                <p className="text-xs text-gray-500 mt-0.5">Funcionário: <span className="font-semibold text-gray-800">{funcionarioSelecionado.nome}</span></p>
+                <h3 className="font-bold text-gray-900 text-base">Configurar Membro</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Nome: <span className="font-semibold text-gray-800">{funcionarioSelecionado.nome}</span></p>
               </div>
               <button onClick={() => setFuncionarioSelecionado(null)} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
                 <X size={18} className="text-gray-500" />
               </button>
             </div>
 
-            <p className="text-xs text-gray-500">
-              Escolha quais recursos e páginas este funcionário pode visualizar ou gerenciar:
-            </p>
+            {/* SELEÇÃO DE CARGO */}
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-bold text-gray-700">Cargo do Colaborador</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCargoSelecionado('comum')}
+                  className={`p-3 rounded-xl border flex flex-col items-center text-center gap-1 transition-all ${
+                    cargoSelecionado === 'comum' ? 'border-pink-600 bg-pink-50/50 text-pink-900 font-bold' : 'border-gray-200 bg-white text-gray-600'
+                  }`}
+                >
+                  <UserCheck size={18} className={cargoSelecionado === 'comum' ? 'text-pink-600' : 'text-gray-400'} />
+                  <span className="text-xs">Funcionário Comum</span>
+                  <span className="text-[10px] text-gray-400 font-normal">Acessos por página</span>
+                </button>
 
-            <div className="flex flex-col gap-2.5 max-h-[50vh] overflow-y-auto pr-1">
-              {TODAS_AS_PERMISSOES.map(item => {
-                const permitido = permissoesCustom[item.id] ?? true
-                return (
-                  <div key={item.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 flex items-center justify-between gap-3">
-                    <div className="overflow-hidden">
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-gray-900 text-xs">{item.nome}</p>
-                        <span className="text-[10px] bg-white text-gray-500 px-2 py-0.5 rounded-md border border-gray-200 font-medium">
-                          {item.categoria}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-400 truncate mt-0.5">{item.desc}</p>
-                    </div>
-
-                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [item.id]: true }))}
-                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                          permitido ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
-                        }`}>
-                        <Check size={12} /> Sim
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPermissoesCustom(prev => ({ ...prev, [item.id]: false }))}
-                        className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                          !permitido ? 'bg-red-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
-                        }`}>
-                        <X size={12} /> Não
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
+                <button
+                  type="button"
+                  onClick={() => setCargoSelecionado('socio')}
+                  className={`p-3 rounded-xl border flex flex-col items-center text-center gap-1 transition-all ${
+                    cargoSelecionado === 'socio' ? 'border-pink-600 bg-pink-50/50 text-pink-900 font-bold' : 'border-gray-200 bg-white text-gray-600'
+                  }`}
+                >
+                  <Crown size={18} className={cargoSelecionado === 'socio' ? 'text-pink-600' : 'text-gray-400'} />
+                  <span className="text-xs">Sócio / Dono</span>
+                  <span className="text-[10px] text-gray-400 font-normal">Acesso total ao sistema</span>
+                </button>
+              </div>
             </div>
+
+            {/* AVISO OU LISTA DE PÁGINAS */}
+            {cargoSelecionado === 'socio' ? (
+              <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
+                <Crown size={20} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-900 leading-relaxed">
+                  Como <strong>Sócio/Dono</strong>, este usuário poderá usar e editar qualquer página ou funcionalidade do salão com acesso total idêntico ao seu.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <p className="text-xs font-bold text-gray-700">Permissões Página por Página</p>
+                <p className="text-xs text-gray-400">Escolha manualmente as telas que este funcionário comum pode acessar:</p>
+                
+                <div className="flex flex-col gap-2.5 max-h-[40vh] overflow-y-auto pr-1">
+                  {TODAS_AS_PERMISSOES.map(item => {
+                    const permitido = permissoesCustom[item.id] ?? true
+                    return (
+                      <div key={item.id} className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 flex items-center justify-between gap-3">
+                        <div className="overflow-hidden">
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-gray-900 text-xs">{item.nome}</p>
+                            <span className="text-[10px] bg-white text-gray-500 px-2 py-0.5 rounded-md border border-gray-200 font-medium">
+                              {item.categoria}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-gray-400 truncate mt-0.5">{item.desc}</p>
+                        </div>
+
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-gray-200 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setPermissoesCustom(prev => ({ ...prev, [item.id]: true }))}
+                            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                              permitido ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
+                            }`}>
+                            <Check size={12} /> Sim
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPermissoesCustom(prev => ({ ...prev, [item.id]: false }))}
+                            className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                              !permitido ? 'bg-red-600 text-white shadow-sm' : 'text-gray-400 hover:bg-gray-100'
+                            }`}>
+                            <X size={12} /> Não
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-3 pt-2 border-t">
               <button 
