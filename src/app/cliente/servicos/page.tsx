@@ -176,22 +176,16 @@ export default function ClienteServicosPage() {
     setInteressados(prev => new Set(Array.from(prev).concat(pacoteId)))
   }
 
-  // --- FUNÇÃO ADICIONADA AQUI ---
   async function demonstrarInteresse(pacote: any) {
     setEnviandoInteresse(pacote.id)
-    
-    // Pequeno delay para feedback visual no botão antes de abrir a nova aba
     await new Promise(resolve => setTimeout(resolve, 600))
-    
     const link = linkInteressePacote(pacote)
     if (link !== '#') {
       window.open(link, '_blank')
     }
-    
     marcarInteresse(pacote.id)
     setEnviandoInteresse(null)
   }
-  // ------------------------------
 
   function adicionarAoCarrinho(s: any) {
     setCarrinho(prev => {
@@ -228,22 +222,24 @@ export default function ClienteServicosPage() {
         periodo_preferido: periodoPreferido !== 'qualquer' ? periodoPreferido : null,
       })
     }
-const resumo = carrinho.map(i => `${i.quantidade}x ${i.nome}`).join(', ')
-await notificar({
-  salaoId: salao.id, remetenteId: profile!.id, destinatarioId: salao.dono_id,
-  titulo: 'Nova solicitação de agendamento',
-  mensagem: `${cliente.nome} quer agendar: ${resumo}`, tipo: 'solicitacao',
-  url: '/salao/notificacoes'
-})
-setEnviando(false); setEnviado(true); setCarrinho([])
-setDataPreferida(''); setPeriodoPreferido('qualquer')
-setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
-}
+    const resumo = carrinho.map(i => `${i.quantidade}x ${i.nome}`).join(', ')
+    await notificar({
+      salaoId: salao.id, remetenteId: profile!.id, destinatarioId: salao.dono_id,
+      titulo: 'Nova solicitação de agendamento',
+      mensagem: `${cliente.nome} quer agendar: ${resumo}`, tipo: 'solicitacao',
+      url: '/salao/notificacoes'
+    })
+    setEnviando(false); setEnviado(true); setCarrinho([])
+    setDataPreferida(''); setPeriodoPreferido('qualquer')
+    setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
+  }
+
   function toggleDesc(id: string) {
     setDescExpandida(prev => { const n = new Set(Array.from(prev)); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
+  const corSec = salao?.cor_secundaria || '#FCE4F3'
   const categorias = ['Todos', ...Array.from(new Set(servicos.map(s => s.categoria).filter(Boolean)))]
   const filtrados = servicos.filter(s => categoriaFiltro === 'Todos' || s.categoria === categoriaFiltro)
   const ALERTAS = ['diabetes', 'fungo', 'micose', 'alergia', 'pressao', 'gestante', 'gravida', 'hipertensao', 'cancer', 'quimio']
@@ -280,17 +276,18 @@ setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
         </div>
       </div>
 
-      {/* Abas principais */}
-      <div className="bg-white border-b border-gray-100 flex">
+      {/* Abas principais com destaque forte e legível para Pacotes */}
+      <div className="bg-white border-b border-gray-100 flex p-1.5 gap-2">
         <button onClick={() => setAba('servicos')}
-          className={'flex-1 py-3 text-sm font-semibold transition-all ' + (aba === 'servicos' ? 'border-b-2' : 'text-gray-400')}
-          style={aba === 'servicos' ? { color: cor, borderColor: cor } : {}}>
+          className={'flex-1 py-3 text-sm font-bold rounded-2xl transition-all ' + (aba === 'servicos' ? 'shadow-sm' : 'text-gray-500 bg-gray-50')}
+          style={aba === 'servicos' ? { backgroundColor: cor, color: 'white' } : {}}>
           Serviços
         </button>
         <button onClick={() => setAba('pacotes')}
-          className={'flex-1 py-3 text-sm font-semibold transition-all ' + (aba === 'pacotes' ? 'border-b-2' : 'text-gray-400')}
-          style={aba === 'pacotes' ? { color: cor, borderColor: cor } : {}}>
-          Pacotes {pacotes.length > 0 && `(${pacotes.length})`}
+          className={'flex-1 py-3 text-sm font-bold rounded-2xl transition-all flex items-center justify-center gap-1.5 ' + (aba === 'pacotes' ? 'shadow-md' : 'text-gray-700 bg-gray-100')}
+          style={aba === 'pacotes' ? { backgroundColor: cor, color: 'white' } : { border: `1px solid ${cor}40` }}>
+          <Package size={16} />
+          <span>Pacotes {pacotes.length > 0 ? `(${pacotes.length})` : ''}</span>
         </button>
       </div>
 
@@ -370,7 +367,7 @@ setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
                   <div className="flex items-center justify-between">
                     {qtd === 0 ? (
                       <button onClick={() => adicionarAoCarrinho(s)}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold"
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-sm"
                         style={{ backgroundColor: cor }}>
                         <Plus size={15} />Adicionar
                       </button>
@@ -453,7 +450,7 @@ setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
                 const variavel = p.tipo_preco === 'variavel'
 
                 return (
-                  <div key={p.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                  <div key={p.id} className="bg-white rounded-2xl shadow-sm overflow-hidden border-2" style={{ borderColor: `${cor}33` }}>
                     <div className="px-4 py-3 flex items-center justify-between" style={{ background: `linear-gradient(135deg, ${cor}18, ${cor}08)` }}>
                       <div>
                         <p className="font-bold text-gray-900">{p.nome}</p>
@@ -490,7 +487,7 @@ setTimeout(() => { setEnviado(false); setModalCarrinho(false) }, 3000)
                       )}
 
                       <button onClick={() => demonstrarInteresse(p)} disabled={jaInteressou || enviandoInteresse === p.id}
-                        className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all"
+                        className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md"
                         style={{ backgroundColor: jaInteressou ? '#22c55e' : cor, color: 'white' }}>
                         {enviandoInteresse === p.id
                           ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
