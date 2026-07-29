@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Package, Edit2, Trash2, Users, X } from 'lucide-react'
+import { ArrowLeft, Plus, Package, Edit2, Trash2, Users, X, Share2 } from 'lucide-react'
 
 export default function PacotesPage() {
   const { profile, loading } = useAuth()
@@ -85,6 +85,36 @@ export default function PacotesPage() {
 
   function removerItem(servicoId: string) {
     setItens(prev => prev.filter(i => i.servico_id !== servicoId))
+  }
+
+  function compartilharPacote(p: any) {
+    const precoFormatado = Number(p.preco).toFixed(2).replace('.', ',')
+    let texto = `✨ Confira o pacote *${p.nome}*!\n`
+    if (p.descricao) texto += `${p.descricao}\n`
+    
+    if (p.pacote_itens?.length > 0) {
+      texto += `\n📋 *Incluso:*\n`
+      p.pacote_itens.forEach((item: any) => {
+        texto += `• ${item.quantidade}x ${item.servicos?.nome}\n`
+      })
+    }
+
+    if (p.validade_dias) {
+      texto += `\n⏳ Validade: ${p.validade_dias} dias`
+    }
+
+    texto += `\n\n💰 *Valor: R$ ${precoFormatado}*\nEntre em contato para garantir o seu!`
+
+    if (navigator.share) {
+      navigator.share({
+        title: p.nome,
+        text: texto,
+        url: window.location.href,
+      }).catch((err) => console.log('Erro ao compartilhar:', err))
+    } else {
+      navigator.clipboard.writeText(texto)
+      alert('Informações do pacote copiadas para a área de transferência!')
+    }
   }
 
   async function salvar() {
@@ -177,6 +207,10 @@ export default function PacotesPage() {
                 {p.descricao && <p className="text-sm text-gray-500 mt-0.5">{p.descricao}</p>}
               </div>
               <div className="flex gap-1.5 shrink-0 ml-2">
+                <button onClick={() => compartilharPacote(p)}
+                  className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center" title="Compartilhar Pacote">
+                  <Share2 size={14} className="text-emerald-600" />
+                </button>
                 <button onClick={() => abrirModal(p)}
                   className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
                   <Edit2 size={14} className="text-gray-500" />
