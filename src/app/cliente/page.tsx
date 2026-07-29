@@ -59,8 +59,9 @@ export default function ClientePage() {
       .eq('cliente_id', cli?.id)
     setContasCount(contas || 0)
 
-const pushAtivo = await verificarPushAtivo(profile.id)
-
+    const pushAtivo = await verificarPushAtivo(profile.id)
+    if (!pushAtivo) setModalPushLembrete(true)
+  }
 
   async function ativarPushAgora() {
     setAtivandoPush(true)
@@ -78,7 +79,6 @@ const pushAtivo = await verificarPushAtivo(profile.id)
       console.error('Erro ao ativar push:', err)
       setErroPush('Ocorreu um erro ao ativar. Tente novamente.')
     } finally {
-      // Garante que a bolinha para de rodar independentemente de erro ou sucesso
       setAtivandoPush(false)
     }
   }
