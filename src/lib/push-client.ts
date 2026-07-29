@@ -74,15 +74,14 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
     const subJson = subscription.toJSON()
 
-    // Salvando com o mapeamento correto compatível com a API de teste
+    // Salvando adaptado exatamente às colunas reais da sua tabela do Supabase
     const { error } = await supabase
       .from('push_subscriptions')
       .upsert({
         profile_id: profileId,
-        endpoint: subJson.endpoint,
-        p256dh: subJson.keys?.p256dh,
-        auth: subJson.keys?.auth,
-        subscription: subJson
+        user_id: profileId,
+        subscripition: subJson,               // Usando o nome exato da sua coluna (com o 'i' a mais)
+        updataed_at: new Date().toISOString() // Nome exato da coluna de data de atualização
       }, {
         onConflict: 'profile_id'
       })
