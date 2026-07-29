@@ -66,9 +66,9 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
     let subscription = await registration.pushManager.getSubscription()
     if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+subscription = await registration.pushManager.subscribe({
+  userVisibleOnly: true,
+  applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as unknown as Uint8Array
       })
     }
 
