@@ -40,7 +40,6 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
   try {
     if (typeof window === 'undefined') {
-      console.log('[PUSH DEBUG] Executando no lado do servidor (SSR), ignorando.')
       return false
     }
 
@@ -49,7 +48,6 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       return false
     }
 
-    console.log('[PUSH DEBUG] Solicitando permissão de notificação...')
     const permission = await Notification.requestPermission()
     console.log('[PUSH DEBUG] Status da permissão:', permission)
 
@@ -60,7 +58,6 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
     let registration: ServiceWorkerRegistration
     try {
-      console.log('[PUSH DEBUG] Registrando Service Worker (/sw.js)...')
       registration = await navigator.serviceWorker.register('/sw.js')
     } catch (e) {
       console.error('[PUSH DEBUG] Falha ao registrar o service worker:', e)
@@ -72,30 +69,33 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       8000, 
       'Timeout esperando o service worker ficar pronto'
     )
-    console.log('[PUSH DEBUG] Service Worker pronto.')
 
     if (!vapidPublicKey) {
-      console.error('[PUSH DEBUG] Chave pública VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY) não configurada.')
+      console.error('[PUSH DEBUG] Chave pública VAPID não configurada.')
       return false
     }
 
+    // Tenta buscar inscrição existente e limpa caso tenha expirado
     let subscription = await registration.pushManager.getSubscription()
-    if (!subscription) {
-      console.log('[PUSH DEBUG] Nenhuma subscription encontrada, criando nova...')
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
-      })
-      console.log('[PUSH DEBUG] Nova subscription criada com sucesso.')
-    } else {
-      console.log('[PUSH DEBUG] Subscription já existente encontrada.')
+    if (subscription) {
+      try {
+        await subscription.unsubscribe()
+        console.log('[PUSH DEBUG] Inscrição antiga removida para renovação de token.')
+      } catch (e) {
+        console.log('[PUSH DEBUG] Não foi possível remover inscrição antiga, prosseguindo...', e)
+      }
     }
 
-    const subJson = subscription.toJSON()
-    console.log('[PUSH DEBUG] Dados da subscription obtidos:', subJson)
+    // Cria uma nova subscription limpa e atualizada
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
+    })
+    console.log('[PUSH DEBUG] Nova subscription gerada com sucesso.')
 
-    // Salvando no Supabase contemplando variações de colunas comuns
-    console.log('[PUSH DEBUG] Salvando dados no Supabase (tabela push_subscriptions)...')
+    const subJson = subscription.toJSON()
+
+    // Salvando no Supabase adaptado à estrutura da tabela
     const { error } = await supabase
       .from('push_subscriptions')
       .upsert({
@@ -131,10 +131,7 @@ export async function verificarPushAtivo(profileId: string): Promise<boolean> {
     const registration = await navigator.serviceWorker.ready
     const subscription = await registration.pushManager.getSubscription()
 
-    if (!subscription) {
-      console.log('[PUSH DEBUG Verificação] Sem subscription no navegador.')
-      return false
-    }
+    if (!subscription) return false
 
     const { data, error } = await supabase
       .from('push_subscriptions')
@@ -142,14 +139,11 @@ export async function verificarPushAtivo(profileId: string): Promise<boolean> {
       .eq('profile_id', profileId)
       .maybeSingle()
 
-    if (error || !data) {
-      console.log('[PUSH DEBUG Verificação] Registro não encontrado no Supabase para este profile_id.')
-      return false
-    }
+    if (error || !data) return false
 
     return true
   } catch (err) {
-    console.error('[PUSH DEBUG Verificação] Erro ao verificar push ativo:', err)
+    console.error('Erro ao verificar push ativo:', err)
     return false
   }
 }
