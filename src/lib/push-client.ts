@@ -52,24 +52,17 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     try {
       registration = await navigator.serviceWorker.register('/sw.js')
     } catch (e: any) {
-      alert('DIAG Erro SW.register: ' + (e?.message || e))
       return false
     }
 
-    try {
-      registration = await comTimeout(
-        navigator.serviceWorker.ready, 
-        8000, 
-        'Timeout esperando o service worker ficar pronto'
-      )
-      alert('DIAG: SW.ready OK!')
-    } catch (e: any) {
-      alert('DIAG Erro SW.ready: ' + (e?.message || e))
-      return false
-    }
+    registration = await comTimeout(
+      navigator.serviceWorker.ready, 
+      8000, 
+      'Timeout esperando o service worker ficar pronto'
+    )
 
     if (!vapidPublicKey) {
-      alert('DIAG: VAPID Key vazia')
+      alert('DIAG: VAPID Key está vazia!')
       return false
     }
 
@@ -87,9 +80,9 @@ export async function registrarPush(profileId: string): Promise<boolean> {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
       })
-      alert('DIAG: PushManager.subscribe OK!')
     } catch (e: any) {
-      alert('DIAG Erro PushManager.subscribe: ' + (e?.message || e))
+      // Exibe a mensagem exata do erro que o PushManager retornou
+      alert('ERRO NO SUBSCRIBE: ' + (e?.message || JSON.stringify(e)) + ' | Nome: ' + e?.name)
       return false
     }
 
@@ -111,10 +104,9 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       return false
     }
 
-    alert('DIAG: Tudo concluído com sucesso!')
     return true
   } catch (err: any) {
-    alert('DIAG Erro Geral Catch: ' + (err?.message || JSON.stringify(err)))
+    alert('DIAG Erro Geral: ' + (err?.message || JSON.stringify(err)))
     return false
   }
 }
