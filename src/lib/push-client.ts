@@ -40,30 +40,39 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     }
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('DIAG: Push não suportado')
       return false
     }
 
     const permission = await Notification.requestPermission()
-    alert('DIAG: Status exato retornado pelo iOS: ' + permission)
-
     if (permission !== 'granted') {
+      alert('DIAG: Permissão negada')
       return false
     }
 
     let registration: ServiceWorkerRegistration
     try {
       registration = await navigator.serviceWorker.register('/sw.js')
-    } catch (e) {
+      alert('DIAG: Service Worker registrado com sucesso!')
+    } catch (e: any) {
+      alert('DIAG Erro SW.register: ' + (e?.message || e))
       return false
     }
 
-    registration = await comTimeout(
-      navigator.serviceWorker.ready, 
-      8000, 
-      'Timeout esperando o service worker ficar pronto'
-    )
+    try {
+      registration = await comTimeout(
+        navigator.serviceWorker.ready, 
+        8000, 
+        'Timeout esperando o service worker ficar pronto'
+      )
+      alert('DIAG: Service Worker ready!')
+    } catch (e: any) {
+      alert('DIAG Erro SW.ready: ' + (e?.message || e))
+      return false
+    }
 
     if (!vapidPublicKey) {
+      alert('DIAG: VAPID Key vazia')
       return false
     }
 
@@ -76,10 +85,16 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       }
     }
 
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
-    })
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
+      })
+      alert('DIAG: Subscription gerada com sucesso!')
+    } catch (e: any) {
+      alert('DIAG Erro PushManager.subscribe: ' + (e?.message || e))
+      return false
+    }
 
     const subJson = subscription.toJSON()
 
@@ -95,13 +110,14 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       })
 
     if (error) {
-      console.error('Erro ao salvar no Supabase:', error)
+      alert('DIAG Erro Supabase: ' + JSON.stringify(error))
       return false
     }
 
+    alert('DIAG: Tudo 100% concluído com sucesso!')
     return true
   } catch (err: any) {
-    console.error('Erro crítico ao registrar push:', err)
+    alert('DIAG Erro Geral Catch: ' + (err?.message || JSON.stringify(err)))
     return false
   }
 }
