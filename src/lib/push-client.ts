@@ -44,6 +44,8 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     }
 
     const permission = await Notification.requestPermission()
+    alert('DIAG: Status exato retornado pelo iOS: ' + permission)
+
     if (permission !== 'granted') {
       return false
     }
@@ -81,7 +83,6 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
     const subJson = subscription.toJSON()
 
-    // Salvando com a coluna 'subscription' em minúsculo conforme sua tabela
     const { error } = await supabase
       .from('push_subscriptions')
       .upsert({
