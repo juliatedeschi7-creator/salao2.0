@@ -5,25 +5,61 @@ import { supabase } from '@/lib/supabase'
 export default function HomePage() {
   useEffect(() => {
     async function redirecionar() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session?.user) { window.location.href = '/login'; return }
+      try {
+        // Timeout de segurança de 8 segundos para evitar loading infinito se a internet cair
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout de conexão')), 8000)
+        )
 
-      const { data: prof } = await supabase.from('profiles')
-        .select('role, aprovado, ativo, salao_id, acesso_total')
-        .eq('id', session.user.id).single()
+        const sessionPromise = supabase.auth.getSession()
+        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any
 
-      if (!prof || !prof.ativo) { window.location.href = '/login'; return }
+        if (!session?.user) {
+          window.location.href = '/login'
+          return
+        }
 
-      const acessoTotal = prof.role === 'dono_salao' ||
-        (prof.role === 'funcionario' && prof.acesso_total === true)
+        const { data: prof, error } = await supabase.from('profiles')
+          .select('role, aprovado, ativo, salao_id, acesso_total')
+          .eq('id', session.user.id)
+          .single()
 
-      if (prof.role === 'admin_geral') { window.location.href = '/admin'; return }
-      if (!prof.aprovado) { window.location.href = '/aguardando'; return }
-      if (acessoTotal) { window.location.href = '/salao'; return }
-      if (prof.role === 'funcionario') { window.location.href = '/funcionario'; return }
-      if (prof.role === 'cliente') { window.location.href = '/cliente'; return }
-      window.location.href = '/login'
+        if (error || !prof || prof.ativo === false) {
+          window.location.href = '/login'
+          return
+        }
+
+        // Reconhece tanto os cargos novos (socio, dono) quanto os antigos
+        const isDonoOuSocio = ['dono_salao', 'dono', 'socio'].includes(prof.role) || prof.acesso_total === true
+
+        if (prof.role === 'admin_geral') {
+          window.location.href = '/admin'
+          return
+        }
+        if (prof.aprovado === false) {
+          window.location.href = '/aguardando'
+          return
+        }
+        if (isDonoOuSocio) {
+          window.location.href = '/salao'
+          return
+        }
+        if (prof.role === 'funcionario' || prof.role === 'profissional' || prof.role === 'comum') {
+          window.location.href = '/funcionario'
+          return
+        }
+        if (prof.role === 'cliente') {
+          window.location.href = '/cliente'
+          return
+        }
+
+        window.location.href = '/login'
+      } catch (err) {
+        console.error('Erro no redirecionamento:', err)
+        window.location.href = '/login'
+      }
     }
+
     redirecionar()
   }, [])
 
