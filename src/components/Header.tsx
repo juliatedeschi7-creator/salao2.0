@@ -30,7 +30,7 @@ const MENU_DONO = [
   { icon: FileText, label: 'Fichas de Anamnese', href: '/salao/anamnese', grupo: 'Atendimento' },
   { icon: Package, label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento' },
   { icon: FileText, label: 'Contratos', href: '/salao/contratos', grupo: 'Atendimento' },
-  { icon: Clock, label: 'Horários vagos', href: '/salao/horarios-vagos', grupo: 'Atendimento' },
+  { icon: Clock, label: 'Horários vagos e de funcionamento', href: '/salao/horarios-vagos', grupo: 'Atendimento' },
   { icon: CheckSquare, label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento' },
   { icon: UserCheck, label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe' },
   { icon: Box, label: 'Estoque', href: '/salao/estoque', grupo: 'Gestão' },
@@ -42,7 +42,6 @@ const MENU_DONO = [
   { icon: Sparkles, label: 'Sugestões IA', href: '/salao/ia', grupo: 'Outros' },
   { icon: Heart, label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros' },
   { icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' },
-  { icon: Clock, label: 'Horários', href: '/salao/horarios', grupo: 'Outros' },
 ]
 
 const MENU_FUNCIONARIO = [
