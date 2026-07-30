@@ -40,20 +40,17 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     }
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-      alert('DIAG: Push não suportado')
       return false
     }
 
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') {
-      alert('DIAG: Permissão negada')
       return false
     }
 
     let registration: ServiceWorkerRegistration
     try {
       registration = await navigator.serviceWorker.register('/sw.js')
-      alert('DIAG: Service Worker registrado com sucesso!')
     } catch (e: any) {
       alert('DIAG Erro SW.register: ' + (e?.message || e))
       return false
@@ -65,7 +62,7 @@ export async function registrarPush(profileId: string): Promise<boolean> {
         8000, 
         'Timeout esperando o service worker ficar pronto'
       )
-      alert('DIAG: Service Worker ready!')
+      alert('DIAG: SW.ready OK!')
     } catch (e: any) {
       alert('DIAG Erro SW.ready: ' + (e?.message || e))
       return false
@@ -90,7 +87,7 @@ export async function registrarPush(profileId: string): Promise<boolean> {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
       })
-      alert('DIAG: Subscription gerada com sucesso!')
+      alert('DIAG: PushManager.subscribe OK!')
     } catch (e: any) {
       alert('DIAG Erro PushManager.subscribe: ' + (e?.message || e))
       return false
@@ -114,7 +111,7 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       return false
     }
 
-    alert('DIAG: Tudo 100% concluído com sucesso!')
+    alert('DIAG: Tudo concluído com sucesso!')
     return true
   } catch (err: any) {
     alert('DIAG Erro Geral Catch: ' + (err?.message || JSON.stringify(err)))
