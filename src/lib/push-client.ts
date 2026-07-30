@@ -40,28 +40,37 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     }
 
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      alert('DIAG: Push não suportado neste navegador.')
       return false
     }
 
     const permission = await Notification.requestPermission()
     if (permission !== 'granted') {
+      alert('DIAG: Permissão negada ou bloqueada. Status atual: ' + permission)
       return false
     }
 
     let registration: ServiceWorkerRegistration
     try {
       registration = await navigator.serviceWorker.register('/sw.js')
-    } catch (e) {
+    } catch (e: any) {
+      alert('DIAG: Erro ao registrar SW: ' + (e?.message || e))
       return false
     }
 
-    registration = await comTimeout(
-      navigator.serviceWorker.ready, 
-      8000, 
-      'Timeout esperando o service worker ficar pronto'
-    )
+    try {
+      registration = await comTimeout(
+        navigator.serviceWorker.ready, 
+        8000, 
+        'Timeout esperando o service worker ficar pronto'
+      )
+    } catch (e: any) {
+      alert('DIAG: Timeout no SW ready: ' + (e?.message || e))
+      return false
+    }
 
     if (!vapidPublicKey) {
+      alert('DIAG: VAPID Public Key vazia ou não configurada.')
       return false
     }
 
@@ -70,7 +79,7 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       try {
         await subscription.unsubscribe()
       } catch (e) {
-        // Ignora erro de unsubscribe
+        // Ignora
       }
     }
 
@@ -81,26 +90,25 @@ export async function registrarPush(profileId: string): Promise<boolean> {
 
     const subJson = subscription.toJSON()
 
-    // Salvando usando exatamente os nomes das colunas da sua tabela
     const { error } = await supabase
       .from('push_subscriptions')
       .upsert({
         profile_id: profileId,
         user_id: profileId,
-        subscripe: subJson,              // Nome exato da sua coluna JSON
+        subscripe: subJson,              
         updated_at: new Date().toISOString() 
       }, {
         onConflict: 'profile_id'
       })
 
     if (error) {
-      console.error('Erro ao salvar no Supabase:', error)
+      alert('DIAG: Erro no Supabase: ' + JSON.stringify(error))
       return false
     }
 
     return true
-  } catch (err) {
-    console.error('Erro crítico ao registrar push:', err)
+  } catch (err: any) {
+    alert('DIAG: Erro crítico geral: ' + (err?.message || JSON.stringify(err)))
     return false
   }
 }
