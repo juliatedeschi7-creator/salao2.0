@@ -6,21 +6,10 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, Bell, Link, Copy, Check, LogOut, Palette, 
-  Smartphone, Clock, ChevronRight, UserCheck, Edit3, Save, 
+  Smartphone, ChevronRight, UserCheck, Edit3, Save, 
   X, FileText
 } from 'lucide-react'
 import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
-
-const CORES = [
-  { primaria: '#E91E8C', secundaria: '#FCE4F3', nome: 'Rosa' },
-  { primaria: '#9C27B0', secundaria: '#F3E5F5', nome: 'Roxo' },
-  { primaria: '#E91E63', secundaria: '#FCE4EC', nome: 'Pink' },
-  { primaria: '#FF5722', secundaria: '#FBE9E7', nome: 'Laranja' },
-  { primaria: '#009688', secundaria: '#E0F2F1', nome: 'Verde' },
-  { primaria: '#1976D2', secundaria: '#E3F2FD', nome: 'Azul' },
-  { primaria: '#5D4037', secundaria: '#EFEBE9', nome: 'Marrom' },
-  { primaria: '#455A64', secundaria: '#ECEFF1', nome: 'Grafite' },
-]
 
 const MODULOS = [
   { key: 'agendamentos', label: 'Agendamentos', desc: 'Cliente pode ver e criar agendamentos' },
@@ -46,7 +35,7 @@ export default function ConfiguracoesPage() {
 
   // Cores
   const [salvandoCor, setSalvandoCor] = useState(false)
-  const [corSelecionada, setCorSelecionada] = useState('')
+  const [corSelecionada, setCorSelecionada] = useState('#E91E8C')
 
   // Aprovação Automática
   const [aprovacaoAutomatica, setAprovacaoAutomatica] = useState(false)
@@ -77,7 +66,8 @@ export default function ConfiguracoesPage() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
     setAvisoServicos(sal?.aviso_servicos || '')
-    setCorSelecionada(sal?.cor_primaria || '#E91E8C')
+    const corAtual = sal?.cor_primaria || '#E91E8C'
+    setCorSelecionada(corAtual)
     setAprovacaoAutomatica(sal?.aprovacao_automatica_clientes === true)
     
     if (sal?.modulos_cliente) setModulos(prev => ({ ...prev, ...sal.modulos_cliente }))
@@ -146,10 +136,11 @@ export default function ConfiguracoesPage() {
   }
 
   async function salvarCor() {
-    const paleta = CORES.find(c => c.primaria === corSelecionada)
-    if (!paleta) return
     setSalvandoCor(true)
-    await supabase.from('saloes').update({ cor_primaria: paleta.primaria, cor_secundaria: paleta.secundaria }).eq('id', profile!.salao_id!)
+    await supabase.from('saloes').update({ 
+      cor_primaria: corSelecionada, 
+      cor_secundaria: corSelecionada + '18' 
+    }).eq('id', profile!.salao_id!)
     setSalvandoCor(false)
     carregarDados()
   }
@@ -296,40 +287,42 @@ export default function ConfiguracoesPage() {
           )}
         </div>
 
-        {/* 2. Atalho: Horários Gerais de Funcionamento */}
-        <button onClick={() => router.push('/salao/horarios')}
-          className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 active:scale-98 transition-all text-left">
-          <div className="w-11 h-11 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: `${cor}18` }}>
-            <Clock size={20} style={{ color: cor }} />
-          </div>
-          <div className="flex-1">
-            <p className="font-bold text-gray-900 text-sm">Horários de Funcionamento</p>
-            <p className="text-xs text-gray-400 mt-0.5">Defina os dias e horários gerais de atendimento</p>
-          </div>
-          <ChevronRight size={18} className="text-gray-300 shrink-0" />
-        </button>
-
-        {/* 3. Paleta de Cores do App */}
+        {/* 2. Cor do Tema do Salão (Com Seletor Livre / Conta-Gotas) */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-          <p className="font-bold text-gray-900 flex items-center gap-2"><Palette size={18} />Paleta de Cores do Salão</p>
-          <div className="grid grid-cols-4 gap-3">
-            {CORES.map(c => (
-              <button key={c.primaria} onClick={() => setCorSelecionada(c.primaria)} className="flex flex-col items-center gap-1">
-                <div className={'w-11 h-11 rounded-full border-4 transition-all ' + (corSelecionada === c.primaria ? 'border-gray-900 scale-105' : 'border-transparent')}
-                  style={{ backgroundColor: c.primaria }} />
-                <span className="text-xs text-gray-500">{c.nome}</span>
-              </button>
-            ))}
+          <p className="font-bold text-gray-900 flex items-center gap-2"><Palette size={18} />Cor do Tema do Salão</p>
+          <p className="text-xs text-gray-400">Escolha qualquer cor usando o seletor ou insira o código hexadecimal:</p>
+          
+          <div className="flex items-center gap-3">
+            <div className="relative w-14 h-14 rounded-2xl overflow-hidden shadow-inner border-2 border-gray-200 shrink-0">
+              <input 
+                type="color" 
+                value={corSelecionada}
+                onChange={e => setCorSelecionada(e.target.value)}
+                className="absolute -top-2 -left-2 w-20 h-20 cursor-pointer border-0 p-0" 
+              />
+            </div>
+            <div className="flex-1 flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-700">Código da Cor (Hex)</span>
+              <input 
+                type="text" 
+                value={corSelecionada} 
+                onChange={e => setCorSelecionada(e.target.value)}
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono uppercase"
+                maxLength={7}
+              />
+            </div>
           </div>
+
           {corSelecionada !== salao?.cor_primaria && (
             <button onClick={salvarCor} disabled={salvandoCor}
-              className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-1" style={{ backgroundColor: corSelecionada }}>
+              className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-1 shadow-sm transition-transform active:scale-95" 
+              style={{ backgroundColor: corSelecionada }}>
               {salvandoCor ? 'Salvando...' : 'Aplicar Nova Cor'}
             </button>
           )}
         </div>
 
-        {/* 4. Aparência do App do Cliente */}
+        {/* 3. Aparência do App do Cliente */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
           <div>
             <p className="font-bold text-gray-900 flex items-center gap-2"><Smartphone size={18} />Módulos Visíveis no App do Cliente</p>
@@ -354,7 +347,7 @@ export default function ConfiguracoesPage() {
           </button>
         </div>
 
-        {/* 5. Aprovação de Clientes */}
+        {/* 4. Aprovação de Clientes */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <UserCheck size={18} className="text-gray-700" />
@@ -375,7 +368,7 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        {/* 6. Aviso em Serviços */}
+        {/* 5. Aviso em Serviços */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><FileText size={18} />Aviso na Página de Serviços</p>
           <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none" rows={4}
@@ -387,7 +380,7 @@ export default function ConfiguracoesPage() {
           </button>
         </div>
 
-        {/* 7. Links de Clientes */}
+        {/* 6. Links de Clientes */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Link size={18} />Links de Acesso para Clientes</p>
           <div className="flex flex-col gap-3">
@@ -410,7 +403,7 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        {/* 8. Notificações Push */}
+        {/* 7. Notificações Push */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Bell size={18} />Notificações Push</p>
 
