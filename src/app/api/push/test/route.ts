@@ -7,11 +7,19 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-webpush.setVapidDetails(
-  process.env.VAPID_EMAIL!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
+// Mesma correção das outras rotas de push: setVapidDetails não pode
+// rodar no topo do arquivo, senão quebra o build quando a chave estiver
+// ausente ou mal formatada.
+let vapidConfigurado = false
+function garantirVapidConfigurado() {
+  if (vapidConfigurado) return
+  webpush.setVapidDetails(
+    process.env.VAPID_EMAIL!,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+    process.env.VAPID_PRIVATE_KEY!
+  )
+  vapidConfigurado = true
+}
 
 export async function POST(req: NextRequest) {
   console.log('1 - Entrou na rota')
@@ -39,6 +47,13 @@ export async function POST(req: NextRequest) {
     }
 
     console.log('4 - Subscriptions:', subs.length)
+
+    try {
+      garantirVapidConfigurado()
+    } catch (e: any) {
+      console.log('Erro ao configurar VAPID:', e.message)
+      return NextResponse.json({ ok: false, erro: 'Chave VAPID mal configurada: ' + e.message }, { status: 500 })
+    }
 
     const detalhes: any[] = []
 
