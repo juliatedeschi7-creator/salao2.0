@@ -30,58 +30,37 @@ function LoginForm() {
   async function handleLogin() {
     if (!email || !senha) { setErro('Preencha email e senha.'); return }
     setLoading(true); setErro('')
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(), password: senha
+    })
+    
+    if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
+    if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
 
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(), password: senha
-      })
+    const { data: prof } = await supabase.from('profiles')
+      .select('role, aprovado, ativo, salao_id, acesso_total').eq('id', data.user.id).single()
+      
+    if (!prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
+    if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
+    if (!prof.aprovado) { await supabase.auth.signOut(); setErro('Conta aguarda aprovação.'); setLoading(false); return }
+    
+    // Roteamento direto e seguro baseado no seu perfil confirmado pelo SQL
+    let destino = '/salao'
+    if (prof.role === 'admin_geral') destino = '/admin'
+    else if (prof.role === 'funcionario' && !prof.acesso_total) destino = '/funcionario'
+    else if (prof.role === 'cliente') destino = '/cliente'
+    else if (!prof.salao_id) destino = '/criar-salao'
 
-      if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
-      if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
+    console.log('Log de Depuração - Destino Forçado:', destino)
 
-      const { data: prof, error: profError } = await supabase
-        .from('profiles')
-        .select('role, aprovado, ativo, salao_id, acesso_total')
-        .eq('id', data.user.id)
-        .single()
+    if (lembrarEReceber) {
+      registrarPush(data.user.id).catch(() => {})
+    }
 
-      if (profError || !prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
-
-      if (!prof.ativo) {
-        await supabase.auth.signOut()
-        setErro('Conta desativada.')
-        setLoading(false); return
-      }
-
-      const acessoTotal = prof.role === 'dono_salao' ||
-        (prof.role === 'funcionario' && prof.acesso_total === true)
-
-      let destino = '/login'
-
-      if (prof.role === 'admin_geral') {
-        destino = '/admin'
-      } else if (!prof.aprovado) {
-        destino = '/aguardando'
-      } else if (acessoTotal) {
-        if (!prof.salao_id) {
-          destino = '/criar-salao'
-        } else {
-          const { data: salao } = await supabase
-            .from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
-          if (salao?.pausado) {
-            await supabase.auth.signOut()
-            setErro('Salão pausado.')
-            setLoading(false); return
-          }
-          destino = !salao?.aprovado ? '/aguardando' : '/salao'
-        }
-      } else if (prof.role === 'funcionario') {
-        destino = '/funcionario'
-      } else {
-        destino = '/cliente'
-      }
-
-      window.location.replace(destino)
+    await new Promise(resolve => setTimeout(resolve, 800))
+    window.location.replace(destino)
+  }
 
     } catch (e: any) {
       setErro('Erro inesperado. Tente novamente.')
