@@ -42,10 +42,21 @@ export default function PacotesClientesPage() {
     if (loading) return
     if (!profile) { router.push('/login'); return }
 
-    // Validação corrigida para aceitar donos, sócios e funcionários com acesso total
-    const cargoValido = ['dono_salao', 'funcionario', 'socio', 'admin'].includes(profile.role) || profile.acesso_total
-    if (!cargoValido) { 
-      router.push('/login')
+    const p = profile as any
+    // Validação robusta alinhada com as permissões globais de sócios, admins, donos e funcionários liberados
+    const temPermissao = 
+      ['dono_salao', 'socio', 'admin'].includes(profile.role) || 
+      p.acesso_total === true ||
+      (profile.role === 'funcionario' && (
+        p.acesso_total === true ||
+        p.pode_ver_combos === true ||
+        p.pode_gerenciar_pacotes === true ||
+        p.pode_ver_pacotes === true
+      ))
+
+    if (!temPermissao) { 
+      alert('Você não tem permissão para acessar esta página.')
+      router.push('/salao/dashboard')
       return 
     }
 
