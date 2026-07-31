@@ -16,7 +16,7 @@ interface AuthContextType {
   user: any | null
   profile: Profile | null
   loading: boolean
-  temAcessoTotal: boolean // <-- ADICIONADO AQUI
+  temAcessoTotal: boolean
   signOut: () => Promise<void>
 }
 
@@ -79,11 +79,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/login')
   }
 
-  // Defina a regra do seu acesso total (ajuste conforme a sua regra de negócio)
-  const temAcessoTotal = true // ou verificação baseada no profile
+  const temAcessoTotal = true
+
+  const value = {
+    user,
+    profile,
+    loading,
+    temAcessoTotal,
+    signOut,
+  }
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, temAcessoTotal, signOut }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )
