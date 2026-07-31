@@ -14,7 +14,6 @@ function LoginForm() {
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
-  const [debug, setDebug] = useState('')
 
   useEffect(() => {
     async function buscarSalao() {
@@ -30,26 +29,15 @@ function LoginForm() {
 
   async function handleLogin() {
     if (!email || !senha) { setErro('Preencha email e senha.'); return }
-    setLoading(true); setErro(''); setDebug('')
+    setLoading(true); setErro('')
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim().toLowerCase(), password: senha
       })
 
-      if (error) {
-        setErro('Email ou senha incorretos.')
-        setDebug('Auth error: ' + error.message)
-        setLoading(false); return
-      }
-
-      if (!data.session) {
-        setErro('Erro ao iniciar sessão.')
-        setDebug('Sem sessão após login')
-        setLoading(false); return
-      }
-
-      setDebug('Sessão criada, buscando perfil...')
+      if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
+      if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
 
       const { data: prof, error: profError } = await supabase
         .from('profiles')
@@ -57,13 +45,7 @@ function LoginForm() {
         .eq('id', data.user.id)
         .single()
 
-      if (profError || !prof) {
-        setErro('Perfil não encontrado.')
-        setDebug('Profile error: ' + (profError?.message || 'sem dados'))
-        setLoading(false); return
-      }
-
-      setDebug(`Role: ${prof.role} | Aprovado: ${prof.aprovado} | Ativo: ${prof.ativo} | AcessoTotal: ${prof.acesso_total}`)
+      if (profError || !prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
 
       if (!prof.ativo) {
         await supabase.auth.signOut()
@@ -84,9 +66,8 @@ function LoginForm() {
         if (!prof.salao_id) {
           destino = '/criar-salao'
         } else {
-          const { data: salao, error: salaoError } = await supabase
+          const { data: salao } = await supabase
             .from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
-          setDebug(prev => prev + ` | Salao: ${JSON.stringify(salao)} | SalaoErr: ${salaoError?.message}`)
           if (salao?.pausado) {
             await supabase.auth.signOut()
             setErro('Salão pausado.')
@@ -100,16 +81,10 @@ function LoginForm() {
         destino = '/cliente'
       }
 
-      setDebug(prev => prev + ` | Destino: ${destino}`)
-
-      // Aguarda 1 segundo para o debug ser visível antes de redirecionar
-      setTimeout(() => {
-        window.location.href = destino
-      }, 1500)
+      window.location.replace(destino)
 
     } catch (e: any) {
-      setErro('Erro inesperado: ' + e.message)
-      setDebug('Exception: ' + e.message)
+      setErro('Erro inesperado. Tente novamente.')
       setLoading(false)
     }
   }
@@ -202,12 +177,6 @@ function LoginForm() {
           {erro && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <p className="text-red-600 text-sm text-center">{erro}</p>
-            </div>
-          )}
-
-          {debug && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-              <p className="text-blue-600 text-xs break-all">{debug}</p>
             </div>
           )}
 
