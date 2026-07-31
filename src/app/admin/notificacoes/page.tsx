@@ -20,7 +20,7 @@ export default function AdminNotificacoesPage() {
   useEffect(() => {
     if (loading) return
     if (!profile) return
-    if (profile.role !== 'admin_geral') { router.replace('/login'); return }
+    if (profile.tipo !== 'admin_geral') { router.replace('/login'); return }
     carregarSaloes(); carregarEnviadas()
   }, [loading, profile])
 
