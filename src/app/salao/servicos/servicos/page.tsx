@@ -32,8 +32,28 @@ export default function ExportarServicosPage() {
   const previewRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!loading && profile?.salao_id) carregarDados()
-  }, [loading])
+    if (loading) return
+    if (!profile) { router.push('/login'); return }
+
+    const p = profile as any
+    // Validação alinhada com as permissões globais de sócios, admins, donos e funcionários liberados
+    const temPermissao = 
+      ['dono_salao', 'socio', 'admin'].includes(profile.role) || 
+      p.acesso_total === true ||
+      (profile.role === 'funcionario' && (
+        p.acesso_total === true ||
+        p.pode_ver_servicos === true ||
+        p.pode_gerenciar_servicos === true
+      ))
+
+    if (!temPermissao) { 
+      alert('Você não tem permissão para acessar esta página.')
+      router.push('/salao/dashboard')
+      return 
+    }
+
+    if (profile.salao_id) carregarDados()
+  }, [loading, profile])
 
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
@@ -125,7 +145,6 @@ export default function ExportarServicosPage() {
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const corSec = salao?.cor_secundaria || '#FCE4F3'
 
   // Agrupar para preview
   const grupos: Record<string, any[]> = {}
