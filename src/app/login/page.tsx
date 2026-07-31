@@ -81,8 +81,11 @@ function LoginForm() {
       registrarPush(data.user.id).catch(() => {})
     }
 
-    // Redirecionamento blindado
-    window.location.assign('/salao')
+    // Garante um respiro para o navegador gravar o cookie de sessão no mobile antes de trocar de rota
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // Força o carregamento completo da página destino limpando o cache de rota
+    window.location.href = '/salao'
   }
 
   async function handleEsqueciSenha() {
