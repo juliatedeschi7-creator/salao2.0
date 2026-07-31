@@ -18,7 +18,7 @@ export default function AdminUsuariosPage() {
   useEffect(() => {
     if (loading) return
     if (!profile) return
-    if (profile.role !== 'admin_geral') { router.replace('/login'); return }
+    if (profile.tipo !== 'admin_geral') { router.replace('/login'); return }
     carregarUsuarios()
   }, [loading, profile])
 
@@ -27,24 +27,24 @@ export default function AdminUsuariosPage() {
     const { data, error } = await supabase
       .from('profiles')
       .select('*, saloes!profiles_salao_id_fkey(nome)')
-      .in('role', ['dono_salao', 'funcionario']) // ← exclui clientes e admin
+      .in('tipo', ['dono_salao', 'funcionario']) // ← exclui clientes e admin
       .order('created_at', { ascending: false })
     if (error) console.error('Erro ao carregar usuários:', error)
     setUsuarios(data || [])
     setCarregando(false)
   }
 
-async function aprovar(u: any) {
-  await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
-  await notificar({
-    remetenteId: profile?.id,
-    destinatarioId: u.id,
-    titulo: 'Conta aprovada!',
-    mensagem: 'Sua conta foi aprovada! Você já pode acessar o sistema.',
-    tipo: 'admin'
-  })
-  carregarUsuarios()
-}
+  async function aprovar(u: any) {
+    await supabase.from('profiles').update({ aprovado: true, ativo: true }).eq('id', u.id)
+    await notificar({
+      remetenteId: profile?.id,
+      destinatarioId: u.id,
+      titulo: 'Conta aprovada!',
+      mensagem: 'Sua conta foi aprovada! Você já pode acessar o sistema.',
+      tipo: 'admin'
+    })
+    carregarUsuarios()
+  }
 
   async function reprovar(u: any) {
     await supabase.from('profiles').update({ aprovado: false, ativo: false }).eq('id', u.id)
@@ -77,8 +77,8 @@ async function aprovar(u: any) {
   }
 
   const pendentes = usuarios.filter(u => !u.aprovado && !u.excluido)
-  const donos = usuarios.filter(u => u.role === 'dono_salao' && !u.excluido)
-  const funcionarios = usuarios.filter(u => u.role === 'funcionario' && !u.excluido)
+  const donos = usuarios.filter(u => u.tipo === 'dono_salao' && !u.excluido)
+  const funcionarios = usuarios.filter(u => u.tipo === 'funcionario' && !u.excluido)
 
   const filtrados = usuarios.filter(u => {
     const matchBusca =
@@ -112,7 +112,6 @@ async function aprovar(u: any) {
         )}
       </div>
 
-      {/* Stats — só donos e funcionários */}
       <div className="px-4 py-4 grid grid-cols-3 gap-3">
         <div className="bg-white rounded-2xl p-3 text-center shadow-sm">
           <p className="text-2xl font-bold text-gray-900">{donos.length}</p>
@@ -129,14 +128,12 @@ async function aprovar(u: any) {
       </div>
 
       <div className="px-4 flex flex-col gap-3 pb-8">
-        {/* Busca */}
         <div className="relative">
           <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="input-field pl-11" placeholder="Buscar por nome ou email..."
             value={busca} onChange={e => setBusca(e.target.value)} />
         </div>
 
-        {/* Filtros */}
         <div className="flex gap-2 flex-wrap">
           {(['pendentes', 'aprovados', 'todos', 'excluidos'] as const).map(f => (
             <button key={f} onClick={() => setFiltro(f)}
@@ -181,7 +178,7 @@ async function aprovar(u: any) {
                 </div>
                 <p className="text-sm text-gray-500 truncate">{u.email}</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {roleLabel[u.role] || u.role}
+                  {roleLabel[u.tipo] || u.tipo}
                   {u.saloes?.nome ? ` · ${u.saloes.nome}` : ''}
                 </p>
                 <p className="text-xs text-gray-300 mt-0.5">
