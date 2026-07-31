@@ -39,11 +39,23 @@ export default function PacotesPage() {
     if (loading) return
     if (!profile) { router.push('/login'); return }
 
-    // Validação robusta liberando donos, sócios, administradores e funcionários com acesso total
-    const cargoValido = ['dono_salao', 'funcionario', 'socio', 'admin'].includes(profile.role) || profile.acesso_total
-    if (!cargoValido) { 
-      router.push('/login')
-      return 
+    // 1. Donos, sócios e admins têm acesso total nativo
+    const ehAdminOuSocio = ['dono_salao', 'socio', 'admin'].includes(profile.role) || profile.acesso_total
+
+    // 2. Se for funcionário comum, verificamos se o dono marcou a permissão específica para pacotes/combos 
+    // (ou se ele possui uma flag geral de permissão para promoções/combos no profile)
+    // Ajuste o nome da coluna abaixo conforme o campo salvo no banco para permissão de combos/pacotes
+    const temPermissaoFuncionario = profile.role === 'funcionario' && (
+      profile.pode_ver_combos || 
+      profile.pode_gerenciar_pacotes || 
+      profile.pode_ver_pacotes
+    )
+
+    // Se não for nem admin/socio nem tiver a permissão específica liberada pelo dono, bloqueia
+    if (!ehAdminOuSocio && !temPermissaoFuncionario) {
+      alert('Você não tem permissão para acessar esta página.')
+      router.push('/salao/dashboard') // Redireciona para o dashboard ou rota segura
+      return
     }
 
     if (profile.salao_id) carregarDados()
