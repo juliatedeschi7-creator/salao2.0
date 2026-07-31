@@ -81,16 +81,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const temAcessoTotal = true
 
-  const authContextValue: AuthContextType = {
-    user,
-    profile,
-    loading,
-    temAcessoTotal,
-    signOut
-  }
-
   return (
-    <AuthContext.Provider value={authContextValue}>
+    <AuthContext.Provider value={{ user, profile, loading, temAcessoTotal, signOut }}>
       {children}
     </AuthContext.Provider>
   )
