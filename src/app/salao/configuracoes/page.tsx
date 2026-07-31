@@ -20,7 +20,7 @@ const MODULOS = [
 ]
 
 export default function ConfiguracoesPage() {
-  const { profile, loading, logout } = useAuth()
+  const { profile, loading, signOut } = useAuth()
   const router = useRouter()
 
   const [salao, setSalao] = useState<any>(null)
@@ -437,7 +437,7 @@ export default function ConfiguracoesPage() {
         </div>
 
         {/* Botão Sair */}
-        <button onClick={logout} className="flex items-center justify-center gap-2 text-gray-400 text-sm py-4 hover:text-red-500 transition-colors">
+        <button onClick={signOut} className="flex items-center justify-center gap-2 text-gray-400 text-sm py-4 hover:text-red-500 transition-colors">
           <LogOut size={16} />Sair da conta
         </button>
 
