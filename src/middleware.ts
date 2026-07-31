@@ -1,11 +1,9 @@
+import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
+  let supabaseResponse = NextResponse.next({
+    request,
   })
 
   const supabase = createServerClient(
@@ -17,43 +15,33 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({
+            request,
           })
           cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, options)
           )
         },
       },
     }
   )
 
-  // Valida a sessão no servidor
-  const { data: { user } } = await supabase.auth.getUser()
+  // Atualiza a sessão do Supabase se ela estiver ativa
+  await supabase.auth.getUser()
 
-  const url = request.nextUrl.clone()
-  const path = url.pathname
-
-  // Definição de rotas públicas que não exigem login
-  const isPublicPage = 
-    path === '/' || 
-    path.startsWith('/login') || 
-    path.startsWith('/cadastro') || 
-    path.startsWith('/auth') ||
-    path.startsWith('/redefinir-senha')
-
-  // Se o usuário NÃO está logado e tenta acessar uma página protegida, manda para o login
-  if (!user && !isPublicPage) {
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  return response
+  return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|logo.png).*)'],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder files (.png, .jpg, etc)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
