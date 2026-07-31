@@ -93,11 +93,25 @@ export function useAuth() {
     window.location.href = '/login'
   }
 
-  // helper para uso nas paginas: indica se o usuario logado tem acesso
-  // total ao sistema do salao (dono_salao, ou funcionario socio/familiar)
+  // helper robusto para uso nas paginas: indica se o usuario logado tem acesso total
+  // ou se possui alguma permissão específica concedida pelo dono para gerenciar
+  // pacotes, contratos, combos ou serviços.
+  const profileAny = profile as any
   const temAcessoTotal =
     profile?.role === 'dono_salao' ||
-    (profile?.role === 'funcionario' && profile?.acesso_total === true)
+    profile?.role === 'socio' ||
+    profile?.role === 'admin' ||
+    profile?.acesso_total === true ||
+    (profile?.role === 'funcionario' && (
+      profileAny?.acesso_total === true ||
+      profileAny?.pode_ver_combos === true ||
+      profileAny?.pode_gerenciar_pacotes === true ||
+      profileAny?.pode_ver_pacotes === true ||
+      profileAny?.pode_ver_contratos === true ||
+      profileAny?.pode_gerenciar_contratos === true ||
+      profileAny?.pode_ver_servicos === true ||
+      profileAny?.pode_gerenciar_servicos === true
+    ))
 
   return { profile, loading, logout, temAcessoTotal }
 }
