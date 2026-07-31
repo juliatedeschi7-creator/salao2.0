@@ -2,7 +2,11 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request })
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,10 +17,12 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          // Aplica os cookies atualizados tanto na requisição (pro resto
-          // do pipeline enxergar) quanto na resposta (pro navegador salvar)
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({ request })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           )
@@ -25,17 +31,28 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Chamar getUser() aqui é o que efetivamente dispara a renovação do
-  // token quando ele está perto de expirar. Isso acontece no servidor,
-  // antes da página carregar — então quando o PWA volta do background
-  // (ou o processo foi kilado e reaberto), a primeira requisição já
-  // chega com um cookie de sessão renovado, sem depender de nada
-  // rodando no navegador.
-  await supabase.auth.getUser()
+  // Importante: usar getUser() para validar a sessão no servidor com segurança
+  const { data: { user } } = await supabase.auth.getUser()
+
+  const url = request.nextUrl.clone()
+  const isAuthPage = url.pathname.startsWith('/login') || url.pathname.startsWith('/auth')
+  const isPublicPage = url.pathname === '/' || isAuthPage
+
+  // Se o usuário NÃO está logado e tenta acessar uma rota protegida, joga para o login
+  if (!user && !isPublicPage) {
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
+
+  // Se o usuário JÁ está logado e tenta ir para a tela de login, joga para o dashboard/painel
+  if (user && isAuthPage) {
+    url.pathname = '/dashboard' // Altere para a rota principal do seu app se for diferente
+    return NextResponse.redirect(url)
+  }
 
   return response
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|logo.png).*)'],
 }
