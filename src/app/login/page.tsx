@@ -6,7 +6,6 @@ import { useSearchParams } from 'next/navigation'
 import { registrarPush } from '@/lib/push-client'
 
 function LoginForm() {
-  // Cria o cliente do Supabase compatível com cookies de navegador/SSR
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -23,7 +22,6 @@ function LoginForm() {
   const [erro, setErro] = useState('')
   const [lembrarEReceber, setLembrarEReceber] = useState(true)
 
-  // Estados para o modal de "Esqueci a senha"
   const [modalEsqueci, setModalEsqueci] = useState(false)
   const [loadingEsqueci, setLoadingEsqueci] = useState(false)
   const [erroEsqueci, setErroEsqueci] = useState('')
@@ -95,11 +93,13 @@ function LoginForm() {
     } else if (prof.role === 'funcionario') destino = '/funcionario'
     else destino = '/cliente'
 
+    console.log('Log de Depuração - Cargo do Usuário:', prof.role)
+    console.log('Log de Depuração - Destino Calculado:', destino)
+
     if (lembrarEReceber) {
       registrarPush(data.user.id).catch(() => {})
     }
 
-    // Dá um tempo para o cookie de sessão ser gravado no navegador via SSR e redireciona
     await new Promise(resolve => setTimeout(resolve, 800))
     window.location.replace(destino)
   }
