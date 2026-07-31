@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { temAcessoTotal } from '@/lib/permissoes'
 import { ArrowLeft, Search, Plus, Calendar, CheckCircle, Clock, X, Trash2 } from 'lucide-react'
 
 function hojeISO() {
@@ -41,8 +40,15 @@ export default function PacotesClientesPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (!profile) { router.push('/login'); return }
+
+    // Validação corrigida para aceitar donos, sócios e funcionários com acesso total
+    const cargoValido = ['dono_salao', 'funcionario', 'socio', 'admin'].includes(profile.role) || profile.acesso_total
+    if (!cargoValido) { 
+      router.push('/login')
+      return 
+    }
+
     if (profile.salao_id) carregarDados()
   }, [loading, profile])
 
@@ -153,7 +159,6 @@ export default function PacotesClientesPage() {
     selecionarCliente(clienteSelecionado)
   }
 
-  // ─── NOVO: excluir pacote inteiro ────────────────────────────────────────
   async function excluirPacote(pacote: any) {
     if (!confirm(`Excluir "${pacote.pacotes?.nome || pacote.observacoes || 'este pacote'}"? Isso também remove o histórico de sessões dele. Não pode ser desfeito.`)) return
     setSalvando(true)
