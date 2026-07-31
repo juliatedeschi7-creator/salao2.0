@@ -1,117 +1,110 @@
 'use client'
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { supabase } from '../supabase'
-import type { Profile } from '../supabase'
+import { createContext, useContext, useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
-export function useAuth() {
-  const [profile, setProfile] = useState<Profile | null>(null)
+interface AuthContextType {
+  user: any | null
+  profile: any | null
+  loading: boolean
+  signOut: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+  signOut: async () => {},
+})
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<any | null>(null)
+  const [profile, setProfile] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
-  const profileRef = useRef<Profile | null>(null)
-  const tentandoRef = useRef(false)
-
-  const getProfile = useCallback(async (userId: string) => {
-    try {
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
-      if (error) throw error
-      profileRef.current = data
-      setProfile(data)
-    } catch {
-      // Erro de rede/transiente: NÃO apaga o profile que já estava carregado.
-      // Só fica sem profile se realmente nunca conseguiu carregar um.
-      if (!profileRef.current) setProfile(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  const restaurarSessao = useCallback(async () => {
-    if (tentandoRef.current) return
-    tentandoRef.current = true
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (session?.user) {
-        await getProfile(session.user.id)
-      } else if (error) {
-        // erro de rede ao checar sessão: mantém o que já tinha, não desloga
-        setLoading(false)
-      } else {
-        // sem sessão mesmo (realmente deslogado)
-        profileRef.current = null
-        setProfile(null)
-        setLoading(false)
-      }
-    } catch {
-      setLoading(false)
-    } finally {
-      tentandoRef.current = false
-    }
-  }, [getProfile])
+  const router = useRouter()
 
   useEffect(() => {
-    let mounted = true
-
-    async function init() {
-      if (!mounted) return
-      await restaurarSessao()
+    async function getSession() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        setUser(session?.user ?? null)
+        if (session?.user) {
+          await fetchProfile(session.user.id)
+        } else {
+          setProfile(null)
+          setLoading(false)
+        }
+      } catch (error) {
+        console.error('Erro ao buscar sessão:', error)
+        setLoading(false)
+      }
     }
-    init()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
-      if (event === 'SIGNED_IN' && session?.user) {
-        await getProfile(session.user.id)
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        await getProfile(session.user.id)
-      } else if (event === 'SIGNED_OUT') {
-        profileRef.current = null
+    getSession()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        await fetchProfile(session.user.id)
+      } else {
         setProfile(null)
         setLoading(false)
       }
     })
 
-    // Quando o PWA volta a ficar visível (reaberto do background/recentes),
-    // tenta restaurar a sessão de novo em vez de assumir "deslogado" na
-    // primeira falha — dá tempo da conexão de rede voltar.
-    function onVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        restaurarSessao()
-      }
-    }
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    window.addEventListener('focus', onVisibilityChange)
-
     return () => {
-      mounted = false
       subscription.unsubscribe()
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      window.removeEventListener('focus', onVisibilityChange)
     }
-  }, [getProfile, restaurarSessao])
+  }, [])
 
-  async function logout() {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
+  async function fetchProfile(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Erro ao buscar profile:', error)
+      } else {
+        setProfile(data)
+      }
+    } catch (error) {
+      console.error('Erro inesperado ao buscar profile:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // helper robusto para uso nas paginas: indica se o usuario logado tem acesso total
-  // ou se possui alguma permissão específica concedida pelo dono para gerenciar
-  // pacotes, contratos, combos ou serviços.
-  const profileAny = profile as any
+  async function signOut() {
+    await supabase.auth.signOut()
+    setUser(null)
+    setProfile(null)
+    router.push('/login')
+  }
+
+  // Tratamento seguro para evitar conflitos de tipagem de roles no TypeScript
+  const p = profile as any
   const temAcessoTotal =
-    profile?.role === 'dono_salao' ||
-    profile?.role === 'socio' ||
-    profile?.role === 'admin' ||
-    profile?.acesso_total === true ||
-    (profile?.role === 'funcionario' && (
-      profileAny?.acesso_total === true ||
-      profileAny?.pode_ver_combos === true ||
-      profileAny?.pode_gerenciar_pacotes === true ||
-      profileAny?.pode_ver_pacotes === true ||
-      profileAny?.pode_ver_contratos === true ||
-      profileAny?.pode_gerenciar_contratos === true ||
-      profileAny?.pode_ver_servicos === true ||
-      profileAny?.pode_gerenciar_servicos === true
+    p?.role === 'dono_salao' ||
+    p?.role === 'socio' ||
+    p?.role === 'admin' ||
+    p?.acesso_total === true ||
+    (p?.role === 'funcionario' && (
+      p?.acesso_total === true ||
+      p?.pode_ver_combos === true ||
+      p?.pode_gerenciar_pacotes === true ||
+      p?.pode_ver_pacotes === true ||
+      p?.pode_ver_servicos === true ||
+      p?.pode_gerenciar_servicos === true
     ))
 
-  return { profile, loading, logout, temAcessoTotal }
+  return (
+    <AuthContext.Provider value={{ user, profile, loading, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
+
+export const useAuth = () => useContext(AuthContext)
