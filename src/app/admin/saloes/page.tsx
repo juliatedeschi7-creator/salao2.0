@@ -20,7 +20,7 @@ function SaloesContent() {
   useEffect(() => {
     if (loading) return
     if (!profile) return
-    if (profile.role !== 'admin_geral') { router.replace('/login'); return }
+    if (profile.tipo !== 'admin_geral') { router.replace('/login'); return }
     carregarSaloes()
   }, [loading, profile])
 
@@ -36,40 +36,38 @@ function SaloesContent() {
     }
   }
 
-async function aprovar(salao: any) {
-  setSalvando(true)
-  await supabase.from('saloes').update({ aprovado: true, ativo: true }).eq('id', salao.id)
-  await notificar({
-    salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
-    titulo: 'Salão aprovado!',
-    mensagem: 'Seu salão foi aprovado!',
-    tipo: 'admin'
-  })
-  setSalvando(false)
-  carregarSaloes()
-}
+  async function aprovar(salao: any) {
+    setSalvando(true)
+    await supabase.from('saloes').update({ aprovado: true, ativo: true }).eq('id', salao.id)
+    await notificar({
+      salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
+      titulo: 'Salão aprovado!',
+      mensagem: 'Seu salão foi aprovado!',
+      tipo: 'admin'
+    })
+    setSalvando(false)
+    carregarSaloes()
+  }
 
+  async function reativar(salao: any) {
+    await supabase.from('saloes').update({ pausado: false, motivo_pausa: null }).eq('id', salao.id)
+    await notificar({
+      salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
+      titulo: 'Salão reativado', mensagem: 'Seu salão foi reativado!', tipo: 'admin'
+    })
+    carregarSaloes()
+  }
 
-async function reativar(salao: any) {
-  await supabase.from('saloes').update({ pausado: false, motivo_pausa: null }).eq('id', salao.id)
-  await notificar({
-    salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
-    titulo: 'Salão reativado', mensagem: 'Seu salão foi reativado!', tipo: 'admin'
-  })
-  carregarSaloes()
-}
-
-
-async function pausar(salao: any) {
-  if (!motivo) return
-  setSalvando(true)
-  await supabase.from('saloes').update({ pausado: true, motivo_pausa: motivo }).eq('id', salao.id)
-  await notificar({
-    salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
-    titulo: 'Salão pausado', mensagem: 'Motivo: ' + motivo, tipo: 'admin'
-  })
-  setModalPausa(null); setMotivo(''); setSalvando(false); carregarSaloes()
-}
+  async function pausar(salao: any) {
+    if (!motivo) return
+    setSalvando(true)
+    await supabase.from('saloes').update({ pausado: true, motivo_pausa: motivo }).eq('id', salao.id)
+    await notificar({
+      salaoId: salao.id, remetenteId: profile?.id, destinatarioId: salao.dono_id,
+      titulo: 'Salão pausado', mensagem: 'Motivo: ' + motivo, tipo: 'admin'
+    })
+    setModalPausa(null); setMotivo(''); setSalvando(false); carregarSaloes()
+  }
 
   const cont = {
     todos: saloes.length,
