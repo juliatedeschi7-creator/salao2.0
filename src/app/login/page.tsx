@@ -2,11 +2,10 @@
 import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff } from 'lucide-react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 function LoginForm() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const salaoSlug = searchParams.get('salao')
   const [salaoInfo, setSalaoInfo] = useState<any>(null)
   const [carregando, setCarregando] = useState(!!salaoSlug)
@@ -71,8 +70,7 @@ function LoginForm() {
       destino = '/cliente'
     }
 
-    router.push(destino)
-    router.refresh()
+    window.location.href = destino
   }
 
   const isCliente = !!salaoSlug
@@ -138,7 +136,8 @@ function LoginForm() {
         <div className="w-full max-w-sm flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-gray-900">Email</label>
-            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
               type="email" placeholder="seuemail@exemplo.com"
               value={email} onChange={e => setEmail(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()} />
@@ -147,7 +146,8 @@ function LoginForm() {
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-gray-900">Senha</label>
             <div className="relative">
-              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
+              <input
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
                 type={mostrarSenha ? 'text' : 'password'} placeholder="Digite sua senha"
                 value={senha} onChange={e => setSenha(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleLogin()} />
@@ -164,7 +164,8 @@ function LoginForm() {
             </div>
           )}
 
-          <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+          <button
+            className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
             style={{ backgroundColor: cor }}
             onClick={handleLogin} disabled={loading}>
             {loading
@@ -193,7 +194,9 @@ function LoginForm() {
           {isCliente && (
             <p className="text-center text-gray-900 text-sm">
               Não tem conta?{' '}
-              <a href={'/cadastro?salao=' + salaoSlug} className="font-bold" style={{ color: cor }}>Criar conta</a>
+              <a href={'/cadastro?salao=' + salaoSlug} className="font-bold" style={{ color: cor }}>
+                Criar conta
+              </a>
             </p>
           )}
         </div>
