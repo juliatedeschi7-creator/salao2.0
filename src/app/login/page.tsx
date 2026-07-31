@@ -1,11 +1,17 @@
 'use client'
 import { useState, Suspense, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { createBrowserClient } from '@supabase/ssr'
 import { Eye, EyeOff, Bell, KeyRound } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { registrarPush } from '@/lib/push-client'
 
 function LoginForm() {
+  // Cria o cliente do Supabase compatível com cookies de navegador/SSR
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+
   const searchParams = useSearchParams()
   const salaoSlug = searchParams.get('salao')
   const [salaoInfo, setSalaoInfo] = useState<any>(null)
@@ -25,22 +31,18 @@ function LoginForm() {
 
   useEffect(() => {
     async function carregarIdentidade() {
-      // 1. Pega o slug da URL ou busca no localStorage do celular
       const slugSalvo = typeof window !== 'undefined' ? localStorage.getItem('ultimo_salao_slug') : null
       const slugEfetivo = salaoSlug || slugSalvo
 
-      // 2. Se veio slug na URL, salva no localStorage para acessos futuros
       if (salaoSlug && typeof window !== 'undefined') {
         localStorage.setItem('ultimo_salao_slug', salaoSlug)
       }
 
-      // 3. Se não encontrou nenhum salão, encerra o carregamento no modo "Organiza Salão"
       if (!slugEfetivo) {
         setCarregando(false)
         return
       }
 
-      // 4. Busca os dados do salão no Supabase
       const { data } = await supabase
         .from('saloes')
         .select('nome, cor_primaria, cor_secundaria, slug')
@@ -62,17 +64,23 @@ function LoginForm() {
   async function handleLogin() {
     if (!email || !senha) { setErro('Preencha email e senha.'); return }
     setLoading(true); setErro('')
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(), password: senha
     })
+    
     if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
     if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
+
     const { data: prof } = await supabase.from('profiles')
       .select('role, aprovado, ativo, salao_id, acesso_total').eq('id', data.user.id).single()
+      
     if (!prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
     if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
+    
     const acessoTotal = prof.role === 'dono_salao' || (prof.role === 'funcionario' && prof.acesso_total === true)
     let destino = '/login'
+    
     if (prof.role === 'admin_geral') destino = '/admin'
     else if (!prof.aprovado) {
       if (prof.role === 'dono_salao' || prof.role === 'funcionario') destino = '/aguardando'
@@ -91,8 +99,8 @@ function LoginForm() {
       registrarPush(data.user.id).catch(() => {})
     }
 
-    // Dá um tempo maior para o cookie de sessão gravar firmemente no navegador do celular e usa replace para evitar loop
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    // Dá um tempo para o cookie de sessão ser gravado no navegador via SSR e redireciona
+    await new Promise(resolve => setTimeout(resolve, 800))
     window.location.replace(destino)
   }
 
@@ -280,7 +288,6 @@ function LoginForm() {
         </div>
       </div>
 
-      {/* MODAL DE ESQUECI A SENHA */}
       {modalEsqueci && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95">
