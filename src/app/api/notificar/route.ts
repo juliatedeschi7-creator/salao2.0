@@ -7,11 +7,21 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-webpush.setVapidDetails(
-  process.env.VAPID_EMAIL!,
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
+// IMPORTANTE: setVapidDetails NÃO pode rodar no topo do arquivo — o
+// Next.js executa esse código durante "Collecting page data" no build
+// (pra analisar a rota estaticamente), e se a chave estiver ausente ou
+// mal formatada, isso derruba o build inteiro, mesmo sem ninguém ter
+// chamado a rota. Por isso a chamada fica dentro do handler, protegida.
+let vapidConfigurado = false
+function garantirVapidConfigurado() {
+  if (vapidConfigurado) return
+  webpush.setVapidDetails(
+    process.env.VAPID_EMAIL!,
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+    process.env.VAPID_PRIVATE_KEY!
+  )
+  vapidConfigurado = true
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,6 +69,18 @@ export async function POST(req: NextRequest) {
     if (!subs || subs.length === 0) {
       console.log('[notificar] nenhuma subscription ativa — push não será enviado')
       return NextResponse.json({ ok: true, pushEnviado: false, motivo: 'Sem subscription ativa.' })
+    }
+
+    // Só configura o webpush aqui, na hora que vamos de fato precisar dele
+    try {
+      garantirVapidConfigurado()
+    } catch (e: any) {
+      console.log('[notificar] ERRO ao configurar VAPID', e.message)
+      return NextResponse.json({
+        ok: true,
+        pushEnviado: false,
+        motivo: 'Chave VAPID mal configurada no servidor: ' + e.message
+      })
     }
 
     let enviados = 0
