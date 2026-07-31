@@ -31,22 +31,23 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Importante: usar getUser() para validar a sessão no servidor com segurança
+  // Valida a sessão no servidor
   const { data: { user } } = await supabase.auth.getUser()
 
   const url = request.nextUrl.clone()
-  const isAuthPage = url.pathname.startsWith('/login') || url.pathname.startsWith('/auth')
-  const isPublicPage = url.pathname === '/' || isAuthPage
+  const path = url.pathname
 
-  // Se o usuário NÃO está logado e tenta acessar uma rota protegida, joga para o login
+  // Definição de rotas públicas que não exigem login
+  const isPublicPage = 
+    path === '/' || 
+    path.startsWith('/login') || 
+    path.startsWith('/cadastro') || 
+    path.startsWith('/auth') ||
+    path.startsWith('/redefinir-senha')
+
+  // Se o usuário NÃO está logado e tenta acessar uma página protegida, manda para o login
   if (!user && !isPublicPage) {
     url.pathname = '/login'
-    return NextResponse.redirect(url)
-  }
-
-  // Se o usuário JÁ está logado e tenta ir para a tela de login, joga para o dashboard/painel
-  if (user && isAuthPage) {
-    url.pathname = '/dashboard' // Altere para a rota principal do seu app se for diferente
     return NextResponse.redirect(url)
   }
 
