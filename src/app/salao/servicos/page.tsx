@@ -42,7 +42,12 @@ export default function ServicosPage() {
   useEffect(() => {
     if (loading) return
     if (!profile) { router.push('/login'); return }
-    if (!temAcessoTotal(profile)) { 
+    
+    // Permite acesso se for dono/gestor OU se for funcionário do salão
+    const isDonoOuGestor = temAcessoTotal(profile)
+    const isFuncionario = profile.role === 'funcionario'
+
+    if (!isDonoOuGestor && !isFuncionario) { 
       alert('Você não tem permissão para acessar esta página.')
       router.push('/salao/dashboard')
       return 
