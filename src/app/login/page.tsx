@@ -67,27 +67,22 @@ function LoginForm() {
       email: email.trim().toLowerCase(), password: senha
     })
     
-    if (error) { 
-      setErro('Erro: ' + error.message); 
-      setLoading(false); 
-      return 
-    }
-    
-    if (!data.session) { 
-      setErro('Sessão não retornada.'); 
-      setLoading(false); 
-      return 
-    }
+    if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
+    if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
 
-    // ALERTA DE PROVA REAL: Se aparecer esta mensagem no seu celular, 
-    // significa que o Supabase aceitou a senha e a sessão EXISTE no navegador.
-    alert('Login Sucesso! Usuário ID: ' + data.user.id)
+    const { data: prof } = await supabase.from('profiles')
+      .select('role, aprovado, ativo, salao_id, acesso_total').eq('id', data.user.id).single()
+      
+    if (!prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
+    if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
+    if (!prof.aprovado) { await supabase.auth.signOut(); setErro('Conta aguarda aprovação.'); setLoading(false); return }
 
     if (lembrarEReceber) {
       registrarPush(data.user.id).catch(() => {})
     }
 
-    window.location.replace('/salao')
+    // Redirecionamento blindado
+    window.location.assign('/salao')
   }
 
   async function handleEsqueciSenha() {
