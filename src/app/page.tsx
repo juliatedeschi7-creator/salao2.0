@@ -6,53 +6,73 @@ export default function HomePage() {
   useEffect(() => {
     async function redirecionar() {
       try {
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Timeout de conexão')), 8000)
-        )
-
-        const sessionPromise = supabase.auth.getSession()
-        const sessionResult = await Promise.race([sessionPromise, timeoutPromise]) as any
-        const session = sessionResult?.data?.session
+        const { data: { session } } = await supabase.auth.getSession()
 
         if (!session?.user) {
           window.location.href = '/login'
           return
         }
 
-        const { data: prof, error } = await supabase.from('profiles')
+        const { data: prof, error } = await supabase
+          .from('profiles')
           .select('role, aprovado, ativo, salao_id, acesso_total')
           .eq('id', session.user.id)
           .single()
 
-        // Se houver erro ou o perfil não existir, vamos mandar para o login para evitar loop
         if (error || !prof) {
-          console.error('Erro ao buscar perfil:', error)
           window.location.href = '/login'
           return
         }
 
-        // Se o usuário estiver inativo, mas por segurança quisermos evitar travamento, 
-        // verifique se a coluna 'ativo' realmente existe e está preenchida como true no banco
-        const isDonoOuSocio = ['dono_salao', 'dono', 'socio'].includes(prof.role) || prof.acesso_total === true
+        if (!prof.ativo) {
+          await supabase.auth.signOut()
+          window.location.href = '/login'
+          return
+        }
+
+        const acessoTotal = prof.role === 'dono_salao' ||
+          (prof.role === 'funcionario' && prof.acesso_total === true)
 
         if (prof.role === 'admin_geral') {
           window.location.href = '/admin'
           return
         }
-        if (isDonoOuSocio) {
-          window.location.href = '/salao'
+
+        if (!prof.aprovado) {
+          window.location.href = '/aguardando'
           return
         }
-        if (['funcionario', 'profissional', 'comum'].includes(prof.role)) {
+
+        if (acessoTotal) {
+          if (!prof.salao_id) {
+            window.location.href = '/criar-salao'
+            return
+          }
+          const { data: salao } = await supabase
+            .from('saloes')
+            .select('pausado, aprovado')
+            .eq('id', prof.salao_id)
+            .single()
+          if (salao?.pausado) {
+            await supabase.auth.signOut()
+            window.location.href = '/login'
+            return
+          }
+          window.location.href = !salao?.aprovado ? '/aguardando' : '/salao'
+          return
+        }
+
+        if (prof.role === 'funcionario') {
           window.location.href = '/funcionario'
           return
         }
+
         if (prof.role === 'cliente') {
           window.location.href = '/cliente'
           return
         }
 
-        window.location.href = '/salao' // Fallback seguro para donos caso o cargo seja genérico
+        window.location.href = '/login'
       } catch (err) {
         console.error('Erro no redirecionamento:', err)
         window.location.href = '/login'
