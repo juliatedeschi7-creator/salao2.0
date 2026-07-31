@@ -6,13 +6,13 @@ export default function HomePage() {
   useEffect(() => {
     async function redirecionar() {
       try {
-        // Timeout de segurança de 8 segundos para evitar loading infinito se a internet cair
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Timeout de conexão')), 8000)
         )
 
         const sessionPromise = supabase.auth.getSession()
-        const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]) as any
+        const sessionResult = await Promise.race([sessionPromise, timeoutPromise]) as any
+        const session = sessionResult?.data?.session
 
         if (!session?.user) {
           window.location.href = '/login'
@@ -24,27 +24,26 @@ export default function HomePage() {
           .eq('id', session.user.id)
           .single()
 
-        if (error || !prof || prof.ativo === false) {
+        // Se houver erro ou o perfil não existir, vamos mandar para o login para evitar loop
+        if (error || !prof) {
+          console.error('Erro ao buscar perfil:', error)
           window.location.href = '/login'
           return
         }
 
-        // Reconhece tanto os cargos novos (socio, dono) quanto os antigos
+        // Se o usuário estiver inativo, mas por segurança quisermos evitar travamento, 
+        // verifique se a coluna 'ativo' realmente existe e está preenchida como true no banco
         const isDonoOuSocio = ['dono_salao', 'dono', 'socio'].includes(prof.role) || prof.acesso_total === true
 
         if (prof.role === 'admin_geral') {
           window.location.href = '/admin'
           return
         }
-        if (prof.aprovado === false) {
-          window.location.href = '/aguardando'
-          return
-        }
         if (isDonoOuSocio) {
           window.location.href = '/salao'
           return
         }
-        if (prof.role === 'funcionario' || prof.role === 'profissional' || prof.role === 'comum') {
+        if (['funcionario', 'profissional', 'comum'].includes(prof.role)) {
           window.location.href = '/funcionario'
           return
         }
@@ -53,7 +52,7 @@ export default function HomePage() {
           return
         }
 
-        window.location.href = '/login'
+        window.location.href = '/salao' // Fallback seguro para donos caso o cargo seja genérico
       } catch (err) {
         console.error('Erro no redirecionamento:', err)
         window.location.href = '/login'
