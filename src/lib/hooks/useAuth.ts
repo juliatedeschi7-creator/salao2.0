@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
@@ -86,12 +86,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const temAcessoTotal = true
-  const value = { user, profile, loading, temAcessoTotal, signOut }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
+  return React.createElement(
+    AuthContext.Provider,
+    { value: { user, profile, loading, temAcessoTotal, signOut } },
+    children
   )
 }
 
