@@ -1,52 +1,31 @@
 'use client'
 import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Eye, EyeOff, Bell, KeyRound } from 'lucide-react'
-import { useSearchParams } from 'next/navigation'
+import { Eye, EyeOff } from 'lucide-react'
+import { useSearchParams, useRouter } from 'next/navigation'
 
 function LoginForm() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const salaoSlug = searchParams.get('salao')
   const [salaoInfo, setSalaoInfo] = useState<any>(null)
-  const [carregando, setCarregando] = useState(true)
+  const [carregando, setCarregando] = useState(!!salaoSlug)
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [loading, setLoading] = useState(false)
   const [erro, setErro] = useState('')
-  const [lembrarEReceber, setLembrarEReceber] = useState(true)
-
-  const [modalEsqueci, setModalEsqueci] = useState(false)
-  const [loadingEsqueci, setLoadingEsqueci] = useState(false)
-  const [erroEsqueci, setErroEsqueci] = useState('')
-  const [sucessoEsqueci, setSucessoEsqueci] = useState('')
 
   useEffect(() => {
-    async function carregarIdentidade() {
-      const slugSalvo = typeof window !== 'undefined' ? localStorage.getItem('ultimo_salao_slug') : null
-      const slugEfetivo = salaoSlug || slugSalvo
-
-      if (salaoSlug && typeof window !== 'undefined') {
-        localStorage.setItem('ultimo_salao_slug', salaoSlug)
-      }
-
-      if (!slugEfetivo) { setCarregando(false); return }
-
-      const { data } = await supabase
-        .from('saloes')
-        .select('nome, cor_primaria, cor_secundaria, slug')
-        .eq('slug', slugEfetivo)
-        .maybeSingle()
-
-      if (data) {
-        setSalaoInfo(data)
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('ultimo_salao_slug', data.slug)
-        }
-      }
+    async function buscarSalao() {
+      if (!salaoSlug) { setCarregando(false); return }
+      const { data } = await supabase.from('saloes')
+        .select('nome, cor_primaria, cor_secundaria')
+        .eq('slug', salaoSlug).maybeSingle()
+      if (data) setSalaoInfo(data)
       setCarregando(false)
     }
-    carregarIdentidade()
+    buscarSalao()
   }, [salaoSlug])
 
   async function handleLogin() {
@@ -60,49 +39,30 @@ function LoginForm() {
     if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
     if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
 
-    const { data: prof, error: errProf } = await supabase
+    const { data: prof } = await supabase
       .from('profiles')
-      .select('role, aprovado, ativo, salao_id, nivel_acesso')
+      .select('role, aprovado, ativo, salao_id, acesso_total')
       .eq('id', data.user.id)
       .single()
 
-    if (errProf) { setErro('Erro ao buscar perfil: ' + errProf.message); setLoading(false); return }
     if (!prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
     if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
 
-    // ← CORRIGIDO: usa nivel_acesso em vez de acesso_total
-    const acessoTotal =
-      prof.role === 'dono_salao' ||
-      (prof.role === 'funcionario' && prof.nivel_acesso === 'total')
+    const acessoTotal = prof.role === 'dono_salao' ||
+      (prof.role === 'funcionario' && prof.acesso_total === true)
 
-    let destino = '/login'
-
+    let destino = '/'
     if (prof.role === 'admin_geral') {
       destino = '/admin'
     } else if (!prof.aprovado) {
-      if (prof.role === 'dono_salao' || prof.role === 'funcionario') {
-        destino = '/aguardando'
-      } else {
-        await supabase.auth.signOut()
-        setErro('Conta aguarda aprovação.')
-        setLoading(false)
-        return
-      }
+      if (prof.role === 'dono_salao' || prof.role === 'funcionario') destino = '/aguardando'
+      else { await supabase.auth.signOut(); setErro('Conta aguarda aprovação.'); setLoading(false); return }
     } else if (acessoTotal) {
       if (!prof.salao_id) {
         destino = '/criar-salao'
       } else {
-        const { data: salao } = await supabase
-          .from('saloes')
-          .select('pausado, aprovado')
-          .eq('id', prof.salao_id)
-          .single()
-        if (salao?.pausado) {
-          await supabase.auth.signOut()
-          setErro('Salão pausado.')
-          setLoading(false)
-          return
-        }
+        const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
+        if (salao?.pausado) { await supabase.auth.signOut(); setErro('Salão pausado.'); setLoading(false); return }
         destino = !salao?.aprovado ? '/aguardando' : '/salao'
       }
     } else if (prof.role === 'funcionario') {
@@ -111,51 +71,16 @@ function LoginForm() {
       destino = '/cliente'
     }
 
-    // Registrar push em background sem bloquear
-    if (lembrarEReceber) {
-      try {
-        const { registrarPush } = await import('@/lib/push-client')
-        registrarPush(data.user.id).catch(() => {})
-      } catch {
-        // push-client não disponível, ignora
-      }
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 300))
-    window.location.href = destino
+    router.push(destino)
+    router.refresh()
   }
 
-  async function handleEsqueciSenha() {
-    if (!email) {
-      setErroEsqueci('Digite seu e-mail no campo acima para receber o link.')
-      return
-    }
-    setLoadingEsqueci(true)
-    setErroEsqueci('')
-    setSucessoEsqueci('')
-
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://organiza-salao.xyz'
-
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: `${origin}/redefinir-senha`,
-    })
-
-    setLoadingEsqueci(false)
-
-    if (error) {
-      setErroEsqueci('Erro ao enviar e-mail: ' + error.message)
-    } else {
-      setSucessoEsqueci('✅ E-mail enviado! Verifique sua caixa de entrada e o spam.')
-    }
-  }
-
-  const isCliente = !!salaoInfo || !!salaoSlug
+  const isCliente = !!salaoSlug
   const cor = (isCliente && salaoInfo?.cor_primaria) ? salaoInfo.cor_primaria : '#111827'
   const corSec = (isCliente && salaoInfo?.cor_secundaria) ? salaoInfo.cor_secundaria : '#f3f4f6'
   const partes = salaoInfo?.nome?.split(' - ')
   const nomePrincipal = partes?.[0]
   const nomeSecundario = partes?.[1]
-  const slugCadastro = salaoInfo?.slug || salaoSlug
 
   if (carregando) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
@@ -165,44 +90,45 @@ function LoginForm() {
 
   return (
     <>
-      {isCliente && (
-        <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />
-      )}
+      {isCliente && <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />}
       <div className="min-h-screen flex flex-col items-center px-6 py-10"
         style={{ background: isCliente ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)` : '#ffffff' }}>
 
         <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
           {isCliente ? (
             <div className="text-center">
-              <div className="w-28 h-28 mb-1 mx-auto"
-                style={{
-                  backgroundColor: cor,
-                  WebkitMaskImage: 'url(/logo.png)', maskImage: 'url(/logo.png)',
-                  WebkitMaskSize: 'contain', maskSize: 'contain',
-                  WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                  WebkitMaskPosition: 'center', maskPosition: 'center'
-                }} />
+              <div className="w-28 h-28 mb-3 mx-auto" style={{
+                backgroundColor: cor,
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center'
+              }} />
               <h1 style={{
                 fontFamily: "'Dancing Script', cursive",
-                fontSize: '2.2rem', fontWeight: 700, color: cor, lineHeight: 1.2,
-              }}>
-                {nomePrincipal || 'Entrar'}
-              </h1>
-              {nomeSecundario && (
-                <p className="text-sm font-bold text-gray-900 mt-1">{nomeSecundario}</p>
-              )}
+                fontSize: '2.2rem', fontWeight: 700,
+                color: cor, lineHeight: 1.2,
+              }}>{nomePrincipal || 'Entrar'}</h1>
+              {nomeSecundario && <p className="text-sm font-bold mt-1 text-gray-900">{nomeSecundario}</p>}
               <p className="text-gray-400 text-sm mt-2">Entre na sua conta para continuar</p>
             </div>
           ) : (
             <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 mb-4"
-                style={{
-                  backgroundColor: '#111827',
-                  WebkitMaskImage: 'url(/logo.png)', maskImage: 'url(/logo.png)',
-                  WebkitMaskSize: 'contain', maskSize: 'contain',
-                  WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                  WebkitMaskPosition: 'center', maskPosition: 'center'
-                }} />
+              <div className="w-20 h-20 mb-4" style={{
+                backgroundColor: '#111827',
+                WebkitMaskImage: 'url(/logo.png)',
+                maskImage: 'url(/logo.png)',
+                WebkitMaskSize: 'contain',
+                maskSize: 'contain',
+                WebkitMaskRepeat: 'no-repeat',
+                maskRepeat: 'no-repeat',
+                WebkitMaskPosition: 'center',
+                maskPosition: 'center'
+              }} />
               <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
               <p className="text-gray-400 text-sm mt-1">Toda a gestão do seu espaço na palma da mão.</p>
             </div>
@@ -219,14 +145,7 @@ function LoginForm() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-gray-900">Senha</label>
-              <button type="button"
-                onClick={() => { setModalEsqueci(true); setErroEsqueci(''); setSucessoEsqueci('') }}
-                className="text-xs font-bold hover:underline" style={{ color: cor }}>
-                Esqueceu a senha?
-              </button>
-            </div>
+            <label className="text-xs font-semibold text-gray-900">Senha</label>
             <div className="relative">
               <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
                 type={mostrarSenha ? 'text' : 'password'} placeholder="Digite sua senha"
@@ -239,22 +158,6 @@ function LoginForm() {
             </div>
           </div>
 
-          <button type="button" onClick={() => setLembrarEReceber(v => !v)}
-            className="flex items-center gap-3 text-left">
-            <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors"
-              style={{ borderColor: lembrarEReceber ? cor : '#d1d5db', backgroundColor: lembrarEReceber ? cor : 'transparent' }}>
-              {lembrarEReceber && (
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6L4.5 8.5L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </div>
-            <span className="text-sm text-gray-600 flex items-center gap-1.5">
-              <Bell size={14} className="text-gray-400 shrink-0" />
-              Lembrar meu acesso e receber notificações
-            </span>
-          </button>
-
           {erro && (
             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <p className="text-red-600 text-sm text-center">{erro}</p>
@@ -262,7 +165,8 @@ function LoginForm() {
           )}
 
           <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
-            style={{ backgroundColor: cor }} onClick={handleLogin} disabled={loading}>
+            style={{ backgroundColor: cor }}
+            onClick={handleLogin} disabled={loading}>
             {loading
               ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               : 'Entrar'}
@@ -289,63 +193,11 @@ function LoginForm() {
           {isCliente && (
             <p className="text-center text-gray-900 text-sm">
               Não tem conta?{' '}
-              <a href={'/cadastro?salao=' + slugCadastro} className="font-bold" style={{ color: cor }}>
-                Criar conta
-              </a>
+              <a href={'/cadastro?salao=' + salaoSlug} className="font-bold" style={{ color: cor }}>Criar conta</a>
             </p>
           )}
         </div>
       </div>
-
-      {/* Modal recuperar senha */}
-      {modalEsqueci && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: `${cor}15`, color: cor }}>
-                <KeyRound size={20} />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-900">Recuperar Senha</h3>
-                <p className="text-xs text-gray-500">Enviaremos um link para criar nova senha.</p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5 pt-2">
-              <label className="text-xs font-semibold text-gray-900">E-mail cadastrado</label>
-              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none placeholder-gray-400"
-                type="email" placeholder="seuemail@exemplo.com"
-                value={email} onChange={e => setEmail(e.target.value)} />
-            </div>
-
-            {erroEsqueci && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                <p className="text-red-600 text-xs text-center">{erroEsqueci}</p>
-              </div>
-            )}
-            {sucessoEsqueci && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
-                <p className="text-green-700 text-xs text-center font-medium">{sucessoEsqueci}</p>
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setModalEsqueci(false)}
-                className="flex-1 border border-gray-200 text-gray-700 py-3.5 rounded-2xl text-sm font-semibold hover:bg-gray-50 transition">
-                Cancelar
-              </button>
-              <button type="button" onClick={handleEsqueciSenha} disabled={loadingEsqueci}
-                className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold flex items-center justify-center active:scale-95 transition"
-                style={{ backgroundColor: cor }}>
-                {loadingEsqueci
-                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  : 'Enviar Link'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   )
 }
