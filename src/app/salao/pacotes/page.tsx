@@ -37,8 +37,15 @@ export default function PacotesPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) return
-    if (profile.role !== 'dono_salao' && profile.role !== 'funcionario') { router.push('/login'); return }
+    if (!profile) { router.push('/login'); return }
+
+    // Validação robusta liberando donos, sócios, administradores e funcionários com acesso total
+    const cargoValido = ['dono_salao', 'funcionario', 'socio', 'admin'].includes(profile.role) || profile.acesso_total
+    if (!cargoValido) { 
+      router.push('/login')
+      return 
+    }
+
     if (profile.salao_id) carregarDados()
   }, [loading, profile])
 
