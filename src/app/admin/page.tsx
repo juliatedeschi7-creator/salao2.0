@@ -6,7 +6,7 @@ import { Store, Users, Bell, LogOut, ChevronRight, Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function AdminPage() {
-  const { profile, loading, logout } = useAuth()
+  const { profile, loading, signOut } = useAuth()
   const router = useRouter()
   const [stats, setStats] = useState({ total: 0, ativos: 0, pausados: 0, pendentes: 0, totalUsuarios: 0 })
 
@@ -136,7 +136,7 @@ export default function AdminPage() {
           ))}
         </div>
 
-        <button onClick={logout}
+        <button onClick={signOut}
           className="flex items-center justify-center gap-2 text-gray-400 text-sm mt-2 py-3">
           <LogOut size={16} />Sair da conta
         </button>
