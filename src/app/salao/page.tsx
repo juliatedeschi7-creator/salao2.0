@@ -1,62 +1,87 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/hooks/useAuth'
+import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { Home, Calendar, Plus, Clock, CheckCircle, AlertCircle, Scissors, Bell, Users, BarChart2 } from 'lucide-react'
+import { Home, Calendar, Plus, Clock, CheckCircle, AlertCircle, Bell, Users, BarChart2 } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
 export default function SalaoPage() {
-  const { profile, loading, temAcessoTotal } = useAuth()
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const router = useRouter()
+  
+  const [profile, setProfile] = useState<any>(null)
   const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [todosServicos, setTodosServicos] = useState<any[]>([])
   const [pendentesConfirmacao, setPendentesConfirmacao] = useState(0)
-  const [notifNaoLidas, setNotifNaoLidas] = useState(0)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
-    if (loading) return
+    async function inicializarPainel() {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/login')
+        return
+      }
 
-    if (!profile) { router.push('/login'); return }
-    if (!temAcessoTotal) { router.push('/login'); return }
-    if (!profile.salao_id) { router.push('/criar-salao'); return }
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single()
 
-    carregarDados()
-  }, [profile, loading])
+      if (!prof || !prof.ativo || !prof.aprovado) {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
 
-  async function carregarDados() {
-    if (!profile?.salao_id) return
-    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile.salao_id).single()
-    if (sal?.pausado) { await supabase.auth.signOut(); router.push('/login'); return }
+      if (!prof.salao_id) {
+        router.replace('/criar-salao')
+        return
+      }
+
+      setProfile(prof)
+      await carregarDados(prof.salao_id, prof.id)
+    }
+
+    inicializarPainel()
+  }, [])
+
+  async function carregarDados(salaoId: string, profileId: string) {
+    const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
+    if (sal?.pausado) { 
+      await supabase.auth.signOut()
+      router.replace('/login')
+      return 
+    }
     setSalao(sal)
 
     const { data: srv } = await supabase.from('servicos').select('id, nome')
-      .eq('salao_id', profile.salao_id)
+      .eq('salao_id', salaoId)
     setTodosServicos(srv || [])
 
     const hoje = new Date()
     const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
     const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
+    
     const { data: ags } = await supabase.from('agendamentos')
       .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
-      .eq('salao_id', profile.salao_id).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
+      .eq('salao_id', salaoId).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
     setAgendamentos(ags || [])
 
     const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
     const { data: pendentes } = await supabase.from('agendamentos')
       .select('*, confirmacoes_atendimento(*)')
-      .eq('salao_id', profile.salao_id).eq('status', 'confirmado')
+      .eq('salao_id', salaoId).eq('status', 'confirmado')
       .gte('data_hora', ontem.toISOString()).lte('data_hora', hoje.toISOString())
     const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
     setPendentesConfirmacao(semConfirmar.length)
 
-    const { count } = await supabase.from('notificacoes')
-      .select('*', { count: 'exact', head: true })
-      .eq('destinatario_id', profile.id).eq('lida', false)
-    setNotifNaoLidas(count || 0)
     setCarregando(false)
   }
 
@@ -86,8 +111,8 @@ export default function SalaoPage() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
 
-  if (loading || carregando) return (
-    <div className="min-h-screen flex items-center justify-center">
+  if (carregando || !profile) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
       <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
     </div>
   )
@@ -97,7 +122,7 @@ export default function SalaoPage() {
 
   return (
     <div className="min-h-screen pb-20" style={{ backgroundColor: '#f8f9fa' }}>
-<Header profile={profile!} salaoNome={salao?.nome} corPrimaria={cor} />
+      <Header profile={profile} salaoNome={salao?.nome} corPrimaria={cor} />
       <div className="px-4 py-5 flex flex-col gap-4">
         <h1 className="text-2xl font-bold text-gray-900">
           {saudacao}, {profile?.nome?.split(' ')[0]}! ✨
@@ -119,11 +144,11 @@ export default function SalaoPage() {
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="card">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <p className="text-xs text-gray-500">Atendimentos hoje</p>
             <p className="text-3xl font-bold text-gray-900 mt-1">{agendamentos.length}</p>
           </div>
-          <div className="card">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             <p className="text-xs text-gray-500">Confirmados</p>
             <p className="text-3xl font-bold mt-1" style={{ color: cor }}>
               {agendamentos.filter(a => a.status === 'confirmado').length}
@@ -140,7 +165,7 @@ export default function SalaoPage() {
         </div>
 
         {agendamentos.length === 0 ? (
-          <div className="card text-center py-10 flex flex-col items-center gap-3">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center py-10 flex flex-col items-center gap-3">
             <Calendar size={36} className="text-gray-300" />
             <p className="text-gray-400">Nenhum agendamento hoje</p>
             <button onClick={() => router.push('/salao/agenda/novo')}
@@ -158,7 +183,7 @@ export default function SalaoPage() {
           const nomesServicos = nomesServicosDoAgendamento(ag)
           return (
             <button key={ag.id} onClick={() => router.push('/salao/agenda')}
-              className="card text-left flex items-start gap-3 active:scale-95 transition-all">
+              className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-left flex items-start gap-3 active:scale-95 transition-all w-full">
               <div className="flex flex-col items-center gap-1 shrink-0">
                 <span className="text-sm font-bold text-gray-900">{horaAg}</span>
                 <div className="w-0.5 h-4 bg-gray-200" />
