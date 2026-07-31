@@ -41,8 +41,12 @@ export default function ServicosPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    if (!profile) { router.push('/login'); return }
+    if (!temAcessoTotal(profile)) { 
+      alert('Você não tem permissão para acessar esta página.')
+      router.push('/salao/dashboard')
+      return 
+    }
     if (profile.salao_id) carregarDados()
   }, [loading, profile])
 
@@ -340,7 +344,7 @@ export default function ServicosPage() {
                     <div className="flex items-center gap-1">
                       <DollarSign size={14} style={{ color: cor }} />
                       <span className="text-sm font-bold" style={{ color: cor }}>
-                        {variavel ? `A partir de R$ ${s.preco.toFixed(2).replace('.', ',')}` : `R$ ${s.preco.toFixed(2).replace('.', ',')}`}
+                        {variavel ? `A partir de R$ ${Number(s.preco).toFixed(2).replace('.', ',')}` : `R$ ${Number(s.preco).toFixed(2).replace('.', ',')}`}
                       </span>
                     </div>
                     <div className="flex items-center gap-1 text-gray-400">
