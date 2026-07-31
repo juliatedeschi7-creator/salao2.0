@@ -13,7 +13,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (loading) return
     if (!profile) return
-    if (profile.role !== 'admin_geral') { router.replace('/login'); return }
+    if (profile.tipo !== 'admin_geral') { router.replace('/login'); return }
     carregarStats()
   }, [profile, loading])
 
@@ -26,7 +26,7 @@ export default function AdminPage() {
     const { count } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
-      .neq('role', 'admin_geral')
+      .neq('tipo', 'admin_geral')
       .eq('ativo', true)
       .eq('aprovado', true)
 
