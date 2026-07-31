@@ -5,7 +5,7 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { Clock, LogOut, RefreshCw } from 'lucide-react'
 
 export default function AguardandoPage() {
-  const { profile, loading, logout } = useAuth()
+  const { profile, loading, signOut } = useAuth()
   const [verificando, setVerificando] = useState(false)
   const [mensagem, setMensagem] = useState('')
 
@@ -92,7 +92,7 @@ export default function AguardandoPage() {
           {verificando ? 'Verificando...' : 'Verificar status'}
         </button>
 
-        <button onClick={logout} className="flex items-center gap-2 text-gray-400 text-sm">
+        <button onClick={signOut} className="flex items-center gap-2 text-gray-400 text-sm">
           <LogOut size={16} />Sair da conta
         </button>
       </div>
