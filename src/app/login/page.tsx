@@ -91,8 +91,9 @@ function LoginForm() {
       registrarPush(data.user.id).catch(() => {})
     }
 
-    await new Promise(resolve => setTimeout(resolve, 500))
-    window.location.href = destino
+    // Dá um tempo maior para o cookie de sessão gravar firmemente no navegador do celular e usa replace para evitar loop
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    window.location.replace(destino)
   }
 
   async function handleEsqueciSenha() {
