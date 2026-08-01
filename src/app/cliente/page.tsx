@@ -19,48 +19,69 @@ export default function ClientePage() {
   const [modalPushLembrete, setModalPushLembrete] = useState(false)
   const [ativandoPush, setAtivandoPush] = useState(false)
   const [erroPush, setErroPush] = useState('')
+  const [carregandoDados, setCarregandoDados] = useState(true)
 
   useEffect(() => {
-    if (!loading && profile) carregarDados()
+    if (!loading && profile) {
+      carregarDados()
+    } else if (!loading && !profile) {
+      router.push('/login')
+    }
   }, [loading, profile])
 
   async function carregarDados() {
     if (!profile) return
-    const { data: cli } = await supabase
-      .from('clientes').select('*, saloes(*)')
-      .eq('profile_id', profile.id).single()
-    setCliente(cli)
-    if (cli?.saloes) setSalao(cli.saloes)
+    setCarregandoDados(true)
 
-    const { data: ags } = await supabase
-      .from('agendamentos')
-      .select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
-      .eq('cliente_id', cli?.id)
-      .order('data_hora', { ascending: false }).limit(10)
-    setAgendamentos(ags || [])
+    try {
+      // 1. Busca o cliente usando maybeSingle para evitar travamento caso não exista
+      const { data: cli } = await supabase
+        .from('clientes')
+        .select('*, saloes(*)')
+        .eq('profile_id', profile.id)
+        .maybeSingle()
 
-    const { count: pacs } = await supabase
-      .from('cliente_pacotes').select('*', { count: 'exact', head: true })
-      .eq('cliente_id', cli?.id).eq('status', 'ativo')
-    setPacotesAtivos(pacs || 0)
+      setCliente(cli)
+      
+      let salaoId = cli?.salao_id
 
-    const { count: notifs } = await supabase
-      .from('notificacoes').select('*', { count: 'exact', head: true })
-      .eq('destinatario_id', profile.id).eq('lida', false)
-    setNotifCount(notifs || 0)
+      if (cli?.saloes) {
+        setSalao(cli.saloes)
+      } else if (salaoId) {
+        // Se o cliente existe mas o join não veio, busca o salão separadamente
+        const { data: sal } = await supabase
+          .from('saloes')
+          .select('*')
+          .eq('id', salaoId)
+          .maybeSingle()
+        setSalao(sal)
+      }
 
-    const { count: contratos } = await supabase
-      .from('contratos').select('*', { count: 'exact', head: true })
-      .eq('cliente_id', cli?.id)
-    setContratosCount(contratos || 0)
+      // Se o cliente existir, busca o restante das informações em paralelo
+      if (cli?.id) {
+        const [agsRes, pacsRes, notifsRes, contratosRes, contasRes, pushAtivo] = await Promise.all([
+          supabase.from('agendamentos').select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)').eq('cliente_id', cli.id).order('data_hora', { ascending: false }).limit(10),
+          supabase.from('cliente_pacotes').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id).eq('status', 'ativo'),
+          supabase.from('notificacoes').select('*', { count: 'exact', head: true }).eq('destinatario_id', profile.id).eq('lida', false),
+          supabase.from('contratos').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id),
+          supabase.from('contas_clientes').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id),
+          verificarPushAtivo(profile.id)
+        ])
 
-    const { count: contas } = await supabase
-      .from('contas_clientes').select('*', { count: 'exact', head: true })
-      .eq('cliente_id', cli?.id)
-    setContasCount(contas || 0)
+        setAgendamentos(agsRes.data || [])
+        setPacotesAtivos(pacsRes.count || 0)
+        setNotifCount(notifsRes.count || 0)
+        setContratosCount(contratosRes.count || 0)
+        setContasCount(contasRes.count || 0)
 
-    const pushAtivo = await verificarPushAtivo(profile.id)
-    if (!pushAtivo) setModalPushLembrete(true)
+        if (!pushAtivo) setModalPushLembrete(true)
+      }
+    } catch (err) {
+      console.error('Erro ao carregar dados do cliente:', err)
+    } finally {
+      // GARANTE QUE O SPINNER VAI PARAR SEMPRE
+      setCarregandoDados(false)
+    }
   }
 
   async function ativarPushAgora() {
@@ -69,7 +90,6 @@ export default function ClientePage() {
 
     try {
       const resultado = await registrarPush(profile!.id)
-
       if (resultado) {
         setModalPushLembrete(false)
       } else {
@@ -85,7 +105,7 @@ export default function ClientePage() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
   const partes = salao?.nome?.split(' - ')
-  const nomePrincipal = partes?.[0] || ''
+  const nomePrincipal = partes?.[0] || 'Espaço de Beleza'
   const nomeSecundario = partes?.[1]
 
   const mostrarPacotes = salao?.mostrar_pacotes !== false
@@ -111,7 +131,8 @@ export default function ClientePage() {
     { icon: Clock, label: 'Horários', sub: 'Vagas e funcionamento', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
 
-  if (loading || !cliente || !salao) {
+  // Tela de carregamento segura (só bloqueia enquanto o auth ou a busca inicial estiverem rodando)
+  if (loading || carregandoDados) {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
@@ -138,7 +159,7 @@ export default function ClientePage() {
           <div>
             <p className="text-white/70 text-sm font-medium tracking-wide">{saudacao} ✨</p>
             <h1 className="text-white text-3xl font-bold mt-0.5 leading-tight">
-              {profile?.nome?.split(' ')[0]}!
+              {profile?.nome?.split(' ')[0] || 'Cliente'}!
             </h1>
           </div>
           <div className="flex items-center gap-2">
@@ -152,7 +173,7 @@ export default function ClientePage() {
               )}
             </button>
             <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-base">
-              {profile?.nome?.charAt(0).toUpperCase()}
+              {profile?.nome?.charAt(0).toUpperCase() || 'C'}
             </div>
           </div>
         </div>
