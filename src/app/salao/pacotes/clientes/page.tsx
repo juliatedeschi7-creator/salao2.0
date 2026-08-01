@@ -45,9 +45,9 @@ export default function PacotesClientesPage() {
     const p = profile as any
     // Validação robusta alinhada com as permissões globais de sócios, admins, donos e funcionários liberados
     const temPermissao = 
-      ['dono_salao', 'socio', 'admin'].includes(profile.role) || 
+      ['dono_salao', 'socio', 'admin'].includes(profile.tipo) || 
       p.acesso_total === true ||
-      (profile.role === 'funcionario' && (
+      (profile.tipo === 'funcionario' && (
         p.acesso_total === true ||
         p.pode_ver_combos === true ||
         p.pode_gerenciar_pacotes === true ||
