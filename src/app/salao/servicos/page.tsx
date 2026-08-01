@@ -42,7 +42,7 @@ export default function ServicosPage() {
     if (!profile) { router.push('/login'); return }
     
     const p = profile as any
-    const tipoUser = p.tipo || p.role
+    const tipoUser = p.tipo || p.cargo || p.role
     
     const temPermissao = 
       ['dono_salao', 'socio', 'admin'].includes(tipoUser) || 
