@@ -31,7 +31,8 @@ export default function GestaoProcedimentosPage() {
   useEffect(() => {
     if (loading) return
     if (!profile) return
-    if (!temAcessoTotal(profile)) { router.push('/login'); return }
+    const ehDonoOuFuncionario = profile.tipo === 'dono_salao' || profile.tipo === 'funcionario'
+    if (!ehDonoOuFuncionario) { router.push('/login'); return }
     if (profile.salao_id) carregarDados()
   }, [loading, profile])
 
