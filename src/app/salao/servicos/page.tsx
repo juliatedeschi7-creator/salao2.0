@@ -42,11 +42,12 @@ export default function ServicosPage() {
     if (!profile) { router.push('/login'); return }
     
     const p = profile as any
-    // Validação corrigida utilizando exclusivamente 'tipo'
+    const tipoUser = p.tipo || p.role
+    
     const temPermissao = 
-      ['dono_salao', 'socio', 'admin'].includes(profile.tipo) || 
+      ['dono_salao', 'socio', 'admin'].includes(tipoUser) || 
       p.acesso_total === true ||
-      (profile.tipo === 'funcionario' && (
+      (tipoUser === 'funcionario' && (
         p.acesso_total === true ||
         p.permissoes?.servicos === true ||
         p.permissoes?.agenda === true
