@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Calendar, Users, Notebook, Scissors, CheckSquare, BarChart2, LogOut, Bell } from 'lucide-react'
 
 export default function FuncionarioDashboard() {
-  const { profile, loading } = useAuth()
+  const { profile, loading, signOut } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [atendimentosHoje, setAtendimentosHoje] = useState(0)
@@ -16,8 +16,8 @@ export default function FuncionarioDashboard() {
   useEffect(() => {
     if (loading) return
     if (!profile) { router.push('/login'); return }
-if (profile.tipo !== 'funcionario') { router.push('/login'); return }
-    // ← CORRIGIDO: sempre chama carregarDados, mesmo sem salao_id
+    if (profile.tipo !== 'funcionario') { router.push('/login'); return }
+    
     carregarDados()
   }, [loading, profile])
 
@@ -31,7 +31,7 @@ if (profile.tipo !== 'funcionario') { router.push('/login'); return }
           supabase.from('saloes').select('*').eq('id', profile.salao_id).single(),
           supabase.from('agendamentos').select('*')
             .eq('salao_id', profile.salao_id)
-            .eq('profissional_id', profile.id) // ← CORRIGIDO: era funcionario_id
+            .eq('profissional_id', profile.id)
             .gte('data_hora', `${hojeStr}T00:00:00`)
             .lte('data_hora', `${hojeStr}T23:59:59`)
         ])
@@ -39,18 +39,15 @@ if (profile.tipo !== 'funcionario') { router.push('/login'); return }
         const lista = agendRes.data || []
         setAtendimentosHoje(lista.length)
         setConfirmadosHoje(lista.filter((a: any) => a.status === 'confirmado').length)
+      } else {
+        console.warn('Funcionário sem salao_id vinculado no perfil.')
       }
     } catch (e) {
       console.error('Erro ao carregar:', e)
     } finally {
-      // ← CORRIGIDO: sempre termina o carregando
+      // GARANTE SEMPRE QUE O LOADING VAI DESLIGAR
       setCarregando(false)
     }
-  }
-
-  async function logout() {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -121,7 +118,7 @@ if (profile.tipo !== 'funcionario') { router.push('/login'); return }
         </div>
 
         <div className="pt-4 flex justify-center">
-          <button onClick={logout}
+          <button onClick={signOut}
             className="flex items-center gap-2 text-xs text-gray-400 font-medium py-2 px-4">
             <LogOut size={16} /> Sair da conta
           </button>
