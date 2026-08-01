@@ -42,7 +42,7 @@ export default function ServicosPage() {
     if (!profile) { router.push('/login'); return }
     
     const p = profile as any
-    const tipoUser = p.tipo || p.cargo || p.role
+    const tipoUser = p.tipo || p.cargo || p.role || ''
     
     const temPermissao = 
       ['dono_salao', 'socio', 'admin'].includes(tipoUser) || 
@@ -58,19 +58,19 @@ export default function ServicosPage() {
       router.push('/salao/dashboard')
       return 
     }
-    if (profile.salao_id) carregarDados()
+    if (p.salao_id) carregarDados(p.salao_id)
   }, [loading, profile])
 
-  async function carregarDados() {
+  async function carregarDados(salaoId: string) {
     setCarregando(true)
     const [salRes, srvsRes, ftsRes, catsRes, orcsRes] = await Promise.all([
-      supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
-      supabase.from('servicos').select('*').eq('salao_id', profile!.salao_id!).eq('ativo', true).order('categoria'),
-      supabase.from('fotos_servicos').select('*').eq('salao_id', profile!.salao_id!),
-      supabase.from('categorias_servicos').select('*').eq('salao_id', profile!.salao_id!).order('nome'),
+      supabase.from('saloes').select('*').eq('id', salaoId).single(),
+      supabase.from('servicos').select('*').eq('salao_id', salaoId).eq('ativo', true).order('categoria'),
+      supabase.from('fotos_servicos').select('*').eq('salao_id', salaoId),
+      supabase.from('categorias_servicos').select('*').eq('salao_id', salaoId).order('nome'),
       supabase.from('solicitacoes_orcamento')
         .select('*, servicos(nome), clientes(nome)')
-        .eq('salao_id', profile!.salao_id!)
+        .eq('salao_id', salaoId)
         .eq('status', 'pendente')
         .order('created_at', { ascending: false }),
     ])
@@ -81,6 +81,9 @@ export default function ServicosPage() {
     setOrcamentos(orcsRes.data || [])
     setCarregando(false)
   }
+
+  const p = profile as any
+  const salaoId = p?.salao_id
 
   const linkCatalogo = typeof window !== 'undefined'
     ? `${window.location.origin}/servicos?salao=${salao?.slug || salao?.id}`
@@ -134,7 +137,7 @@ export default function ServicosPage() {
 
     setSalvando(true)
     const dados = {
-      salao_id: profile!.salao_id,
+      salao_id: salaoId,
       nome: form.nome, descricao: form.descricao || null,
       categoria: form.categoria,
       duracao_minutos: form.duracao_minutos, sessoes: form.sessoes,
@@ -144,7 +147,7 @@ export default function ServicosPage() {
       comissao_percentual: parseFloat(form.comissao_percentual || '0'),
       tipo_preco: form.tipo_preco,
       regras_foto_orcamento: form.tipo_preco === 'variavel' ? (form.regras_foto_orcamento || null) : null,
-      criado_por: profile!.id,
+      criado_por: p?.id,
     }
 
     let resultado
@@ -155,53 +158,53 @@ export default function ServicosPage() {
     }
 
     if (resultado.error) { setErroSalvar('Erro: ' + resultado.error.message); setSalvando(false); return }
-    setModal(false); setSalvando(false); carregarDados()
+    setModal(false); setSalvando(false); carregarDados(salaoId)
   }
 
   async function excluir(id: string) {
     await supabase.from('servicos').update({ ativo: false }).eq('id', id)
-    carregarDados()
+    carregarDados(salaoId)
   }
 
   async function uploadFoto(servicoId: string, file: File) {
     setUploadando(true)
     const ext = file.name.split('.').pop()
-    const path = `${profile!.salao_id}/${servicoId}/${Date.now()}.${ext}`
+    const path = `${salaoId}/${servicoId}/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('fotos-servicos').upload(path, file)
     if (!error) {
       const { data: urlData } = supabase.storage.from('fotos-servicos').getPublicUrl(path)
       await supabase.from('fotos_servicos').insert({
-        salao_id: profile!.salao_id, servico_id: servicoId,
-        url: urlData.publicUrl, adicionado_por: profile!.id
+        salao_id: salaoId, servico_id: servicoId,
+        url: urlData.publicUrl, adicionado_por: p?.id
       })
-      carregarDados()
+      carregarDados(salaoId)
     }
     setUploadando(false)
   }
 
   async function removerFoto(fotoId: string) {
     await supabase.from('fotos_servicos').delete().eq('id', fotoId)
-    carregarDados()
+    carregarDados(salaoId)
   }
 
   async function adicionarCategoria() {
     if (!novaCategoria) return
-    await supabase.from('categorias_servicos').insert({ salao_id: profile!.salao_id, nome: novaCategoria })
-    setNovaCategoria(''); carregarDados()
+    await supabase.from('categorias_servicos').insert({ salao_id: salaoId, nome: novaCategoria })
+    setNovaCategoria(''); carregarDados(salaoId)
   }
 
   async function editarCategoria(cat: any, novoNome: string) {
     if (!novoNome) return
     await supabase.from('categorias_servicos').update({ nome: novoNome }).eq('id', cat.id)
-    await supabase.from('servicos').update({ categoria: novoNome }).eq('categoria', cat.nome).eq('salao_id', profile!.salao_id!)
-    setEditandoCategoria(null); carregarDados()
+    await supabase.from('servicos').update({ categoria: novoNome }).eq('categoria', cat.nome).eq('salao_id', salaoId)
+    setEditandoCategoria(null); carregarDados(salaoId)
   }
 
   async function excluirCategoria(cat: any) {
     const emUso = servicos.some(s => s.categoria === cat.nome)
     if (emUso) { alert('Esta categoria tem serviços. Mude a categoria deles antes de excluir.'); return }
     await supabase.from('categorias_servicos').delete().eq('id', cat.id)
-    carregarDados()
+    carregarDados(salaoId)
   }
 
   async function responderOrcamento() {
@@ -216,7 +219,7 @@ export default function ServicosPage() {
     setSalvandoOrcamento(false)
     setModalOrcamento(null)
     setRespostaOrcamento({ texto: '', valor: '' })
-    carregarDados()
+    carregarDados(salaoId)
   }
 
   function formatarDuracao(minutos: number) {
