@@ -33,6 +33,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray
 }
 
+// IMPORTANTE: nunca usar alert() aqui dentro. alert() trava a thread
+// inteira do JavaScript até a pessoa tocar em "Fechar" — incluindo
+// qualquer redirecionamento (window.location.href) que já estivesse
+// em andamento em paralelo. Isso fazia parecer que o LOGIN travava,
+// quando na real era o registro de push (que roda em segundo plano,
+// sem await, logo depois do login) que ficava preso num alert().
+// Erros aqui devem só ir pro console — essa função nunca deve poder
+// travar a tela de quem está logando.
 export async function registrarPush(profileId: string): Promise<boolean> {
   try {
     if (typeof window === 'undefined') {
@@ -52,17 +60,23 @@ export async function registrarPush(profileId: string): Promise<boolean> {
     try {
       registration = await navigator.serviceWorker.register('/sw.js')
     } catch (e: any) {
+      console.error('[push] erro ao registrar service worker:', e)
       return false
     }
 
-    registration = await comTimeout(
-      navigator.serviceWorker.ready, 
-      8000, 
-      'Timeout esperando o service worker ficar pronto'
-    )
+    try {
+      registration = await comTimeout(
+        navigator.serviceWorker.ready,
+        8000,
+        'Timeout esperando o service worker ficar pronto'
+      )
+    } catch (e: any) {
+      console.error('[push] timeout no service worker:', e)
+      return false
+    }
 
     if (!vapidPublicKey) {
-      alert('DIAG: VAPID Key está vazia!')
+      console.error('[push] VAPID public key está vazia — verifique NEXT_PUBLIC_VAPID_PUBLIC_KEY na Vercel.')
       return false
     }
 
@@ -71,7 +85,7 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       try {
         await subscription.unsubscribe()
       } catch (e) {
-        // Ignora
+        // Ignora — segue tentando criar uma nova subscription
       }
     }
 
@@ -81,8 +95,7 @@ export async function registrarPush(profileId: string): Promise<boolean> {
         applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource
       })
     } catch (e: any) {
-      // Exibe a mensagem exata do erro que o PushManager retornou
-      alert('ERRO NO SUBSCRIBE: ' + (e?.message || JSON.stringify(e)) + ' | Nome: ' + e?.name)
+      console.error('[push] erro no subscribe:', e?.name, e?.message || e)
       return false
     }
 
@@ -92,21 +105,19 @@ export async function registrarPush(profileId: string): Promise<boolean> {
       .from('push_subscriptions')
       .upsert({
         profile_id: profileId,
-        user_id: profileId,
-        subscription: subJson,              
-        updated_at: new Date().toISOString() 
+        subscription: subJson,
       }, {
         onConflict: 'profile_id'
       })
 
     if (error) {
-      alert('DIAG Erro Supabase: ' + JSON.stringify(error))
+      console.error('[push] erro ao salvar subscription no Supabase:', error)
       return false
     }
 
     return true
   } catch (err: any) {
-    alert('DIAG Erro Geral: ' + (err?.message || JSON.stringify(err)))
+    console.error('[push] erro geral em registrarPush:', err)
     return false
   }
 }
