@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { temAcessoTotal } from '@/lib/permissoes'
 import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText, Share2, Check } from 'lucide-react'
 
@@ -43,11 +42,12 @@ export default function ServicosPage() {
     if (loading) return
     if (!profile) { router.push('/login'); return }
     
-    // Permite acesso se for dono/gestor OU se for funcionário do salão
-    const isDonoOuGestor = temAcessoTotal(profile)
+    const p = profile as any
+    // Permite acesso se for dono, sócio, admin, gestor ou funcionário com permissão
+    const ehAdminOuSocio = ['dono_salao', 'socio', 'admin'].includes(profile.tipo) || p.acesso_total
     const isFuncionario = profile.tipo === 'funcionario'
 
-    if (!isDonoOuGestor && !isFuncionario) { 
+    if (!ehAdminOuSocio && !isFuncionario) { 
       alert('Você não tem permissão para acessar esta página.')
       router.push('/salao/dashboard')
       return 
@@ -76,7 +76,6 @@ export default function ServicosPage() {
     setCarregando(false)
   }
 
-  // ─── Ação de Compartilhar Catálogo / Preços ───────────────────────────
   const linkCatalogo = typeof window !== 'undefined'
     ? `${window.location.origin}/servicos?salao=${salao?.slug || salao?.id}`
     : ''
@@ -254,14 +253,12 @@ export default function ServicosPage() {
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">Catálogo de Serviços</h1>
         
-        {/* BOTÃO COMPARTILHAR CATÁLOGO / PREÇOS */}
         <button onClick={compartilharCatalogo}
           title="Compartilhar Catálogo / Preços"
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center transition-colors">
           {copiado ? <Check size={16} className="text-green-600" /> : <Share2 size={16} className="text-gray-600" />}
         </button>
 
-        {/* BOTÃO GERAR CATÁLOGO PDF */}
         <button onClick={() => router.push('/salao/catalogo')}
           title="Gerar Catálogo PDF"
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
@@ -401,7 +398,6 @@ export default function ServicosPage() {
         })}
       </div>
 
-      {/* Modal responder orçamento */}
       {modalOrcamento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
@@ -443,7 +439,6 @@ export default function ServicosPage() {
         </div>
       )}
 
-      {/* Modal categorias */}
       {modalCategorias && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
@@ -475,7 +470,6 @@ export default function ServicosPage() {
         </div>
       )}
 
-      {/* Modal novo/editar serviço */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
@@ -511,7 +505,6 @@ export default function ServicosPage() {
                 value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
             </div>
 
-            {/* Toggle tipo de preço */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">Tipo de preço</label>
               <div className="flex gap-2">
