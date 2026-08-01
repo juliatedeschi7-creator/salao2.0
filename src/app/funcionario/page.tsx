@@ -77,7 +77,7 @@ export default function FuncionarioDashboard() {
               {salao?.nome || 'Espaço de beleza'}
             </p>
             <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider">
-              {profile?.role || 'Funcionário'}
+              {profile?.tipo || 'Funcionário'}
             </span>
           </div>
 
