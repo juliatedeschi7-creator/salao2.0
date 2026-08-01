@@ -28,45 +28,95 @@ export default function ClientePage() {
       router.push('/login')
     }
   }, [loading, profile])
-
   async function carregarDados() {
     if (!profile) return
     setCarregandoDados(true)
 
     try {
-      // 1. Busca o cliente usando maybeSingle para evitar travamento caso não exista
-      const { data: cli } = await supabase
+      // 1. Busca apenas o essencial primeiro: dados do cliente e do salão
+      const { data: cli, error: errCli } = await supabase
         .from('clientes')
         .select('*, saloes(*)')
         .eq('profile_id', profile.id)
         .maybeSingle()
 
+      if (errCli) {
+        console.error('Erro ao buscar cliente:', errCli.message)
+      }
+
       setCliente(cli)
       
-      let salaoId = cli?.salao_id
-
       if (cli?.saloes) {
         setSalao(cli.saloes)
-      } else if (salaoId) {
-        // Se o cliente existe mas o join não veio, busca o salão separadamente
+      } else if (cli?.salao_id) {
         const { data: sal } = await supabase
           .from('saloes')
           .select('*')
-          .eq('id', salaoId)
+          .eq('id', cli.salao_id)
           .maybeSingle()
         setSalao(sal)
       }
 
-      // Se o cliente existir, busca o restante das informações em paralelo
+      // 2. Busca o restante de forma isolada para que um erro em tabela vazia não quebre o app
       if (cli?.id) {
-        const [agsRes, pacsRes, notifsRes, contratosRes, contasRes, pushAtivo] = await Promise.all([
-          supabase.from('agendamentos').select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)').eq('cliente_id', cli.id).order('data_hora', { ascending: false }).limit(10),
-          supabase.from('cliente_pacotes').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id).eq('status', 'ativo'),
-          supabase.from('notificacoes').select('*', { count: 'exact', head: true }).eq('destinatario_id', profile.id).eq('lida', false),
-          supabase.from('contratos').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id),
-          supabase.from('contas_clientes').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id),
-          verificarPushAtivo(profile.id)
-        ])
+        try {
+          const { data: ags } = await supabase
+            .from('agendamentos')
+            .select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
+            .eq('cliente_id', cli.id)
+            .order('data_hora', { ascending: false })
+            .limit(10)
+          setAgendamentos(ags || [])
+        } catch (e) { console.error('Erro agendamentos:', e) }
+
+        try {
+          const { count: pacs } = await supabase
+            .from('cliente_pacotes')
+            .select('*', { count: 'exact', head: true })
+            .eq('cliente_id', cli.id)
+            .eq('status', 'ativo')
+          setPacotesAtivos(pacs || 0)
+        } catch (e) { /* ignora se tabela não existir */ }
+
+        try {
+          const { count: notifs } = await supabase
+            .from('notificacoes')
+            .select('*', { count: 'exact', head: true })
+            .eq('destinatario_id', profile.id)
+            .eq('lida', false)
+          setNotifCount(notifs || 0)
+        } catch (e) { /* ignora */ }
+
+        try {
+          const { count: contratos } = await supabase
+            .from('contratos')
+            .select('*', { count: 'exact', head: true })
+            .eq('cliente_id', cli.id)
+          setContratosCount(contratos || 0)
+        } catch (e) { /* ignora */ }
+
+        try {
+          const { count: contas } = await supabase
+            .from('contas_clientes')
+            .select('*', { count: 'exact', head: true })
+            .eq('cliente_id', cli.id)
+          setContasCount(contas || 0)
+        } catch (e) { /* ignora */ }
+
+        try {
+          const pushAtivo = await verificarPushAtivo(profile.id)
+          if (!pushAtivo) setModalPushLembrete(true)
+        } catch (e) { /* ignora */ }
+      }
+
+    } catch (err) {
+      console.error('Erro geral no carregamento:', err)
+    } finally {
+      // GARANTE SEMPRE A LIBERAÇÃO DA TELA
+      setCarregandoDados(false)
+    }
+  }
+
 
         setAgendamentos(agsRes.data || [])
         setPacotesAtivos(pacsRes.count || 0)
