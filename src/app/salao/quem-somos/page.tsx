@@ -1,6 +1,8 @@
 // @ts-nocheck
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -36,7 +38,6 @@ function QuemSomosContent() {
     if (ehDonoOuFuncionario && profile?.salao_id) {
       salaoId = profile.salao_id
     } else {
-      // Se for cliente final, busca o primeiro salão ou parâmetro padrão
       const { data: saloes } = await supabase.from('saloes').select('id').limit(1)
       if (saloes && saloes.length > 0) {
         salaoId = saloes[0].id
