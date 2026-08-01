@@ -7,7 +7,7 @@ import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, 
 import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
 
 export default function ClientePage() {
-  const { profile, loading, logout } = useAuth()
+  const { profile, loading, signOut } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
@@ -323,7 +323,7 @@ export default function ClientePage() {
           </button>
         )}
 
-        <button onClick={logout}
+        <button onClick={signOut}
           className="flex items-center justify-center gap-2 text-gray-400 text-sm py-2">
           <LogOut size={15} />Sair da conta
         </button>
