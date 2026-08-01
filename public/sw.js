@@ -1,34 +1,8 @@
 self.addEventListener('install', e => self.skipWaiting())
-self.addEventListener('activate', e => e.waitUntil(clients.claim()))
-
-self.addEventListener('fetch', e => {
-  // Não intercepta NADA — deixa tudo passar direto
-  return
-})
-
-self.addEventListener('push', e => {
-  if (!e.data) return
-  let data = {}
-  try { data = e.data.json() } catch { data = { title: 'Organiza Salão', body: e.data.text() } }
+self.addEventListener('activate', e => {
   e.waitUntil(
-    self.registration.showNotification(data.title || 'Organiza Salão', {
-      body: data.body || '',
-      icon: '/logo.png',
-      badge: '/logo.png',
-      vibrate: [200, 100, 200],
-      data: { url: data.url || '/' }
-    })
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+      .then(() => clients.claim())
   )
 })
-
-self.addEventListener('notificationclick', e => {
-  e.notification.close()
-  const url = e.notification.data?.url || '/'
-  e.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
-      const c = cs.find(c => c.url.includes(self.location.origin))
-      if (c) { c.focus(); c.navigate(url) }
-      else clients.openWindow(url)
-    })
-  )
-})
+// Sem handler de fetch — não intercepta nada
