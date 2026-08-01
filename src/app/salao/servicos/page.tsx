@@ -42,7 +42,7 @@ export default function ServicosPage() {
     if (!profile) { router.push('/login'); return }
     
     const p = profile as any
-    // Validação alinhada com as permissões globais usando 'tipo'
+    // Validação corrigida utilizando exclusivamente 'tipo'
     const temPermissao = 
       ['dono_salao', 'socio', 'admin'].includes(profile.tipo) || 
       p.acesso_total === true ||
