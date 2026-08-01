@@ -67,7 +67,6 @@ function QuemSomosContent() {
 
   return (
     <div className="min-h-screen pb-12" style={{ backgroundColor: '#f4f4f8' }}>
-      {/* Header */}
       <div className="px-4 pt-12 pb-5 flex items-center gap-3 text-white shadow-sm"
         style={{ background: `linear-gradient(135deg, ${cor} 0%, ${cor}cc 100%)` }}>
         <button onClick={() => window.history.back()}
@@ -88,7 +87,6 @@ function QuemSomosContent() {
       </div>
 
       <div className="px-4 py-6 max-w-lg mx-auto flex flex-col gap-6">
-        {/* Fotos */}
         {dados?.fotos && dados.fotos.length > 0 && (
           <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
             {dados.fotos.map((url: string, index: number) => (
@@ -98,7 +96,6 @@ function QuemSomosContent() {
           </div>
         )}
 
-        {/* História */}
         <div className="bg-white rounded-3xl p-6 shadow-sm">
           <h2 className="text-lg font-bold text-gray-900 mb-3">{dados?.titulo || 'Nossa História'}</h2>
           <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
@@ -106,7 +103,6 @@ function QuemSomosContent() {
           </p>
         </div>
 
-        {/* Balões / Frases em destaque */}
         {dados?.baloes && dados.baloes.length > 0 && (
           <div className="flex flex-col gap-3">
             {dados.baloes.map((b: Balao) => (
@@ -116,18 +112,6 @@ function QuemSomosContent() {
         )}
       </div>
     </div>
-  )
-}
-
-export default function QuemSomosPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin border-pink-500" />
-      </div>
-    }>
-      <QuemSomosContent />
-    </Suspense>
   )
 }
 
@@ -156,5 +140,17 @@ function RenderBalao({ balao }: { balao: Balao }) {
       {balao.emoji && <span className="text-lg mr-2">{balao.emoji}</span>}
       <span className="text-sm font-medium">{balao.texto}</span>
     </div>
+  )
+}
+
+export default function QuemSomosPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin border-pink-500" />
+      </div>
+    }>
+      <QuemSomosContent />
+    </Suspense>
   )
 }
