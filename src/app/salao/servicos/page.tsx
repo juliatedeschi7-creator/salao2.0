@@ -45,7 +45,7 @@ export default function ServicosPage() {
     
     // Permite acesso se for dono/gestor OU se for funcionário do salão
     const isDonoOuGestor = temAcessoTotal(profile)
-    const isFuncionario = profile.role === 'funcionario'
+    const isFuncionario = profile.tipo === 'funcionario'
 
     if (!isDonoOuGestor && !isFuncionario) { 
       alert('Você não tem permissão para acessar esta página.')
