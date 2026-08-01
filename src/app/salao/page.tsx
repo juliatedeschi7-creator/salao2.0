@@ -12,7 +12,7 @@ export default function SalaoPage() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
   const router = useRouter()
-  
+
   const [profile, setProfile] = useState<any>(null)
   const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
@@ -22,67 +22,73 @@ export default function SalaoPage() {
 
   useEffect(() => {
     async function inicializarPainel() {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.replace('/login')
-        return
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { router.replace('/login'); return }
+
+        const { data: prof } = await supabase
+          .from('profiles').select('*').eq('id', session.user.id).single()
+
+        if (!prof || !prof.ativo || !prof.aprovado) {
+          await supabase.auth.signOut()
+          router.replace('/login')
+          return
+        }
+
+        if (!prof.salao_id) { router.replace('/criar-salao'); return }
+
+        setProfile(prof)
+        await carregarDados(prof.salao_id, prof.id)
+      } catch (e) {
+        console.error('Erro ao inicializar painel:', e)
+        setCarregando(false)
       }
-
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', session.user.id)
-        .single()
-
-      if (!prof || !prof.ativo || !prof.aprovado) {
-        await supabase.auth.signOut()
-        router.replace('/login')
-        return
-      }
-
-      if (!prof.salao_id) {
-        router.replace('/criar-salao')
-        return
-      }
-
-      setProfile(prof)
-      await carregarDados(prof.salao_id, prof.id)
     }
 
     inicializarPainel()
   }, [])
 
   async function carregarDados(salaoId: string, profileId: string) {
-    const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
-    if (sal?.pausado) { 
-      await supabase.auth.signOut()
-      router.replace('/login')
-      return 
+    try {
+      const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
+      if (sal?.pausado) {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+      setSalao(sal)
+
+      const { data: srv } = await supabase.from('servicos').select('id, nome').eq('salao_id', salaoId)
+      setTodosServicos(srv || [])
+
+      const hoje = new Date()
+      const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
+
+      const { data: ags } = await supabase.from('agendamentos')
+        .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
+        .eq('salao_id', salaoId).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
+      setAgendamentos(ags || [])
+
+      // Busca pendentes de confirmação — com fallback se tabela não existir
+      try {
+        const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
+        const { data: pendentes } = await supabase.from('agendamentos')
+          .select('id, confirmacoes_atendimento(*)')
+          .eq('salao_id', salaoId).eq('status', 'confirmado')
+          .gte('data_hora', ontem.toISOString()).lte('data_hora', hoje.toISOString())
+        const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
+        setPendentesConfirmacao(semConfirmar.length)
+      } catch {
+        // Ignora erro nesta query secundária
+        setPendentesConfirmacao(0)
+      }
+    } catch (e) {
+      console.error('Erro ao carregar dados:', e)
+    } finally {
+      // SEMPRE libera o carregando, mesmo se der erro
+      setCarregando(false)
     }
-    setSalao(sal)
-
-    const { data: srv } = await supabase.from('servicos').select('id, nome')
-      .eq('salao_id', salaoId)
-    setTodosServicos(srv || [])
-
-    const hoje = new Date()
-    const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
-    const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
-    
-    const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
-      .eq('salao_id', salaoId).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
-    setAgendamentos(ags || [])
-
-    const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
-    const { data: pendentes } = await supabase.from('agendamentos')
-      .select('*, confirmacoes_atendimento(*)')
-      .eq('salao_id', salaoId).eq('status', 'confirmado')
-      .gte('data_hora', ontem.toISOString()).lte('data_hora', hoje.toISOString())
-    const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
-    setPendentesConfirmacao(semConfirmar.length)
-
-    setCarregando(false)
   }
 
   function nomesServicosDoAgendamento(ag: any) {
@@ -113,7 +119,7 @@ export default function SalaoPage() {
 
   if (carregando || !profile) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#E91E8C' }} />
     </div>
   )
 
