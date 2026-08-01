@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { notificar } from '@/lib/notificar'
 import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText, Share2, Check } from 'lucide-react'
 
 export default function ServicosPage() {
@@ -43,11 +42,17 @@ export default function ServicosPage() {
     if (!profile) { router.push('/login'); return }
     
     const p = profile as any
-    // Permite acesso se for dono, sócio, admin, gestor ou funcionário com permissão
-    const ehAdminOuSocio = ['dono_salao', 'socio', 'admin'].includes(profile.tipo) || p.acesso_total
-    const isFuncionario = profile.tipo === 'funcionario'
+    // Validação alinhada com as permissões globais usando 'tipo'
+    const temPermissao = 
+      ['dono_salao', 'socio', 'admin'].includes(profile.tipo) || 
+      p.acesso_total === true ||
+      (profile.tipo === 'funcionario' && (
+        p.acesso_total === true ||
+        p.permissoes?.servicos === true ||
+        p.permissoes?.agenda === true
+      ))
 
-    if (!ehAdminOuSocio && !isFuncionario) { 
+    if (!temPermissao) { 
       alert('Você não tem permissão para acessar esta página.')
       router.push('/salao/dashboard')
       return 
@@ -206,13 +211,7 @@ export default function ServicosPage() {
       resposta: respostaOrcamento.texto,
       valor_resposta: respostaOrcamento.valor ? parseFloat(respostaOrcamento.valor) : null,
     }).eq('id', modalOrcamento.id)
-    await notificar({
-      destinatarioId: modalOrcamento.clientes?.profile_id,
-      titulo: 'Resposta ao seu orçamento!',
-      mensagem: `${salao?.nome} respondeu sua solicitação de orçamento para ${modalOrcamento.servicos?.nome}.`,
-      tipo: 'orcamento',
-      url: '/cliente/orcamentos'
-    })
+    
     setSalvandoOrcamento(false)
     setModalOrcamento(null)
     setRespostaOrcamento({ texto: '', valor: '' })
