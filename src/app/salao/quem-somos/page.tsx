@@ -1,9 +1,7 @@
 // @ts-nocheck
 'use client'
 
-export const dynamic = 'force-dynamic'
-
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSearchParams } from 'next/navigation'
@@ -17,7 +15,7 @@ interface Balao {
   estilo: string
 }
 
-export default function QuemSomosPage() {
+function QuemSomosContent() {
   const { profile, loading } = useAuth()
   const searchParams = useSearchParams()
   const isPreview = searchParams.get('preview') === 'true'
@@ -117,6 +115,18 @@ export default function QuemSomosPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function QuemSomosPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin border-pink-500" />
+      </div>
+    }>
+      <QuemSomosContent />
+    </Suspense>
   )
 }
 
