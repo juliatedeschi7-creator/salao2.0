@@ -10,7 +10,7 @@ export default function AguardandoPage() {
   const router = useRouter()
 
   useEffect(() => {
-    if (!loading && profile?.aprovado) {
+    if (!loading && profile && (profile as any).aprovado) {
       if (profile.tipo === 'dono_salao') window.location.href = '/criar-salao'
       else if (profile.tipo === 'funcionario') window.location.href = '/funcionario'
     }
@@ -45,4 +45,3 @@ export default function AguardandoPage() {
     </div>
   )
 }
-p
