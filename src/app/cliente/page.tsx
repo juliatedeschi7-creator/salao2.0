@@ -46,66 +46,34 @@ export default function ClientePage() {
 
       setCliente(cli)
       
-      if (cli?.saloes) {
-        setSalao(cli.saloes)
-      } else if (cli?.salao_id) {
+      let salaoEncontrado = cli?.saloes
+      if (!salaoEncontrado && profile.salao_id) {
         const { data: sal } = await supabase
           .from('saloes')
           .select('*')
-          .eq('id', cli.salao_id)
+          .eq('id', profile.salao_id)
           .maybeSingle()
-        setSalao(sal)
+        salaoEncontrado = sal
       }
+      setSalao(salaoEncontrado)
 
       if (cli?.id) {
-        try {
-          const { data: ags } = await supabase
-            .from('agendamentos')
-            .select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
-            .eq('cliente_id', cli.id)
-            .order('data_hora', { ascending: false })
-            .limit(10)
-          setAgendamentos(ags || [])
-        } catch (e) { console.error('Erro agendamentos:', e) }
+        const [agsRes, pacsRes, notifsRes, contratosRes, contasRes, pushAtivo] = await Promise.all([
+          supabase.from('agendamentos').select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)').eq('cliente_id', cli.id).order('data_hora', { ascending: false }).limit(10).catch(() => ({ data: [] })),
+          supabase.from('cliente_pacotes').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id).eq('status', 'ativo').catch(() => ({ count: 0 })),
+          supabase.from('notificacoes').select('*', { count: 'exact', head: true }).eq('destinatario_id', profile.id).eq('lida', false).catch(() => ({ count: 0 })),
+          supabase.from('contratos').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id).catch(() => ({ count: 0 })),
+          supabase.from('contas_clientes').select('*', { count: 'exact', head: true }).eq('cliente_id', cli.id).catch(() => ({ count: 0 })),
+          verificarPushAtivo(profile.id).catch(() => false)
+        ])
 
-        try {
-          const { count: pacs } = await supabase
-            .from('cliente_pacotes')
-            .select('*', { count: 'exact', head: true })
-            .eq('cliente_id', cli.id)
-            .eq('status', 'ativo')
-          setPacotesAtivos(pacs || 0)
-        } catch (e) { /* ignora */ }
+        setAgendamentos(agsRes.data || [])
+        setPacotesAtivos(pacsRes.count || 0)
+        setNotifCount(notifsRes.count || 0)
+        setContratosCount(contratosRes.count || 0)
+        setContasCount(contasRes.count || 0)
 
-        try {
-          const { count: notifs } = await supabase
-            .from('notificacoes')
-            .select('*', { count: 'exact', head: true })
-            .eq('destinatario_id', profile.id)
-            .eq('lida', false)
-          setNotifCount(notifs || 0)
-        } catch (e) { /* ignora */ }
-
-        try {
-          const { count: contratos } = await supabase
-            .from('contratos')
-            .select('*', { count: 'exact', head: true })
-            .eq('cliente_id', cli.id)
-          setContratosCount(contratos || 0)
-        } catch (e) { /* ignora */ }
-
-        try {
-          const { count: contas } = await supabase
-            .from('contas_clientes')
-            .select('*', { count: 'exact', head: true })
-            .eq('cliente_id', cli.id)
-          setContasCount(contas || 0)
-        } catch (e) { /* ignora */ }
-
-        try {
-          const pushAtivo = await verificarPushAtivo(profile.id)
-          if (!pushAtivo) setModalPushLembrete(true)
-        } catch (e) { /* ignora */ }
+        if (!pushAtivo) setModalPushLembrete(true)
       }
     } catch (err) {
       console.error('Erro geral no carregamento:', err)
@@ -161,7 +129,7 @@ export default function ClientePage() {
     { icon: Clock, label: 'Horários', sub: 'Vagas e funcionamento', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
 
-  if (loading || carregandoDados) {
+  if (loading) {
     return (
       <div
         className="min-h-screen flex items-center justify-center"
