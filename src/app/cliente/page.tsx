@@ -6,8 +6,8 @@ import { useRouter } from 'next/navigation'
 import { Calendar, Scissors, Package, ClipboardList, Star, Clock, LogOut, Bell, Heart, ChevronRight, Sparkles, FileText, Wallet, X } from 'lucide-react'
 import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
 
-export default function 
-const { profile, loading, logout } = useAuth()
+export default function ClientePage() {
+  const { profile, loading, logout } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [cliente, setCliente] = useState<any>(null)
@@ -69,7 +69,7 @@ const { profile, loading, logout } = useAuth()
 
     try {
       const resultado = await registrarPush(profile!.id)
-      
+
       if (resultado) {
         setModalPushLembrete(false)
       } else {
@@ -323,8 +323,7 @@ const { profile, loading, logout } = useAuth()
           </button>
         )}
 
-<button onClick={logout}
-
+        <button onClick={logout}
           className="flex items-center justify-center gap-2 text-gray-400 text-sm py-2">
           <LogOut size={15} />Sair da conta
         </button>
