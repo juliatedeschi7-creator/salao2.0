@@ -28,12 +28,12 @@ export default function ClientePage() {
       router.push('/login')
     }
   }, [loading, profile])
+
   async function carregarDados() {
     if (!profile) return
     setCarregandoDados(true)
 
     try {
-      // 1. Busca apenas o essencial primeiro: dados do cliente e do salão
       const { data: cli, error: errCli } = await supabase
         .from('clientes')
         .select('*, saloes(*)')
@@ -57,7 +57,6 @@ export default function ClientePage() {
         setSalao(sal)
       }
 
-      // 2. Busca o restante de forma isolada para que um erro em tabela vazia não quebre o app
       if (cli?.id) {
         try {
           const { data: ags } = await supabase
@@ -76,7 +75,7 @@ export default function ClientePage() {
             .eq('cliente_id', cli.id)
             .eq('status', 'ativo')
           setPacotesAtivos(pacs || 0)
-        } catch (e) { /* ignora se tabela não existir */ }
+        } catch (e) { /* ignora */ }
 
         try {
           const { count: notifs } = await supabase
@@ -108,28 +107,9 @@ export default function ClientePage() {
           if (!pushAtivo) setModalPushLembrete(true)
         } catch (e) { /* ignora */ }
       }
-
     } catch (err) {
       console.error('Erro geral no carregamento:', err)
     } finally {
-      // GARANTE SEMPRE A LIBERAÇÃO DA TELA
-      setCarregandoDados(false)
-    }
-  }
-
-
-        setAgendamentos(agsRes.data || [])
-        setPacotesAtivos(pacsRes.count || 0)
-        setNotifCount(notifsRes.count || 0)
-        setContratosCount(contratosRes.count || 0)
-        setContasCount(contasRes.count || 0)
-
-        if (!pushAtivo) setModalPushLembrete(true)
-      }
-    } catch (err) {
-      console.error('Erro ao carregar dados do cliente:', err)
-    } finally {
-      // GARANTE QUE O SPINNER VAI PARAR SEMPRE
       setCarregandoDados(false)
     }
   }
@@ -181,7 +161,6 @@ export default function ClientePage() {
     { icon: Clock, label: 'Horários', sub: 'Vagas e funcionamento', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
 
-  // Tela de carregamento segura (só bloqueia enquanto o auth ou a busca inicial estiverem rodando)
   if (loading || carregandoDados) {
     return (
       <div
