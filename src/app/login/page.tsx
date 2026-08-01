@@ -1,16 +1,10 @@
 'use client'
 import { useState, Suspense, useEffect } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff, Bell, KeyRound } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
-import { registrarPush } from '@/lib/push-client'
 
 function LoginForm() {
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
   const searchParams = useSearchParams()
   const salaoSlug = searchParams.get('salao')
   const [salaoInfo, setSalaoInfo] = useState<any>(null)
@@ -36,10 +30,7 @@ function LoginForm() {
         localStorage.setItem('ultimo_salao_slug', salaoSlug)
       }
 
-      if (!slugEfetivo) {
-        setCarregando(false)
-        return
-      }
+      if (!slugEfetivo) { setCarregando(false); return }
 
       const { data } = await supabase
         .from('saloes')
@@ -55,42 +46,88 @@ function LoginForm() {
       }
       setCarregando(false)
     }
-
     carregarIdentidade()
   }, [salaoSlug])
 
   async function handleLogin() {
     if (!email || !senha) { setErro('Preencha email e senha.'); return }
     setLoading(true); setErro('')
-    
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(), password: senha
     })
-    
+
     if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
     if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
 
-    const { data: prof } = await supabase.from('profiles')
-      .select('role, aprovado, ativo, salao_id, acesso_total').eq('id', data.user.id).single()
-      
+    const { data: prof, error: errProf } = await supabase
+      .from('profiles')
+      .select('role, aprovado, ativo, salao_id, nivel_acesso')
+      .eq('id', data.user.id)
+      .single()
+
+    if (errProf) { setErro('Erro ao buscar perfil: ' + errProf.message); setLoading(false); return }
     if (!prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
     if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
-    if (!prof.aprovado) { await supabase.auth.signOut(); setErro('Conta aguarda aprovação.'); setLoading(false); return }
 
-    if (lembrarEReceber) {
-      registrarPush(data.user.id).catch(() => {})
+    // ← CORRIGIDO: usa nivel_acesso em vez de acesso_total
+    const acessoTotal =
+      prof.role === 'dono_salao' ||
+      (prof.role === 'funcionario' && prof.nivel_acesso === 'total')
+
+    let destino = '/login'
+
+    if (prof.role === 'admin_geral') {
+      destino = '/admin'
+    } else if (!prof.aprovado) {
+      if (prof.role === 'dono_salao' || prof.role === 'funcionario') {
+        destino = '/aguardando'
+      } else {
+        await supabase.auth.signOut()
+        setErro('Conta aguarda aprovação.')
+        setLoading(false)
+        return
+      }
+    } else if (acessoTotal) {
+      if (!prof.salao_id) {
+        destino = '/criar-salao'
+      } else {
+        const { data: salao } = await supabase
+          .from('saloes')
+          .select('pausado, aprovado')
+          .eq('id', prof.salao_id)
+          .single()
+        if (salao?.pausado) {
+          await supabase.auth.signOut()
+          setErro('Salão pausado.')
+          setLoading(false)
+          return
+        }
+        destino = !salao?.aprovado ? '/aguardando' : '/salao'
+      }
+    } else if (prof.role === 'funcionario') {
+      destino = '/funcionario'
+    } else {
+      destino = '/cliente'
     }
 
-    // Garante um respiro para o navegador gravar o cookie de sessão no mobile antes de trocar de rota
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    // Força o carregamento completo da página destino limpando o cache de rota
-    window.location.href = '/salao'
+    // Registrar push em background sem bloquear
+    if (lembrarEReceber) {
+      try {
+        const { registrarPush } = await import('@/lib/push-client')
+        registrarPush(data.user.id).catch(() => {})
+      } catch {
+        // push-client não disponível, ignora
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 300))
+    window.location.href = destino
   }
 
   async function handleEsqueciSenha() {
     if (!email) {
-      setErroEsqueci('Digite seu e-mail no campo acima ou informe abaixo para receber o link.')
+      setErroEsqueci('Digite seu e-mail no campo acima para receber o link.')
       return
     }
     setLoadingEsqueci(true)
@@ -108,7 +145,7 @@ function LoginForm() {
     if (error) {
       setErroEsqueci('Erro ao enviar e-mail: ' + error.message)
     } else {
-      setSucessoEsqueci('✅ E-mail enviado com sucesso! Verifique sua caixa de entrada e o spam.')
+      setSucessoEsqueci('✅ E-mail enviado! Verifique sua caixa de entrada e o spam.')
     }
   }
 
@@ -128,59 +165,44 @@ function LoginForm() {
 
   return (
     <>
-      {isCliente && <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />}
+      {isCliente && (
+        <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />
+      )}
       <div className="min-h-screen flex flex-col items-center px-6 py-10"
         style={{ background: isCliente ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)` : '#ffffff' }}>
 
         <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
           {isCliente ? (
             <div className="text-center">
-              <div
-                className="w-28 h-28 mb-1 mx-auto"
+              <div className="w-28 h-28 mb-1 mx-auto"
                 style={{
                   backgroundColor: cor,
-                  WebkitMaskImage: 'url(/logo.png)',
-                  maskImage: 'url(/logo.png)',
-                  WebkitMaskSize: 'contain',
-                  maskSize: 'contain',
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskPosition: 'center',
-                  maskPosition: 'center'
-                }}
-              />
+                  WebkitMaskImage: 'url(/logo.png)', maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain', maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center', maskPosition: 'center'
+                }} />
               <h1 style={{
                 fontFamily: "'Dancing Script', cursive",
-                fontSize: '2.2rem',
-                fontWeight: 700,
-                color: cor,
-                lineHeight: 1.2,
+                fontSize: '2.2rem', fontWeight: 700, color: cor, lineHeight: 1.2,
               }}>
                 {nomePrincipal || 'Entrar'}
               </h1>
               {nomeSecundario && (
-                <p className="text-sm font-bold text-gray-900 mt-1">
-                  {nomeSecundario}
-                </p>
+                <p className="text-sm font-bold text-gray-900 mt-1">{nomeSecundario}</p>
               )}
               <p className="text-gray-400 text-sm mt-2">Entre na sua conta para continuar</p>
             </div>
           ) : (
             <div className="flex flex-col items-center text-center">
-              <div
-                className="w-20 h-20 mb-4"
+              <div className="w-20 h-20 mb-4"
                 style={{
                   backgroundColor: '#111827',
-                  WebkitMaskImage: 'url(/logo.png)',
-                  maskImage: 'url(/logo.png)',
-                  WebkitMaskSize: 'contain',
-                  maskSize: 'contain',
-                  WebkitMaskRepeat: 'no-repeat',
-                  maskRepeat: 'no-repeat',
-                  WebkitMaskPosition: 'center',
-                  maskPosition: 'center'
-                }}
-              />
+                  WebkitMaskImage: 'url(/logo.png)', maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain', maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center', maskPosition: 'center'
+                }} />
               <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
               <p className="text-gray-400 text-sm mt-1">Toda a gestão do seu espaço na palma da mão.</p>
             </div>
@@ -192,30 +214,26 @@ function LoginForm() {
             <label className="text-xs font-semibold text-gray-900">Email</label>
             <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
               type="email" placeholder="seuemail@exemplo.com"
-              value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+              value={email} onChange={e => setEmail(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()} />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
               <label className="text-xs font-semibold text-gray-900">Senha</label>
-              <button
-                type="button"
-                onClick={() => {
-                  setModalEsqueci(true)
-                  setErroEsqueci('')
-                  setSucessoEsqueci('')
-                }}
-                className="text-xs font-bold hover:underline transition-all"
-                style={{ color: cor }}
-              >
+              <button type="button"
+                onClick={() => { setModalEsqueci(true); setErroEsqueci(''); setSucessoEsqueci('') }}
+                className="text-xs font-bold hover:underline" style={{ color: cor }}>
                 Esqueceu a senha?
               </button>
             </div>
             <div className="relative">
               <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
                 type={mostrarSenha ? 'text' : 'password'} placeholder="Digite sua senha"
-                value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
-              <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setMostrarSenha(!mostrarSenha)}>
+                value={senha} onChange={e => setSenha(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+              <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                onClick={() => setMostrarSenha(!mostrarSenha)}>
                 {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
@@ -242,10 +260,14 @@ function LoginForm() {
               <p className="text-red-600 text-sm text-center">{erro}</p>
             </div>
           )}
+
           <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
             style={{ backgroundColor: cor }} onClick={handleLogin} disabled={loading}>
-            {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Entrar'}
+            {loading
+              ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : 'Entrar'}
           </button>
+
           {!isCliente && (
             <>
               <div className="flex items-center gap-3">
@@ -263,20 +285,25 @@ function LoginForm() {
               </a>
             </>
           )}
+
           {isCliente && (
             <p className="text-center text-gray-900 text-sm">
               Não tem conta?{' '}
-              <a href={'/cadastro?salao=' + slugCadastro} className="font-bold" style={{ color: cor }}>Criar conta</a>
+              <a href={'/cadastro?salao=' + slugCadastro} className="font-bold" style={{ color: cor }}>
+                Criar conta
+              </a>
             </p>
           )}
         </div>
       </div>
 
+      {/* Modal recuperar senha */}
       {modalEsqueci && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ backgroundColor: `${cor}15`, color: cor }}>
+              <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `${cor}15`, color: cor }}>
                 <KeyRound size={20} />
               </div>
               <div>
@@ -287,13 +314,9 @@ function LoginForm() {
 
             <div className="flex flex-col gap-1.5 pt-2">
               <label className="text-xs font-semibold text-gray-900">E-mail cadastrado</label>
-              <input
-                className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none placeholder-gray-400"
-                type="email"
-                placeholder="seuemail@exemplo.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-              />
+              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none placeholder-gray-400"
+                type="email" placeholder="seuemail@exemplo.com"
+                value={email} onChange={e => setEmail(e.target.value)} />
             </div>
 
             {erroEsqueci && (
@@ -301,7 +324,6 @@ function LoginForm() {
                 <p className="text-red-600 text-xs text-center">{erroEsqueci}</p>
               </div>
             )}
-
             {sucessoEsqueci && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-3">
                 <p className="text-green-700 text-xs text-center font-medium">{sucessoEsqueci}</p>
@@ -309,21 +331,16 @@ function LoginForm() {
             )}
 
             <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setModalEsqueci(false)}
-                className="flex-1 border border-gray-200 text-gray-700 py-3.5 rounded-2xl text-sm font-semibold hover:bg-gray-50 transition"
-              >
+              <button type="button" onClick={() => setModalEsqueci(false)}
+                className="flex-1 border border-gray-200 text-gray-700 py-3.5 rounded-2xl text-sm font-semibold hover:bg-gray-50 transition">
                 Cancelar
               </button>
-              <button
-                type="button"
-                onClick={handleEsqueciSenha}
-                disabled={loadingEsqueci}
+              <button type="button" onClick={handleEsqueciSenha} disabled={loadingEsqueci}
                 className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold flex items-center justify-center active:scale-95 transition"
-                style={{ backgroundColor: cor }}
-              >
-                {loadingEsqueci ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Enviar Link'}
+                style={{ backgroundColor: cor }}>
+                {loadingEsqueci
+                  ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : 'Enviar Link'}
               </button>
             </div>
           </div>
