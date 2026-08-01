@@ -41,6 +41,9 @@ export default function ServicosPage() {
   const p = profile || {}
   const salaoId = p.salao_id
 
+  const p = profile || {}
+  const salaoId = p.salao_id
+
   useEffect(() => {
     if (loading) return
     if (!profile) { router.push('/login'); return }
