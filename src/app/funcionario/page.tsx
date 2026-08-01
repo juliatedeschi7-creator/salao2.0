@@ -16,7 +16,7 @@ export default function FuncionarioDashboard() {
   useEffect(() => {
     if (loading) return
     if (!profile) { router.push('/login'); return }
-    if (profile.role !== 'funcionario') { router.push('/login'); return }
+if (profile.tipo !== 'funcionario') { router.push('/login'); return }
     // ← CORRIGIDO: sempre chama carregarDados, mesmo sem salao_id
     carregarDados()
   }, [loading, profile])
