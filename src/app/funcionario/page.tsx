@@ -3,14 +3,17 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Calendar, Users, Notebook, Scissors, CheckSquare, BarChart2, LogOut, Bell, MessageSquare } from 'lucide-react'
+import { Calendar, Users, DollarSign, Bell, Scissors, CheckCircle2, Clock } from 'lucide-react'
+import Header from '@/components/Header'
+import BottomNav from '@/components/BottomNav'
 
 export default function FuncionarioDashboard() {
-  const { profile, loading, signOut } = useAuth()
+  const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
   const [atendimentosHoje, setAtendimentosHoje] = useState(0)
   const [confirmadosHoje, setConfirmadosHoje] = useState(0)
+  const [aguardandoConfirmacao, setAguardandoConfirmacao] = useState(0)
   const [carregando, setCarregando] = useState(true)
 
   useEffect(() => {
@@ -43,8 +46,7 @@ export default function FuncionarioDashboard() {
         const lista = agendRes.data || []
         setAtendimentosHoje(lista.length)
         setConfirmadosHoje(lista.filter((a: any) => a.status === 'confirmado').length)
-      } else {
-        console.warn('Funcionário sem salao_id vinculado no perfil.')
+        setAguardandoConfirmacao(lista.filter((a: any) => a.status === 'pendente' || !a.status).length)
       }
     } catch (e) {
       console.error('Erro ao carregar:', e)
@@ -63,36 +65,48 @@ export default function FuncionarioDashboard() {
     </div>
   )
 
+  const navItems = [
+    { icon: Calendar, label: 'Início', href: '/funcionario' },
+    { icon: Calendar, label: 'Agenda', href: '/funcionario/agenda' },
+    { icon: Users, label: 'Clientes', href: '/salao/clientes' },
+    { icon: DollarSign, label: 'Finanças', href: '/salao/financeiro' },
+    { icon: Bell, label: 'Avisos', href: '/salao/notificacoes' },
+  ]
+
   return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-12">
-      <div className="p-6 text-white rounded-b-3xl shadow-md" style={{ backgroundColor: cor }}>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <p className="text-xs text-white/80 font-medium">{salao?.nome || 'Espaço de beleza'}</p>
-            <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider">
-              Funcionário
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => router.push('/salao/notificacoes')}
-              className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-white">
-              <Bell size={18} />
-            </button>
-            <div className="w-9 h-9 rounded-full bg-white/30 flex items-center justify-center font-bold text-sm">
-              {profile?.nome?.charAt(0).toUpperCase()}
+    <div className="min-h-screen bg-[#f8f9fa] pb-24">
+      {/* Header padrão igual ao do Dono (com menu lateral hambúrguer) */}
+      <Header profile={profile} salaoNome={salao?.nome} corPrimaria={cor} />
+
+      <div className="px-4 py-5 space-y-4 max-w-xl mx-auto">
+        {/* Saudação idêntica */}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{saudacao}, {profile?.nome?.split(' ')[0]}! ✨</h1>
+          <p className="text-xs text-gray-500 capitalize mt-0.5">
+            {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+          </p>
+        </div>
+
+        {/* Alerta de confirmações se houver */}
+        {aguardandoConfirmacao > 0 && (
+          <div onClick={() => router.push('/salao/notificacoes')}
+            className="bg-amber-50 border border-amber-200/60 p-4 rounded-2xl flex items-center justify-between cursor-pointer shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700">
+                <Bell size={18} />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-amber-900">{aguardandoConfirmacao} atendimento(s) aguardando confirmação</p>
+                <p className="text-[11px] text-amber-700">Toque para gerenciar os avisos</p>
+              </div>
             </div>
           </div>
-        </div>
-        <h1 className="text-2xl font-bold">{saudacao}, {profile?.nome?.split(' ')[0]}!</h1>
-        <p className="text-xs text-white/80 capitalize mt-0.5">
-          {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
-        </p>
-      </div>
+        )}
 
-      <div className="px-4 -mt-4 space-y-4">
+        {/* Cards de Métricas do Dia */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-            <p className="text-xs text-gray-400 font-medium">Meus atendimentos hoje</p>
+            <p className="text-xs text-gray-400 font-medium">Atendimentos hoje</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{atendimentosHoje}</p>
           </div>
           <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
@@ -101,33 +115,31 @@ export default function FuncionarioDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 pt-2">
-          {[
-            { label: 'Minha Agenda', icon: Calendar, href: '/funcionario/agenda' },
-            { label: 'Avisos e Confirmações', icon: MessageSquare, href: '/salao/notificacoes' },
-            { label: 'Clientes', icon: Users, href: '/salao/clientes' },
-            { label: 'Guia de Tarefas', icon: Notebook, href: '/salao/guia' },
-            { label: 'Serviços', icon: Scissors, href: '/salao/servicos' },
-            { label: 'Lembretes', icon: CheckSquare, href: '/salao/lembretes' },
-            { label: 'Financeiro', icon: BarChart2, href: '/salao/financeiro' },
-          ].map(({ label, icon: Icon, href }) => (
-            <button key={label} onClick={() => router.push(href)}
-              className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center gap-2.5 active:scale-95 transition-transform">
-              <div className="w-12 h-12 rounded-2xl bg-pink-50 flex items-center justify-center" style={{ color: cor }}>
-                <Icon size={22} />
-              </div>
-              <span className="text-xs font-bold text-gray-800 text-center">{label}</span>
+        {/* Seção Agenda de Hoje */}
+        <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold text-gray-900">Agenda de Hoje</h2>
+            <button onClick={() => router.push('/funcionario/agenda')} className="text-xs font-semibold" style={{ color: cor }}>
+              Ver completa
             </button>
-          ))}
-        </div>
+          </div>
 
-        <div className="pt-4 flex justify-center">
-          <button onClick={signOut}
-            className="flex items-center gap-2 text-xs text-gray-400 font-medium py-2 px-4">
-            <LogOut size={16} /> Sair da conta
-          </button>
+          <div className="py-6 text-center flex flex-col items-center justify-center gap-2">
+            <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center text-gray-400">
+              <Calendar size={22} />
+            </div>
+            <p className="text-xs text-gray-400">Nenhum agendamento para este horário</p>
+            <button onClick={() => router.push('/funcionario/agenda')}
+              className="mt-2 text-white px-4 py-2 rounded-xl text-xs font-semibold shadow-sm"
+              style={{ backgroundColor: cor }}>
+              + Ver Agenda
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Barra de Navegação Inferior igual à do Dono */}
+      <BottomNav items={navItems} corPrimaria={cor} />
     </div>
   )
 }
