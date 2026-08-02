@@ -38,33 +38,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true
 
+    // GARANTIA DE SEGURANÇA: Se por qualquer motivo o banco demorar mais de 2.5s, destrava o loading
+    const safetyTimer = setTimeout(() => {
+      if (isMounted && loading) {
+        console.warn('⚠️ Auth timeout acionado: destravando carregamento forçadamente.')
+        setLoading(false)
+      }
+    }, 2500)
+
     async function carregarSessao() {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
         
+        if (sessionError) {
+          console.error('Erro na sessão:', sessionError.message)
+        }
+
         if (!isMounted) return
 
-        setUser(session?.user ?? null)
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
 
-        if (session?.user) {
-          const { data: prof, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle()
+        if (currentUser) {
+          try {
+            const { data: prof, error: profError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', currentUser.id)
+              .maybeSingle()
 
-          if (!error && prof) {
-            setProfile(prof)
-          } else {
-            console.warn('Perfil não encontrado para o usuário:', session.user.id)
-            setProfile(null)
+            if (!profError && prof) {
+              if (isMounted) setProfile(prof)
+            } else {
+              console.warn('Perfil não encontrado na tabela profiles para:', currentUser.id)
+              if (isMounted) setProfile({ id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
+            }
+          } catch (dbErr) {
+            console.error('Erro ao buscar perfil no Supabase:', dbErr)
+            if (isMounted) setProfile(null)
           }
+        } else {
+          if (isMounted) setProfile(null)
         }
       } catch (error) {
-        console.error('Erro ao carregar sessão:', error)
+        console.error('Erro geral ao carregar sessão:', error)
       } finally {
         if (isMounted) {
           setLoading(false)
+          clearTimeout(safetyTimer)
         }
       }
     }
@@ -74,32 +95,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return
 
-      setUser(session?.user ?? null)
-      if (session?.user) {
+      const currentUser = session?.user ?? null
+      setUser(currentUser)
+
+      if (currentUser) {
         try {
           const { data: prof } = await supabase
             .from('profiles')
             .select('*')
-            .eq('id', session.user.id)
+            .eq('id', currentUser.id)
             .maybeSingle()
-          if (isMounted) setProfile(prof || null)
+          
+          if (isMounted) {
+            setProfile(prof || { id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
+          }
         } catch (e) {
           if (isMounted) setProfile(null)
         }
       } else {
         if (isMounted) setProfile(null)
       }
-      if (isMounted) setLoading(false)
+      if (isMounted) {
+        setLoading(false)
+        clearTimeout(safetyTimer)
+      }
     })
 
     return () => {
       isMounted = false
+      clearTimeout(safetyTimer)
       subscription.unsubscribe()
     }
   }, [])
 
   async function signOut() {
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch (e) {
+      // ignora
+    }
     setUser(null)
     setProfile(null)
     router.push('/login')
