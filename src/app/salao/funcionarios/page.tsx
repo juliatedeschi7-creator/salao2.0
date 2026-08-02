@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { Users, UserPlus, Trash2, Shield, Check, X } from 'lucide-react'
+import { Users, UserPlus, Trash2, Clock, X, Shield } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -24,6 +24,15 @@ export default function FuncionariosPage() {
   const [loadingVinculo, setLoadingVinculo] = useState(false)
   const [erroVinculo, setErroVinculo] = useState('')
   const [sucessoVinculo, setSucessoVinculo] = useState('')
+
+  // Estados do Modal de Jornada / Horários do Funcionário
+  const [modalJornadaAberto, setModalJornadaAberto] = useState(false)
+  const [funcionarioSelecionado, setFuncionarioSelecionado] = useState<any>(null)
+  const [horarios, setHorarios] = useState({
+    inicio: '09:00',
+    fim: '18:00',
+    dias: ['1', '2', '3', '4', '5', '6'] // Seg a Sáb
+  })
 
   useEffect(() => {
     async function carregar() {
@@ -69,18 +78,16 @@ export default function FuncionariosPage() {
       .from('profiles')
       .select('*')
       .eq('salao_id', salaoId)
-      .in('role', ['funcionario', 'dono_salao']) // <-- Adicione este filtro
+      .in('role', ['funcionario', 'dono_salao']) // Filtra estritamente equipe
     setFuncionarios(data || [])
   }
 
-  // Função para vincular um usuário já existente pelo e-mail
   async function vincularPorEmail(e: React.FormEvent) {
     e.preventDefault()
     if (!emailBusca.trim()) { setErroVinculo('Digite um e-mail.'); return }
     setLoadingVinculo(true); setErroVinculo(''); setSucessoVinculo('')
 
     try {
-      // 1. Busca se o usuário existe na tabela profiles
       const { data: usuarioAlvo, error: errBusca } = await supabase
         .from('profiles')
         .select('id, nome, email, salao_id')
@@ -99,7 +106,6 @@ export default function FuncionariosPage() {
         return
       }
 
-      // 2. Atualiza o perfil vinculando ao salão atual e definindo como funcionário
       const { error: errUpdate } = await supabase
         .from('profiles')
         .update({
@@ -131,7 +137,6 @@ export default function FuncionariosPage() {
     }
   }
 
-  // Função para remover o vínculo do funcionário (não deleta a conta, só tira do salão)
   async function desvincularFuncionario(idFunc: string) {
     if (!confirm('Deseja realmente remover este funcionário do salão?')) return
 
@@ -146,6 +151,33 @@ export default function FuncionariosPage() {
     }
 
     await buscarFuncionarios(salao.id)
+  }
+
+  function abrirJornada(func: any) {
+    setFuncionarioSelecionado(func)
+    // Se houver horários salvos no perfil ou customizados, pode carregar aqui
+    setModalJornadaAberto(true)
+  }
+
+  async function salvarJornada(e: React.FormEvent) {
+    e.preventDefault()
+    if (!funcionarioSelecionado) return
+
+    // Salva as configurações de jornada (pode armazenar num campo JSON ou tabela de expedientes)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ 
+        metadata: { jornada: horarios } 
+      })
+      .eq('id', funcionarioSelecionado.id)
+
+    if (error) {
+      alert('Erro ao salvar jornada: ' + error.message)
+      return
+    }
+
+    alert('Jornada de trabalho atualizada com sucesso!')
+    setModalJornadaAberto(false)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -169,7 +201,7 @@ export default function FuncionariosPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Equipe de Profissionais</h1>
-            <p className="text-xs text-gray-500">Gerencie quem tem acesso à agenda do salão</p>
+            <p className="text-xs text-gray-500">Gerencie equipe, acessos e jornadas de trabalho</p>
           </div>
           <button onClick={() => { setModalAberto(true); setErroVinculo(''); setSucessoVinculo('') }}
             className="text-white px-4 py-2.5 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-sm active:scale-95 transition-all"
@@ -201,12 +233,21 @@ export default function FuncionariosPage() {
                   </div>
                 </div>
 
-                {func.role !== 'dono_salao' && (
-                  <button onClick={() => desvincularFuncionario(func.id)}
-                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition">
-                    <Trash2 size={18} />
+                <div className="flex items-center gap-2">
+                  <button onClick={() => abrirJornada(func)}
+                    className="p-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold"
+                    title="Configurar Jornada">
+                    <Clock size={16} style={{ color: cor }} />
+                    <span className="hidden sm:inline">Jornada</span>
                   </button>
-                )}
+
+                  {func.role !== 'dono_salao' && (
+                    <button onClick={() => desvincularFuncionario(func.id)}
+                      className="p-2.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition" title="Remover do salão">
+                      <Trash2 size={18} />
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -253,6 +294,58 @@ export default function FuncionariosPage() {
                   className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold flex items-center justify-center active:scale-95 transition"
                   style={{ backgroundColor: cor }}>
                   {loadingVinculo ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Vincular'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Configuração de Jornada */}
+      {modalJornadaAberto && funcionarioSelecionado && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: `${cor}15`, color: cor }}>
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Jornada de Trabalho</h3>
+                  <p className="text-xs text-gray-500">{funcionarioSelecionado.nome}</p>
+                </div>
+              </div>
+              <button onClick={() => setModalJornadaAberto(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={salvarJornada} className="flex flex-col gap-4 pt-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-900">Início do Expediente</label>
+                  <input type="time" value={horarios.inicio} 
+                    onChange={e => setHorarios({...horarios, inicio: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-sm outline-none" />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-900">Fim do Expediente</label>
+                  <input type="time" value={horarios.fim} 
+                    onChange={e => setHorarios({...horarios, fim: e.target.value})}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-sm outline-none" />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalJornadaAberto(false)}
+                  className="flex-1 border border-gray-200 text-gray-700 py-3.5 rounded-2xl text-sm font-semibold hover:bg-gray-50 transition">
+                  Cancelar
+                </button>
+                <button type="submit"
+                  className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold active:scale-95 transition"
+                  style={{ backgroundColor: cor }}>
+                  Salvar Jornada
                 </button>
               </div>
             </form>
