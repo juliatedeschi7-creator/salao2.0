@@ -1,3 +1,4 @@
+
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -22,10 +23,14 @@ export default function ClientePage() {
   const [carregandoDados, setCarregandoDados] = useState(true)
 
   useEffect(() => {
-    if (!loading && profile) {
-      carregarDados()
-    } else if (!loading && !profile) {
+    // Se o auth terminou de carregar e não há usuário, manda pro login
+    if (!loading && !profile) {
       router.push('/login')
+      return
+    }
+
+    if (profile) {
+      carregarDados()
     }
   }, [loading, profile])
 
@@ -173,13 +178,11 @@ export default function ClientePage() {
     { icon: Clock, label: 'Horários', sub: 'Vagas e funcionamento', href: '/cliente/horarios', badge: null },
   ].filter(Boolean) as any[]
 
-  if (loading) {
+  // Se estiver carregando o auth inicialmente, mostra um loading limpo mas sem travar eterno
+  if (loading && !profile) {
     return (
-      <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ backgroundColor: cor }}
-      >
-        <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
