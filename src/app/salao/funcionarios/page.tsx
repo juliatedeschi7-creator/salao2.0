@@ -69,6 +69,7 @@ export default function FuncionariosPage() {
       .from('profiles')
       .select('*')
       .eq('salao_id', salaoId)
+      .in('role', ['funcionario', 'dono_salao']) // <-- Adicione este filtro
     setFuncionarios(data || [])
   }
 
