@@ -26,40 +26,45 @@ export default function SalaoPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { router.replace('/login'); return }
 
-        // Busca o perfil
-        const { data: prof } = await supabase
-          .from('profiles').select('*').eq('id', session.user.id).single()
+        // Busca o perfil do usuário logado
+        const { data: prof, error: errProf } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
 
-        if (!prof || prof.ativo === false) {
+        if (errProf || !prof || prof.ativo === false) {
           await supabase.auth.signOut()
           router.replace('/login')
           return
         }
 
-        let salaoIdEfetivo = prof.salao_id
+        setProfile(prof)
 
-        // Se o perfil não tiver salão ID mas for dono, busca o salão pelo dono_id automaticamente
-        if (!salaoIdEfetivo) {
-          const { data: salaoPorDono } = await supabase
+        // IDENTIFICAÇÃO FORÇADA DO SALÃO:
+        // 1. Tenta pegar o salao_id do perfil
+        // 2. Se não tiver, busca o salão onde o dono_id é este usuário
+        let salaoIdAlvo = prof.salao_id
+
+        if (!salaoIdAlvo) {
+          const { data: salaoDono } = await supabase
             .from('saloes')
             .select('id')
             .eq('dono_id', session.user.id)
             .maybeSingle()
-
-          if (salaoPorDono) {
-            salaoIdEfetivo = salaoPorDono.id
-            // Atualiza o perfil localmente para fins de exibição
-            prof.salao_id = salaoIdEfetivo
+          
+          if (salaoDono) {
+            salaoIdAlvo = salaoDono.id
           }
         }
 
-        if (!salaoIdEfetivo && prof.role === 'dono_salao') {
+        // Se mesmo assim não achar nenhum salão e for dono, manda criar
+        if (!salaoIdAlvo && prof.role === 'dono_salao') {
           router.replace('/criar-salao')
           return
         }
 
-        setProfile(prof)
-        await carregarDados(salaoIdEfetivo)
+        await carregarDados(salaoIdAlvo)
       } catch (e) {
         console.error('Erro ao inicializar painel:', e)
         setCarregando(false)
@@ -76,42 +81,57 @@ export default function SalaoPage() {
         return
       }
 
-      // Busca o salão
-      const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
-      if (sal?.pausado) {
+      // Busca o salão exato pelo ID correto
+      const { data: sal, error: errSal } = await supabase
+        .from('saloes')
+        .select('*')
+        .eq('id', salaoId)
+        .single()
+
+      if (errSal || !sal) {
+        console.error('Salão não encontrado:', errSal)
+        setCarregando(false)
+        return
+      }
+
+      if (sal.pausado) {
         await supabase.auth.signOut()
         router.replace('/login')
         return
       }
       setSalao(sal)
 
-      // Busca serviços
-      const { data: srv } = await supabase.from('servicos').select('id, nome').eq('salao_id', salaoId)
+      // Busca serviços do salão
+      const { data: srv } = await supabase
+        .from('servicos')
+        .select('id, nome')
+        .eq('salao_id', salaoId)
       setTodosServicos(srv || [])
 
-      // Busca agendamentos de hoje (com query flexível para não quebrar se faltar relação)
+      // Busca agendamentos de hoje
       const hoje = new Date()
       const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
       const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
 
-      const { data: ags, error: errAgs } = await supabase.from('agendamentos')
+      const { data: ags } = await supabase
+        .from('agendamentos')
         .select('*, clientes(nome), servicos(nome)')
         .eq('salao_id', salaoId)
         .gte('data_hora', inicio)
         .lte('data_hora', fim)
         .order('data_hora')
 
-      if (errAgs) {
-        console.error('Erro ao buscar agendamentos:', errAgs.message)
-      }
       setAgendamentos(ags || [])
 
       try {
         const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
-        const { data: pendentes } = await supabase.from('agendamentos')
+        const { data: pendentes } = await supabase
+          .from('agendamentos')
           .select('id, confirmacoes_atendimento(*)')
-          .eq('salao_id', salaoId).eq('status', 'confirmado')
-          .gte('data_hora', ontem.toISOString()).lte('data_hora', hoje.toISOString())
+          .eq('salao_id', salaoId)
+          .eq('status', 'confirmado')
+          .gte('data_hora', ontem.toISOString())
+          .lte('data_hora', hoje.toISOString())
         const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
         setPendentesConfirmacao(semConfirmar.length)
       } catch {
