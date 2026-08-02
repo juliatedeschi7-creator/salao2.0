@@ -16,7 +16,12 @@ export default function FuncionarioDashboard() {
   useEffect(() => {
     if (loading) return
     if (!profile) { router.push('/login'); return }
-    if (profile.tipo !== 'funcionario') { router.push('/login'); return }
+    
+    // CORRIGIDO: Valida pela coluna correta 'role' do banco de dados
+    if (profile.role !== 'funcionario' && profile.role !== 'dono_salao') { 
+      router.push('/login') 
+      return 
+    }
     
     carregarDados()
   }, [loading, profile])
@@ -45,7 +50,6 @@ export default function FuncionarioDashboard() {
     } catch (e) {
       console.error('Erro ao carregar:', e)
     } finally {
-      // GARANTE SEMPRE QUE O LOADING VAI DESLIGAR
       setCarregando(false)
     }
   }
