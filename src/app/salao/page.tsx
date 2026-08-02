@@ -29,13 +29,23 @@ export default function SalaoPage() {
         const { data: prof } = await supabase
           .from('profiles').select('*').eq('id', session.user.id).single()
 
-        if (!prof || !prof.ativo || !prof.aprovado) {
+        if (!prof) {
+          router.replace('/login')
+          return
+        }
+
+        // Se estiver explicitamente desativado, barra
+        if (prof.ativo === false) {
           await supabase.auth.signOut()
           router.replace('/login')
           return
         }
 
-        if (!prof.salao_id) { router.replace('/criar-salao'); return }
+        // Se não tiver salão vinculado, manda criar
+        if (!prof.salao_id && prof.role === 'dono_salao') { 
+          router.replace('/criar-salao') 
+          return 
+        }
 
         setProfile(prof)
         await carregarDados(prof.salao_id, prof.id)
@@ -50,6 +60,11 @@ export default function SalaoPage() {
 
   async function carregarDados(salaoId: string, profileId: string) {
     try {
+      if (!salaoId) {
+        setCarregando(false)
+        return
+      }
+
       const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
       if (sal?.pausado) {
         await supabase.auth.signOut()
@@ -70,7 +85,6 @@ export default function SalaoPage() {
         .eq('salao_id', salaoId).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
       setAgendamentos(ags || [])
 
-      // Busca pendentes de confirmação — com fallback se tabela não existir
       try {
         const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
         const { data: pendentes } = await supabase.from('agendamentos')
@@ -80,13 +94,11 @@ export default function SalaoPage() {
         const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
         setPendentesConfirmacao(semConfirmar.length)
       } catch {
-        // Ignora erro nesta query secundária
         setPendentesConfirmacao(0)
       }
     } catch (e) {
       console.error('Erro ao carregar dados:', e)
     } finally {
-      // SEMPRE libera o carregando, mesmo se der erro
       setCarregando(false)
     }
   }
