@@ -26,29 +26,40 @@ export default function SalaoPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { router.replace('/login'); return }
 
+        // Busca o perfil
         const { data: prof } = await supabase
           .from('profiles').select('*').eq('id', session.user.id).single()
 
-        if (!prof) {
-          router.replace('/login')
-          return
-        }
-
-        // Se estiver explicitamente desativado, barra
-        if (prof.ativo === false) {
+        if (!prof || prof.ativo === false) {
           await supabase.auth.signOut()
           router.replace('/login')
           return
         }
 
-        // Se não tiver salão vinculado, manda criar
-        if (!prof.salao_id && prof.role === 'dono_salao') { 
-          router.replace('/criar-salao') 
-          return 
+        let salaoIdEfetivo = prof.salao_id
+
+        // Se o perfil não tiver salão ID mas for dono, busca o salão pelo dono_id automaticamente
+        if (!salaoIdEfetivo) {
+          const { data: salaoPorDono } = await supabase
+            .from('saloes')
+            .select('id')
+            .eq('dono_id', session.user.id)
+            .maybeSingle()
+
+          if (salaoPorDono) {
+            salaoIdEfetivo = salaoPorDono.id
+            // Atualiza o perfil localmente para fins de exibição
+            prof.salao_id = salaoIdEfetivo
+          }
+        }
+
+        if (!salaoIdEfetivo && prof.role === 'dono_salao') {
+          router.replace('/criar-salao')
+          return
         }
 
         setProfile(prof)
-        await carregarDados(prof.salao_id, prof.id)
+        await carregarDados(salaoIdEfetivo)
       } catch (e) {
         console.error('Erro ao inicializar painel:', e)
         setCarregando(false)
@@ -58,13 +69,14 @@ export default function SalaoPage() {
     inicializarPainel()
   }, [])
 
-  async function carregarDados(salaoId: string, profileId: string) {
+  async function carregarDados(salaoId: string) {
     try {
       if (!salaoId) {
         setCarregando(false)
         return
       }
 
+      // Busca o salão
       const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
       if (sal?.pausado) {
         await supabase.auth.signOut()
@@ -73,16 +85,25 @@ export default function SalaoPage() {
       }
       setSalao(sal)
 
+      // Busca serviços
       const { data: srv } = await supabase.from('servicos').select('id, nome').eq('salao_id', salaoId)
       setTodosServicos(srv || [])
 
+      // Busca agendamentos de hoje (com query flexível para não quebrar se faltar relação)
       const hoje = new Date()
       const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
       const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
 
-      const { data: ags } = await supabase.from('agendamentos')
-        .select('*, clientes(nome), servicos(nome), profiles!agendamentos_profissional_id_fkey(nome)')
-        .eq('salao_id', salaoId).gte('data_hora', inicio).lte('data_hora', fim).order('data_hora')
+      const { data: ags, error: errAgs } = await supabase.from('agendamentos')
+        .select('*, clientes(nome), servicos(nome)')
+        .eq('salao_id', salaoId)
+        .gte('data_hora', inicio)
+        .lte('data_hora', fim)
+        .order('data_hora')
+
+      if (errAgs) {
+        console.error('Erro ao buscar agendamentos:', errAgs.message)
+      }
       setAgendamentos(ags || [])
 
       try {
@@ -222,7 +243,6 @@ export default function SalaoPage() {
                     </li>
                   ))}
                 </ul>
-                <p className="text-xs text-gray-400 mt-1">Prof: {ag.profiles?.nome}</p>
               </div>
             </button>
           )
