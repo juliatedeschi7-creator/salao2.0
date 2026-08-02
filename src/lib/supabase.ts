@@ -38,7 +38,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true
 
-    // Timer de segurança para evitar qualquer travamento infinito de carregamento
     const safetyTimer = setTimeout(() => {
       if (isMounted && loading) {
         setLoading(false)
@@ -47,7 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     async function carregarUsuario() {
       try {
-        // Com @supabase/ssr, getUser() é mais seguro e valida o cookie no servidor/cliente
         const { data: { user: currentUser }, error } = await supabase.auth.getUser()
 
         if (!isMounted) return
@@ -61,7 +59,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setUser(currentUser)
 
-        // Busca o perfil correspondente
         const { data: profData } = await supabase
           .from('profiles')
           .select('*')
