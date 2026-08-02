@@ -9,8 +9,12 @@ interface Profile {
   id: string
   nome: string
   email?: string
+  role?: string
   tipo?: string
-  salao_id?: string
+  salao_id?: string | null
+  nivel_acesso?: string | null
+  aprovado?: boolean
+  ativo?: boolean
 }
 
 interface AuthContextType {
@@ -19,14 +23,16 @@ interface AuthContextType {
   loading: boolean
   temAcessoTotal: boolean
   signOut: () => Promise<void>
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: true,
-  temAcessoTotal: true,
+  temAcessoTotal: false,
   signOut: async () => {},
+  logout: async () => {},
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -38,55 +44,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true
 
-    // GARANTIA DE SEGURANÇA: Se por qualquer motivo o banco demorar mais de 2.5s, destrava o loading
     const safetyTimer = setTimeout(() => {
-      if (isMounted && loading) {
-        console.warn('⚠️ Auth timeout acionado: destravando carregamento forçadamente.')
-        setLoading(false)
-      }
-    }, 2500)
+      if (isMounted) setLoading(false)
+    }, 3000)
 
     async function carregarSessao() {
       try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-        
-        if (sessionError) {
-          console.error('Erro na sessão:', sessionError.message)
-        }
-
+        const { data: { session } } = await supabase.auth.getSession()
         if (!isMounted) return
 
         const currentUser = session?.user ?? null
         setUser(currentUser)
 
         if (currentUser) {
-          try {
-            const { data: prof, error: profError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', currentUser.id)
-              .maybeSingle()
-
-            if (!profError && prof) {
-              if (isMounted) setProfile(prof)
-            } else {
-              console.warn('Perfil não encontrado na tabela profiles para:', currentUser.id)
-              if (isMounted) setProfile({ id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
-            }
-          } catch (dbErr) {
-            console.error('Erro ao buscar perfil no Supabase:', dbErr)
-            if (isMounted) setProfile(null)
+          const { data: prof } = await supabase
+            .from('profiles').select('*').eq('id', currentUser.id).maybeSingle()
+          if (isMounted) {
+            setProfile(prof || { id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
           }
         } else {
           if (isMounted) setProfile(null)
         }
-      } catch (error) {
-        console.error('Erro geral ao carregar sessão:', error)
+      } catch (e) {
+        console.error('Erro ao carregar sessão:', e)
       } finally {
-        if (isMounted) {
-          setLoading(false)
-          clearTimeout(safetyTimer)
-        }
+        if (isMounted) { setLoading(false); clearTimeout(safetyTimer) }
       }
     }
 
@@ -94,56 +76,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return
-
       const currentUser = session?.user ?? null
       setUser(currentUser)
-
       if (currentUser) {
-        try {
-          const { data: prof } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentUser.id)
-            .maybeSingle()
-          
-          if (isMounted) {
-            setProfile(prof || { id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
-          }
-        } catch (e) {
-          if (isMounted) setProfile(null)
-        }
+        const { data: prof } = await supabase
+          .from('profiles').select('*').eq('id', currentUser.id).maybeSingle()
+        if (isMounted) setProfile(prof || { id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
       } else {
         if (isMounted) setProfile(null)
       }
-      if (isMounted) {
-        setLoading(false)
-        clearTimeout(safetyTimer)
-      }
+      if (isMounted) { setLoading(false); clearTimeout(safetyTimer) }
     })
 
-    return () => {
-      isMounted = false
-      clearTimeout(safetyTimer)
-      subscription.unsubscribe()
-    }
+    return () => { isMounted = false; clearTimeout(safetyTimer); subscription.unsubscribe() }
   }, [])
 
   async function signOut() {
-    try {
-      await supabase.auth.signOut()
-    } catch (e) {
-      // ignora
-    }
-    setUser(null)
-    setProfile(null)
+    await supabase.auth.signOut()
+    setUser(null); setProfile(null)
     router.push('/login')
   }
 
-  const temAcessoTotal = true
+  const temAcessoTotal =
+    profile?.role === 'dono_salao' ||
+    (profile?.role === 'funcionario' && profile?.nivel_acesso === 'total')
 
   return React.createElement(
     AuthContext.Provider,
-    { value: { user, profile, loading, temAcessoTotal, signOut } },
+    { value: { user, profile, loading, temAcessoTotal, signOut, logout: signOut } },
     children
   )
 }
