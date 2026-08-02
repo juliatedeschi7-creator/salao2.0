@@ -64,30 +64,44 @@ function LoginForm() {
       .from('profiles')
       .select('role, aprovado, ativo, salao_id, nivel_acesso')
       .eq('id', data.user.id)
-      .single()
+      .maybeSingle()
 
-    if (errProf) { setErro('Erro: ' + errProf.message); setLoading(false); return }
-    if (!prof) { setErro('Perfil não encontrado.'); setLoading(false); return }
-    if (!prof.ativo) { await supabase.auth.signOut(); setErro('Conta desativada.'); setLoading(false); return }
+    // Se o perfil não existir na tabela profiles por algum motivo, criamos uma rota padrão segura ou tratamos
+    if (errProf || !prof) {
+      // Fallback para contas antigas que não possuem profile cadastrado
+      window.location.href = '/salao'
+      return
+    }
+
+    if (prof.ativo === false) { 
+      await supabase.auth.signOut()
+      setErro('Esta conta está desativada.')
+      setLoading(false) 
+      return 
+    }
 
     const acessoTotal =
       prof.role === 'dono_salao' ||
-      (prof.role === 'funcionario' && prof.nivel_acesso === 'total')
+      (prof.role === 'funcionario' && prof.nivel_acesso === 'total') ||
+      prof.role === 'admin_geral'
 
-    let destino = '/login'
+    let destino = '/cliente'
 
     if (prof.role === 'admin_geral') {
       destino = '/admin'
-    } else if (!prof.aprovado) {
-      if (prof.role === 'dono_salao' || prof.role === 'funcionario') destino = '/aguardando'
-      else { await supabase.auth.signOut(); setErro('Conta aguarda aprovação.'); setLoading(false); return }
     } else if (acessoTotal) {
       if (!prof.salao_id) {
         destino = '/criar-salao'
       } else {
-        const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).single()
-        if (salao?.pausado) { await supabase.auth.signOut(); setErro('Salão pausado.'); setLoading(false); return }
-        destino = !salao?.aprovado ? '/aguardando' : '/salao'
+        const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).maybeSingle()
+        if (salao?.pausado) { 
+          await supabase.auth.signOut()
+          setErro('Este salão está pausado.')
+          setLoading(false) 
+          return 
+        }
+        // Contas antigas ou já aprovadas vão direto para o salão
+        destino = '/salao'
       }
     } else if (prof.role === 'funcionario') {
       destino = '/funcionario'
@@ -102,8 +116,8 @@ function LoginForm() {
       } catch { }
     }
 
-    // Redireciona substituindo a URL atual e enviando os cookies corretamente para o middleware
-    window.location.replace(destino)
+    // Usar window.location.href garante o envio correto dos cookies do SSR para o Middleware
+    window.location.href = destino
   }
 
   async function handleEsqueciSenha() {
