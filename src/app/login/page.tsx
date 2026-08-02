@@ -2,10 +2,9 @@
 import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff, Bell, KeyRound } from 'lucide-react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const salaoSlug = searchParams.get('salao')
   const [salaoInfo, setSalaoInfo] = useState<any>(null)
@@ -103,9 +102,8 @@ function LoginForm() {
       } catch { }
     }
 
-    // Transição suave usando o router do Next.js para evitar perda de cookies no middleware
-    router.push(destino)
-    router.refresh()
+    // Redireciona substituindo a URL atual e enviando os cookies corretamente para o middleware
+    window.location.replace(destino)
   }
 
   async function handleEsqueciSenha() {
