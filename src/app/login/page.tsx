@@ -60,19 +60,20 @@ function LoginForm() {
     if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
     if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
 
+    // Busca o perfil do usuário logado
     const { data: prof, error: errProf } = await supabase
       .from('profiles')
-      .select('role, aprovado, ativo, salao_id, nivel_acesso')
+      .select('*')
       .eq('id', data.user.id)
-      .maybeSingle()
+      .single()
 
-    // Se o perfil não existir na tabela profiles por algum motivo, criamos uma rota padrão segura ou tratamos
+    // Se o perfil não existir na tabela profiles, redireciona para o cliente por segurança
     if (errProf || !prof) {
-      // Fallback para contas antigas que não possuem profile cadastrado
-      window.location.href = '/salao'
+      window.location.href = '/cliente'
       return
     }
 
+    // Se estiver desativado, barra
     if (prof.ativo === false) { 
       await supabase.auth.signOut()
       setErro('Esta conta está desativada.')
@@ -80,19 +81,18 @@ function LoginForm() {
       return 
     }
 
-    const acessoTotal =
-      prof.role === 'dono_salao' ||
-      (prof.role === 'funcionario' && prof.nivel_acesso === 'total') ||
-      prof.role === 'admin_geral'
-
     let destino = '/cliente'
 
+    // 1. Administrador Geral
     if (prof.role === 'admin_geral') {
       destino = '/admin'
-    } else if (acessoTotal) {
+    } 
+    // 2. Dono de Salão / Funcionário com Acesso Total
+    else if (prof.role === 'dono_salao' || (prof.role === 'funcionario' && prof.nivel_acesso === 'total')) {
       if (!prof.salao_id) {
         destino = '/criar-salao'
       } else {
+        // Verifica se o salão está pausado
         const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).maybeSingle()
         if (salao?.pausado) { 
           await supabase.auth.signOut()
@@ -100,12 +100,25 @@ function LoginForm() {
           setLoading(false) 
           return 
         }
-        // Contas antigas ou já aprovadas vão direto para o salão
-        destino = '/salao'
+        
+        // Contas antigas já aprovadas ou salões válidos vão direto para o salão
+        if (prof.aprovado === false && salao?.aprovado === false) {
+          destino = '/aguardando'
+        } else {
+          destino = '/salao'
+        }
       }
-    } else if (prof.role === 'funcionario') {
-      destino = '/funcionario'
-    } else {
+    } 
+    // 3. Funcionário Comum
+    else if (prof.role === 'funcionario') {
+      if (prof.aprovado === false) {
+        destino = '/aguardando'
+      } else {
+        destino = '/funcionario'
+      }
+    } 
+    // 4. Cliente
+    else {
       destino = '/cliente'
     }
 
@@ -116,7 +129,7 @@ function LoginForm() {
       } catch { }
     }
 
-    // Usar window.location.href garante o envio correto dos cookies do SSR para o Middleware
+    // Redireciona de forma limpa enviando os cookies corretos para o middleware
     window.location.href = destino
   }
 
