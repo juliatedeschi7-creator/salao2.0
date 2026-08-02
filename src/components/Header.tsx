@@ -19,31 +19,6 @@ interface Props {
   corSecundaria?: string
 }
 
-// Mapa global de todas as páginas disponíveis e seus respectivos links e grupos
-const TODAS_AS_PAGINAS: Record<string, { label: string; href: string; grupo: string; icon: any }> = {
-  'Dashboard': { label: 'Início', href: '/funcionario', grupo: '', icon: Home },
-  'Agenda Própria': { label: 'Minha Agenda', href: '/funcionario/agenda', grupo: 'Atendimento', icon: Calendar },
-  'Agenda Total': { label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
-  'Clientes': { label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento', icon: Users },
-  'Guia': { label: 'Guia', href: '/salao/guia', grupo: 'Atendimento', icon: Notebook },
-  'Servicos': { label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento', icon: Scissors },
-  'Pacotes': { label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento', icon: Package },
-  'Pacotes por Cliente': { label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento', icon: CreditCard },
-  'Anamnese': { label: 'Fichas de Anamnese', href: '/salao/anamnese', grupo: 'Atendimento', icon: FileText },
-  'Combos': { label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento', icon: Package },
-  'Contratos': { label: 'Contratos', href: '/salao/contratos', grupo: 'Atendimento', icon: FileText },
-  'Horarios Vagos': { label: 'Horários vagos e de funcionamento', href: '/salao/horarios-vagos', grupo: 'Atendimento', icon: Clock },
-  'Lembretes': { label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento', icon: CheckSquare },
-  'Funcionarios': { label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe', icon: UserCheck },
-  'Estoque': { label: 'Estoque', href: '/salao/estoque', grupo: 'Gestão', icon: Box },
-  'Financeiro': { label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão', icon: BarChart2 },
-  'Relatorios': { label: 'Relatórios', href: '/salao/relatorios', grupo: 'Gestão', icon: DollarSign },
-  'Caixa': { label: 'Caixa do Dia', href: '/salao/caixa', grupo: 'Gestão', icon: Clock },
-  'Contas de Clientes': { label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestão', icon: DollarSign },
-  'Notificacoes': { label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros', icon: Bell },
-  'Configuracoes': { label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros', icon: Settings },
-}
-
 const MENU_DONO = [
   { icon: Home, label: 'Início', href: '/salao', grupo: '' },
   { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
@@ -86,43 +61,41 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
 
   const userRole = profile?.role as string
 
-  // Busca as permissões do funcionário no banco de dados para montar o menu dinamicamente
+  // Busca as permissões na tabela baseada no role do usuário
   useEffect(() => {
     async function carregarPermissoesFuncionario() {
       if (userRole === 'funcionario' || userRole === 'profissional') {
-        // Tenta buscar o registro do funcionário vinculado a este profile
-        const { data: func } = await supabase
-          .from('funcionarios')
-          .select('paginas_permitidas, permissoes')
-          .eq('profile_id', profile.id)
-          .single()
+        const { data: permissoesDB } = await supabase
+          .from('permissoes_funcionario') // Troque pelo nome exato da sua tabela se for diferente
+          .select('pagina_key, permitido')
+          .eq('role', userRole)
 
-        // Se encontrar páginas permitidas configuradas
-        let paginasAtivas: string[] = []
-        if (func?.paginas_permitidas) {
-          if (Array.isArray(func.paginas_permitidas)) {
-            paginasAtivas = func.paginas_permitidas
-          } else if (typeof func.paginas_permitidas === 'object') {
-            paginasAtivas = Object.keys(func.paginas_permitidas).filter(k => func.paginas_permitidas[k] === true)
-          }
-        }
+        if (permissoesDB && permissoesDB.length > 0) {
+          const paginasAtivas = permissoesDB
+            .filter((p: any) => p.permitido === true)
+            .map((p: any) => p.pagina_key)
 
-        // Se houver permissões específicas salvas, monta a lista baseada no mapa
-        if (paginasAtivas.length > 0) {
           const itensDinamicos: any[] = []
           
-          // Garante que o Início/Dashboard sempre esteja presente
+          // Sempre garante o Início/Dashboard
           itensDinamicos.push({ icon: Home, label: 'Início', href: '/funcionario', grupo: '' })
 
-          paginasAtivas.forEach(nomePagina => {
-            if (TODAS_AS_PAGINAS[nomePagina] && nomePagina !== 'Dashboard') {
-              const p = TODAS_AS_PAGINAS[nomePagina]
-              itensDinamicos.push({ icon: p.icon, label: p.label, href: p.href, grupo: p.grupo })
+          paginasAtivas.forEach((paginaKey: string) => {
+            if (paginaKey === 'agenda') itensDinamicos.push({ icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' })
+            if (paginaKey === 'clientes') itensDinamicos.push({ icon: Users, label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento' })
+            if (paginaKey === 'servicos') itensDinamicos.push({ icon: Scissors, label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento' })
+            if (paginaKey === 'pacotes') itensDinamicos.push({ icon: Package, label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento' })
+            if (paginaKey === 'financeiro') itensDinamicos.push({ icon: BarChart2, label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão' })
+            if (paginaKey === 'funcionarios') itensDinamicos.push({ icon: UserCheck, label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe' })
+            if (paginaKey === 'configuracoes') itensDinamicos.push({ icon: Settings, label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros' })
+            if (paginaKey === 'comissoes') itensDinamicos.push({ icon: DollarSign, label: 'Comissões', href: '/salao/comissoes', grupo: 'Gestão' })
+            if (paginaKey === 'dashboard') {
+              // Já adicionado como Início no topo se necessário, mas pode tratar caso queira outra rota
             }
           })
 
-          // Adiciona notificações por padrão se não veio na lista
-          if (!paginasAtivas.includes('Notificacoes')) {
+          // Garante que notificações apareça se não estiver explicitamente bloqueada ou ausente
+          if (!itensDinamicos.some(i => i.href === '/salao/notificacoes')) {
             itensDinamicos.push({ icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' })
           }
 
@@ -131,7 +104,7 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         }
       }
 
-      // Fallback padrão caso não encontre configurações específicas
+      // Fallback padrão se não encontrar registros na tabela
       setMenuFuncionarioDinamico([
         { icon: Home, label: 'Início', href: '/funcionario', grupo: '' },
         { icon: Calendar, label: 'Minha Agenda', href: '/funcionario/agenda', grupo: 'Atendimento' },
