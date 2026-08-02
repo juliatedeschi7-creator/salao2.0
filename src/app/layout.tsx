@@ -1,19 +1,13 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { AuthProvider } from '@/lib/hooks/useAuth'
 
 export const metadata: Metadata = {
   title: 'Organiza Salão',
   description: 'Sistema de gestão para salões de beleza',
   manifest: '/manifest.json',
-  icons: {
-    icon: '/logo.png',
-    apple: '/logo.png',
-  },
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: 'Organiza Salão',
-  },
+  icons: { icon: '/logo.png', apple: '/logo.png' },
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Organiza Salão' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -26,17 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-title" content="Organiza Salão" />
         <meta name="theme-color" content="#111827" />
         <link rel="apple-touch-icon" href="/logo.png" />
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            if ('serviceWorker' in navigator) {
-              navigator.serviceWorker.getRegistrations().then(function(regs) {
-                regs.forEach(function(reg) { reg.unregister(); });
-              });
-            }
-          `
-        }} />
       </head>
-      <body>{children}</body>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   )
 }
