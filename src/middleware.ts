@@ -2,23 +2,17 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+  let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
+        getAll() { return request.cookies.getAll() },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({ request })
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           )
@@ -27,30 +21,31 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Atualiza/Verifica a sessão do usuário de forma segura no servidor
   const { data: { user } } = await supabase.auth.getUser()
 
-  const url = request.nextUrl.clone()
-  const pathname = url.pathname
+  const pathname = request.nextUrl.pathname
 
-  // 1. Definição de rotas totalmente públicas
-  const isPublicRoute = 
-    pathname === '/login' || 
-    pathname === '/cadastro' || 
+  const isPublicRoute =
+    pathname === '/login' ||
+    pathname === '/cadastro' ||
     pathname === '/' ||
-    pathname.startsWith('/auth')
+    pathname === '/aguardando' ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/bio') ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/s/')
 
-  // 2. Se o usuário NÃO está logado e tenta acessar uma rota privada -> Manda pro Login
+  // Não logado tentando acessar rota privada → login
   if (!user && !isPublicRoute) {
+    const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  // 3. Se o usuário JÁ ESTÁ logado e tenta acessar a tela de Login -> Tira ele dali e manda para o painel
+  // Logado tentando acessar login → manda para / que decide para onde ir
   if (user && pathname === '/login') {
-    // Como você tem múltiplos perfis, mandamos para uma rota coringa ou padrão pós-login
-    // Opcionalmente, você pode mandar para a home geral e o painel decide, ou redirecionar para /cliente por segurança
-    url.pathname = '/cliente' 
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
     return NextResponse.redirect(url)
   }
 
