@@ -27,41 +27,31 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  // Atualiza/Verifica a sessão do usuário de forma segura no servidor
   const { data: { user } } = await supabase.auth.getUser()
+
   const url = request.nextUrl.clone()
   const pathname = url.pathname
 
-  // 1. Rotas públicas que qualquer um pode acessar (inclusive deslogados)
-  const isPublicRoute = pathname === '/login' || pathname === '/cadastro' || pathname === '/'
+  // 1. Definição de rotas totalmente públicas
+  const isPublicRoute = 
+    pathname === '/login' || 
+    pathname === '/cadastro' || 
+    pathname === '/' ||
+    pathname.startsWith('/auth')
 
+  // 2. Se o usuário NÃO está logado e tenta acessar uma rota privada -> Manda pro Login
   if (!user && !isPublicRoute) {
-    // Se não estiver logado e tentar acessar rota protegida, manda para o login
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  if (user) {
-    // Se já estiver logado e tentar ir para o login, redireciona para a home/dashboard
-    if (pathname === '/login' || pathname === '/cadastro') {
-      url.pathname = '/dashboard' // ou a rota padrão pós-login
-      return NextResponse.redirect(url)
-    }
-
-    // 2. Lógica opcional para separar Funcionário de Cliente (se houver rotas exclusivas)
-    // Exemplo: se o funcionário tentar entrar numa rota de cliente ou vice-versa
-    // Você pode buscar o perfil do usuário aqui se precisar de controle estrito por cargo:
-    /*
-    const { data: profile } = await supabase
-      .from('profiles')
-      .ехаmple('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role === 'client' && pathname.startsWith('/funcionario')) {
-      url.pathname = '/cliente/dashboard'
-      return NextResponse.redirect(url)
-    }
-    */
+  // 3. Se o usuário JÁ ESTÁ logado e tenta acessar a tela de Login -> Tira ele dali e manda para o painel
+  if (user && pathname === '/login') {
+    // Como você tem múltiplos perfis, mandamos para uma rota coringa ou padrão pós-login
+    // Opcionalmente, você pode mandar para a home geral e o painel decide, ou redirecionar para /cliente por segurança
+    url.pathname = '/cliente' 
+    return NextResponse.redirect(url)
   }
 
   return supabaseResponse
