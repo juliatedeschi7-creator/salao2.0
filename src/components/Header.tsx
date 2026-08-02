@@ -4,7 +4,7 @@ import {
   Home, Calendar, Users, BarChart2, Settings,
   Scissors, Package, FileText, UserCheck, Box,
   Sparkles, CreditCard, DollarSign, Clock, Heart,
-  CheckSquare, Notebook, LayoutDashboard, PieChart, ShieldCheck
+  CheckSquare, Notebook, LayoutDashboard
 } from 'lucide-react'
 import { useNotificacoes } from '@/lib/hooks/useNotificacoes'
 import { supabase } from '@/lib/supabase'
@@ -19,16 +19,17 @@ interface Props {
   corSecundaria?: string
 }
 
-// Mapa completo de ícones e rotas correspondentes a cada pagina_key do banco
+// Mapeamento exato das chaves vindas da tela de permissões por funcionário (foto)
 const MAPA_ROTAS_SISTEMA: Record<string, { label: string; href: string; grupo: string; icon: any }> = {
-  'dashboard': { label: 'Painel / Dashboard', href: '/funcionario', grupo: '', icon: LayoutDashboard },
-  'agenda': { label: 'Agenda de Serviços', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
+  'avisos': { label: 'Avisos', href: '/salao/notificacoes', grupo: 'Outros', icon: Bell },
+  'pacotes': { label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento', icon: Package },
   'clientes': { label: 'Gestão de Clientes', href: '/salao/clientes', grupo: 'Atendimento', icon: Users },
-  'funcionarios': { label: 'Gestão de Funcionários', href: '/salao/funcionarios', grupo: 'Equipe', icon: UserCheck },
+  'produtos': { label: 'Estoque / Produtos', href: '/salao/estoque', grupo: 'Gestão', icon: Box },
   'servicos': { label: 'Serviços & Preços', href: '/salao/servicos', grupo: 'Atendimento', icon: Scissors },
+  'dashboard': { label: 'Painel / Dashboard', href: '/funcionario', grupo: '', icon: LayoutDashboard },
   'financeiro': { label: 'Caixa & Financeiro', href: '/salao/financeiro', grupo: 'Gestão', icon: BarChart2 },
-  'comissoes': { label: 'Comissões & Relatórios', href: '/salao/comissoes', grupo: 'Financeiro', icon: DollarSign },
-  'configuracoes': { label: 'Configurações do Salão', href: '/salao/configuracoes', grupo: 'Sistema', icon: Settings },
+  'agenda_total': { label: 'Agenda de Serviços', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
+  'funcionarios': { label: 'Gestão de Funcionários', href: '/salao/funcionarios', grupo: 'Equipe', icon: UserCheck },
 }
 
 const MENU_DONO = [
@@ -75,11 +76,12 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
 
   useEffect(() => {
     async function carregarPermissoesFuncionario() {
-      if (!profile?.salao_id) return
+      if (!profile?.id) return
 
       if (['funcionario', 'profissional', 'gerente', 'recepcao', 'auxiliar'].includes(userRole)) {
+        // Tenta buscar as permissões individuais do funcionário na tabela correspondente do Supabase
         const { data: permissoesDB } = await supabase
-          .from('permissoes_cargos')
+          .from('permissoes_cargos') // Mantém compatibilidade com a tabela atual
           .select('pagina_key, permitido')
           .eq('salao_id', profile.salao_id)
           .eq('role', userRole)
@@ -87,7 +89,6 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         if (permissoesDB && permissoesDB.length > 0) {
           const itensDinamicos: any[] = []
           
-          // Sempre adiciona o Início primeiro
           itensDinamicos.push({ icon: Home, label: 'Início', href: '/funcionario', grupo: '' })
 
           permissoesDB.forEach((p: any) => {
@@ -113,6 +114,7 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         }
       }
 
+      // Fallback padrão
       setMenuFuncionarioDinamico([
         { icon: Home, label: 'Início', href: '/funcionario', grupo: '' },
         { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
