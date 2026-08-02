@@ -49,7 +49,9 @@ function LoginForm() {
     carregarIdentidade()
   }, [salaoSlug])
 
-  async function handleLogin() {
+  async function handleLogin(e?: React.FormEvent) {
+    if (e) e.preventDefault() // Impede o recarregamento padrão do formulário
+    
     if (!email || !senha) { setErro('Preencha email e senha.'); return }
     setLoading(true); setErro('')
 
@@ -197,12 +199,12 @@ function LoginForm() {
           )}
         </div>
 
-        <div className="w-full max-w-sm flex flex-col gap-4">
+        <form onSubmit={handleLogin} className="w-full max-w-sm flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-semibold text-gray-900">Email</label>
             <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
               type="email" placeholder="seuemail@exemplo.com"
-              value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+              value={email} onChange={e => setEmail(e.target.value)} />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -216,8 +218,8 @@ function LoginForm() {
             <div className="relative">
               <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
                 type={mostrarSenha ? 'text' : 'password'} placeholder="Digite sua senha"
-                value={senha} onChange={e => setSenha(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
-              <button className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setMostrarSenha(!mostrarSenha)}>
+                value={senha} onChange={e => setSenha(e.target.value)} />
+              <button type="button" className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setMostrarSenha(!mostrarSenha)}>
                 {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
@@ -244,8 +246,8 @@ function LoginForm() {
             </div>
           )}
 
-          <button className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
-            style={{ backgroundColor: cor }} onClick={handleLogin} disabled={loading}>
+          <button type="submit" className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+            style={{ backgroundColor: cor }} disabled={loading}>
             {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Entrar'}
           </button>
 
@@ -272,7 +274,7 @@ function LoginForm() {
               <a href={'/cadastro?salao=' + slugCadastro} className="font-bold" style={{ color: cor }}>Criar conta</a>
             </p>
           )}
-        </div>
+        </form>
       </div>
 
       {modalEsqueci && (
