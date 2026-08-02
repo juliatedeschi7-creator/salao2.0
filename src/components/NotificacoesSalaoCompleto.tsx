@@ -219,6 +219,21 @@ export default function NotificacoesDonoPage() {
     const totalDescontados = Object.values(descontos)
       .reduce((acc, itens) => acc + itens.reduce((a, i) => a + i.peso, 0), 0)
 
+    // LÓGICA INTELIGENTE: Verifica se todos os pacotes aplicáveis acabaram ou se não há pacote ativo
+    const semPacoteOuAcabou = coberturas.length === 0 || coberturas.every(cob => {
+      const pacoteSelecionadoInfo = cob.pacotesDisponiveis.find(p => p.clientePacoteId === cob.clientePacoteIdSelecionado)
+      // Se não selecionou pacote ou se o pacote selecionado ficou zerado nas sessões
+      return !cob.clientePacoteIdSelecionado || (pacoteSelecionadoInfo && pacoteSelecionadoInfo.sessoesRestantes - cob.sessoesEquivalentes <= 0)
+    })
+
+    if (semPacoteOuAcabou) {
+      const iniciarNovo = confirm('O pacote desta cliente acabou ou não há sessões suficientes. Deseja adicionar/vender um novo pacote agora?')
+      if (iniciarNovo) {
+        router.push(`/salao/pacotes/clientes?cliente_id=${modalConfirmar.cliente_id}&novo=true`)
+        return
+      }
+    }
+
     const { data: clienteInfo } = await supabase.from('clientes')
       .select('profile_id').eq('id', modalConfirmar.cliente_id).single()
     if (clienteInfo?.profile_id) {
