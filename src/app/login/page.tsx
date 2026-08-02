@@ -50,7 +50,7 @@ function LoginForm() {
   }, [salaoSlug])
 
   async function handleLogin(e?: React.FormEvent) {
-    if (e) e.preventDefault() // Impede o recarregamento padrão do formulário
+    if (e) e.preventDefault()
     
     if (!email || !senha) { setErro('Preencha email e senha.'); return }
     setLoading(true); setErro('')
@@ -69,7 +69,7 @@ function LoginForm() {
       .eq('id', data.user.id)
       .single()
 
-    // Se o perfil não existir na tabela profiles, redireciona para o cliente por segurança
+    // Se não achar o perfil, manda para cliente por segurança
     if (errProf || !prof) {
       window.location.href = '/cliente'
       return
@@ -85,42 +85,14 @@ function LoginForm() {
 
     let destino = '/cliente'
 
-    // 1. Administrador Geral
+    // Direcionamento limpo e direto por role
     if (prof.role === 'admin_geral') {
       destino = '/admin'
-    } 
-    // 2. Dono de Salão / Funcionário com Acesso Total
-    else if (prof.role === 'dono_salao' || (prof.role === 'funcionario' && prof.nivel_acesso === 'total')) {
-      if (!prof.salao_id) {
-        destino = '/criar-salao'
-      } else {
-        // Verifica se o salão está pausado
-        const { data: salao } = await supabase.from('saloes').select('pausado, aprovado').eq('id', prof.salao_id).maybeSingle()
-        if (salao?.pausado) { 
-          await supabase.auth.signOut()
-          setErro('Este salão está pausado.')
-          setLoading(false) 
-          return 
-        }
-        
-        // Contas antigas já aprovadas ou salões válidos vão direto para o salão
-        if (prof.aprovado === false && salao?.aprovado === false) {
-          destino = '/aguardando'
-        } else {
-          destino = '/salao'
-        }
-      }
-    } 
-    // 3. Funcionário Comum
-    else if (prof.role === 'funcionario') {
-      if (prof.aprovado === false) {
-        destino = '/aguardando'
-      } else {
-        destino = '/funcionario'
-      }
-    } 
-    // 4. Cliente
-    else {
+    } else if (prof.role === 'dono_salao') {
+      destino = prof.salao_id ? '/salao' : '/criar-salao'
+    } else if (prof.role === 'funcionario') {
+      destino = '/funcionario'
+    } else {
       destino = '/cliente'
     }
 
@@ -131,7 +103,6 @@ function LoginForm() {
       } catch { }
     }
 
-    // Redireciona de forma limpa enviando os cookies corretos para o middleware
     window.location.href = destino
   }
 
