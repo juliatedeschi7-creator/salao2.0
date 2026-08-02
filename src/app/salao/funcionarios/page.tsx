@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { Users, UserPlus, Trash2, Clock, X, Shield } from 'lucide-react'
+import { Users, UserPlus, Trash2, Clock, X, Settings, Shield } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -25,13 +25,18 @@ export default function FuncionariosPage() {
   const [erroVinculo, setErroVinculo] = useState('')
   const [sucessoVinculo, setSucessoVinculo] = useState('')
 
-  // Estados do Modal de Jornada / Horários do Funcionário
-  const [modalJornadaAberto, setModalJornadaAberto] = useState(false)
+  // Estados do Modal de Configuração / Permissões e Jornada do Funcionário
+  const [modalConfigAberto, setModalConfigAberto] = useState(false)
   const [funcionarioSelecionado, setFuncionarioSelecionado] = useState<any>(null)
-  const [horarios, setHorarios] = useState({
+  
+  // Configurações de Acesso e Jornada
+  const [configAcessos, setConfigAcessos] = useState({
+    permiteAgenda: true,
+    permiteClientes: true,
+    permiteFinanceiro: false,
+    permiteServicos: false,
     inicio: '09:00',
-    fim: '18:00',
-    dias: ['1', '2', '3', '4', '5', '6'] // Seg a Sáb
+    fim: '18:00'
   })
 
   useEffect(() => {
@@ -78,7 +83,7 @@ export default function FuncionariosPage() {
       .from('profiles')
       .select('*')
       .eq('salao_id', salaoId)
-      .in('role', ['funcionario', 'dono_salao']) // Filtra estritamente equipe
+      .in('role', ['funcionario', 'dono_salao'])
     setFuncionarios(data || [])
   }
 
@@ -153,31 +158,44 @@ export default function FuncionariosPage() {
     await buscarFuncionarios(salao.id)
   }
 
-  function abrirJornada(func: any) {
+  function abrirConfiguracoes(func: any) {
     setFuncionarioSelecionado(func)
-    // Se houver horários salvos no perfil ou customizados, pode carregar aqui
-    setModalJornadaAberto(true)
+    // Carrega configurações salvas no metadata se houver, ou usa padrões
+    if (func.metadata?.configAcessos) {
+      setConfigAcessos(func.metadata.configAcessos)
+    } else if (func.metadata?.jornada) {
+      setConfigAcessos(prev => ({
+        ...prev,
+        inicio: func.metadata.jornada.inicio || '09:00',
+        fim: func.metadata.jornada.fim || '18:00'
+      }))
+    }
+    setModalConfigAberto(true)
   }
 
-  async function salvarJornada(e: React.FormEvent) {
+  async function salvarConfiguracoes(e: React.FormEvent) {
     e.preventDefault()
     if (!funcionarioSelecionado) return
 
-    // Salva as configurações de jornada (pode armazenar num campo JSON ou tabela de expedientes)
     const { error } = await supabase
       .from('profiles')
       .update({ 
-        metadata: { jornada: horarios } 
+        metadata: { 
+          ...funcionarioSelecionado.metadata,
+          configAcessos: configAcessos,
+          jornada: { inicio: configAcessos.inicio, fim: configAcessos.fim }
+        } 
       })
       .eq('id', funcionarioSelecionado.id)
 
     if (error) {
-      alert('Erro ao salvar jornada: ' + error.message)
+      alert('Erro ao salvar configurações: ' + error.message)
       return
     }
 
-    alert('Jornada de trabalho atualizada com sucesso!')
-    setModalJornadaAberto(false)
+    alert('Configurações e acessos salvos com sucesso!')
+    setModalConfigAberto(false)
+    await buscarFuncionarios(salao.id)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -234,11 +252,12 @@ export default function FuncionariosPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button onClick={() => abrirJornada(func)}
-                    className="p-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold"
-                    title="Configurar Jornada">
-                    <Clock size={16} style={{ color: cor }} />
-                    <span className="hidden sm:inline">Jornada</span>
+                  {/* Botão de Configurar Acessos e Jornada */}
+                  <button onClick={() => abrirConfiguracoes(func)}
+                    className="px-3 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-xl transition flex items-center gap-1.5 text-xs font-semibold"
+                    title="Configurar Acessos e Jornada">
+                    <Settings size={16} style={{ color: cor }} />
+                    <span className="hidden sm:inline">Configurar</span>
                   </button>
 
                   {func.role !== 'dono_salao' && (
@@ -301,51 +320,86 @@ export default function FuncionariosPage() {
         </div>
       )}
 
-      {/* Modal de Configuração de Jornada */}
-      {modalJornadaAberto && funcionarioSelecionado && (
+      {/* Modal de Configuração de Acessos e Jornada */}
+      {modalConfigAberto && funcionarioSelecionado && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-100">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
                   style={{ backgroundColor: `${cor}15`, color: cor }}>
-                  <Clock size={20} />
+                  <Shield size={20} />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-gray-900">Jornada de Trabalho</h3>
+                  <h3 className="text-base font-bold text-gray-900">Configurar Acessos</h3>
                   <p className="text-xs text-gray-500">{funcionarioSelecionado.nome}</p>
                 </div>
               </div>
-              <button onClick={() => setModalJornadaAberto(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => setModalConfigAberto(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={salvarJornada} className="flex flex-col gap-4 pt-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-900">Início do Expediente</label>
-                  <input type="time" value={horarios.inicio} 
-                    onChange={e => setHorarios({...horarios, inicio: e.target.value})}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-sm outline-none" />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-gray-900">Fim do Expediente</label>
-                  <input type="time" value={horarios.fim} 
-                    onChange={e => setHorarios({...horarios, fim: e.target.value})}
-                    className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-sm outline-none" />
+            <form onSubmit={salvarConfiguracoes} className="flex flex-col gap-4 pt-2">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-900 uppercase tracking-wider">Jornada de Trabalho</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] text-gray-500">Início</span>
+                    <input type="time" value={configAcessos.inicio} 
+                      onChange={e => setConfigAcessos({...configAcessos, inicio: e.target.value})}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-sm outline-none" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] text-gray-500">Fim</span>
+                    <input type="time" value={configAcessos.fim} 
+                      onChange={e => setConfigAcessos({...configAcessos, fim: e.target.value})}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-sm outline-none" />
+                  </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setModalJornadaAberto(false)}
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <label className="text-xs font-bold text-gray-900 uppercase tracking-wider">Permissões de Telas</label>
+                
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-xs text-gray-700 font-medium">Acesso à Agenda</span>
+                  <input type="checkbox" checked={configAcessos.permiteAgenda}
+                    onChange={e => setConfigAcessos({...configAcessos, permiteAgenda: e.target.checked})}
+                    className="w-4 h-4 rounded accent-pink-600" />
+                </div>
+
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-xs text-gray-700 font-medium">Acesso à Clientes</span>
+                  <input type="checkbox" checked={configAcessos.permiteClientes}
+                    onChange={e => setConfigAcessos({...configAcessos, permiteClientes: e.target.checked})}
+                    className="w-4 h-4 rounded accent-pink-600" />
+                </div>
+
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-xs text-gray-700 font-medium">Acesso ao Financeiro</span>
+                  <input type="checkbox" checked={configAcessos.permiteFinanceiro}
+                    onChange={e => setConfigAcessos({...configAcessos, permiteFinanceiro: e.target.checked})}
+                    className="w-4 h-4 rounded accent-pink-600" />
+                </div>
+
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-xs text-gray-700 font-medium">Acesso aos Serviços</span>
+                  <input type="checkbox" checked={configAcessos.permiteServicos}
+                    onChange={e => setConfigAcessos({...configAcessos, permiteServicos: e.target.checked})}
+                    className="w-4 h-4 rounded accent-pink-600" />
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-3">
+                <button type="button" onClick={() => setModalConfigAberto(false)}
                   className="flex-1 border border-gray-200 text-gray-700 py-3.5 rounded-2xl text-sm font-semibold hover:bg-gray-50 transition">
                   Cancelar
                 </button>
                 <button type="submit"
-                  className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold active:scale-95 transition"
+                  className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold active:scale-95 transition shadow-sm"
                   style={{ backgroundColor: cor }}>
-                  Salvar Jornada
+                  Salvar Alterações
                 </button>
               </div>
             </form>
