@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { Calendar, Users, Notebook, Scissors, CheckSquare, BarChart2, LogOut, Bell } from 'lucide-react'
+import { Calendar, Users, Notebook, Scissors, CheckSquare, BarChart2, LogOut, Bell, MessageSquare } from 'lucide-react'
 
 export default function FuncionarioDashboard() {
   const { profile, loading, signOut } = useAuth()
@@ -17,7 +17,6 @@ export default function FuncionarioDashboard() {
     if (loading) return
     if (!profile) { router.push('/login'); return }
     
-    // CORRIGIDO: Valida pela coluna correta 'role' do banco de dados
     if (profile.role !== 'funcionario' && profile.role !== 'dono_salao') { 
       router.push('/login') 
       return 
@@ -105,18 +104,19 @@ export default function FuncionarioDashboard() {
         <div className="grid grid-cols-2 gap-3 pt-2">
           {[
             { label: 'Minha Agenda', icon: Calendar, href: '/funcionario/agenda' },
+            { label: 'Avisos e Confirmações', icon: MessageSquare, href: '/salao/notificacoes' },
             { label: 'Clientes', icon: Users, href: '/salao/clientes' },
             { label: 'Guia de Tarefas', icon: Notebook, href: '/salao/guia' },
             { label: 'Serviços', icon: Scissors, href: '/salao/servicos' },
             { label: 'Lembretes', icon: CheckSquare, href: '/salao/lembretes' },
             { label: 'Financeiro', icon: BarChart2, href: '/salao/financeiro' },
           ].map(({ label, icon: Icon, href }) => (
-            <button key={href} onClick={() => router.push(href)}
+            <button key={label} onClick={() => router.push(href)}
               className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center gap-2.5 active:scale-95 transition-transform">
               <div className="w-12 h-12 rounded-2xl bg-pink-50 flex items-center justify-center" style={{ color: cor }}>
                 <Icon size={22} />
               </div>
-              <span className="text-xs font-bold text-gray-800">{label}</span>
+              <span className="text-xs font-bold text-gray-800 text-center">{label}</span>
             </button>
           ))}
         </div>
