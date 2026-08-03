@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, ShieldCheck, Check, X, Save, 
   LayoutDashboard, Calendar, Users, Briefcase, 
-  Scissors, DollarSign, PieChart, Settings, Loader2, UserCheck
+  Scissors, DollarSign, PieChart, Settings, Loader2 
 } from 'lucide-react'
 
 const PAGINAS_SISTEMA = [
@@ -52,12 +52,12 @@ function PermissoesContent() {
         .from('profiles')
         .select('id, nome, email, role')
         .eq('salao_id', salaoId)
-        .neq('role', 'dono') // Exclui o dono pois ele já tem acesso total
+        .neq('role', 'dono')
 
       if (error) throw error
       if (data && data.length > 0) {
         setFuncionarios(data)
-        setFuncionarioSelecionado(data[0].id) // Seleciona o primeiro por padrão
+        setFuncionarioSelecionado(data[0].id)
       }
     } catch (err) {
       console.error('Erro ao carregar funcionários:', err)
@@ -85,7 +85,7 @@ function PermissoesContent() {
 
       const mapaPermissoes: Record<string, boolean> = {}
       PAGINAS_SISTEMA.forEach(pag => {
-        mapaPermissoes[pag.key] = ['agenda', 'clientes'].includes(pag.key) // Padrão inicial
+        mapaPermissoes[pag.key] = ['agenda', 'clientes'].includes(pag.key)
       })
 
       if (data && data.length > 0) {
@@ -126,51 +126,21 @@ function PermissoesContent() {
         permitido
       }))
 
-      console.log('Enviando payload:', payload)
-
       const { data, error } = await supabase
         .from('permissoes_cargos')
         .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
-        .select() // Pede para retornar o que foi inserido
+        .select()
 
       if (error) {
         console.error('Erro retornado pelo Supabase:', error)
-        alert('Erro do Supabase: ' + error.message)
         throw error
       }
 
-      console.log('Dados salvos com sucesso:', data)
       setMensagem('Permissões individuais salvas com sucesso!')
       setTimeout(() => setMensagem(''), 3000)
     } catch (err: any) {
       console.error('Erro geral ao salvar:', err)
       alert('Erro ao salvar permissões: ' + (err.message || JSON.stringify(err)))
-    } finally {
-      setSalvando(false)
-    }
-  }
-    try {
-      const funcAtual = funcionarios.find(f => f.id === funcionarioSelecionado)
-      const roleGenerico = funcAtual?.role || 'profissional'
-
-      const payload = Object.entries(permissoes).map(([pagina_key, permitido]) => ({
-        salao_id: profile.salao_id,
-        user_id: funcionarioSelecionado,
-        role: roleGenerico, // Mantemos preenchido por compatibilidade
-        pagina_key,
-        permitido
-      }))
-
-      const { error } = await supabase
-        .from('permissoes_cargos')
-        .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
-
-      if (error) throw error
-
-      setMensagem('Permissões individuais salvas com sucesso!')
-      setTimeout(() => setMensagem(''), 3000)
-    } catch (err: any) {
-      alert('Erro ao salvar permissões: ' + err.message)
     } finally {
       setSalvando(false)
     }
@@ -207,7 +177,6 @@ function PermissoesContent() {
           </div>
         )}
 
-        {/* Seleção do Funcionário Específico */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 space-y-2">
           <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
             Selecione o Funcionário:
@@ -231,7 +200,6 @@ function PermissoesContent() {
           )}
         </div>
 
-        {/* Lista de Páginas */}
         {carregando ? (
           <div className="space-y-3">
             {[1, 2, 3, 4].map(n => (
