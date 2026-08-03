@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Save, ShieldCheck, Check, X, LayoutDashboard, Calendar, Users, UserCog } from 'lucide-react'
+import { ArrowLeft, Save, ShieldCheck, Check, X, Loader2 } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/lib/hooks/useAuth'
 
 const CARGOS = [
   { id: 'gerente', label: 'Gerente', cor: 'bg-purple-500' },
@@ -40,17 +42,59 @@ const TELAS_SISTEMA = [
 
 export default function PermissoesPage() {
   const router = useRouter()
+  const { profile, loading: authLoading } = useAuth()
+
   const [cargoSelecionado, setCargoSelecionado] = useState('profissional')
   const [salvando, setSalvando] = useState(false)
+  const [carregando, setCarregando] = useState(true)
   const [sucesso, setSucesso] = useState(false)
 
-  // Estado local das permissões por cargo
+  // Estado que armazena as permissões de todas as telas por cargo
   const [permissoes, setPermissoes] = useState<Record<string, Record<string, boolean>>>({
-    gerente: { dashboard: true, agenda: true, clientes: true, funcionarios: true },
-    recepcionista: { dashboard: false, agenda: true, clientes: true, funcionarios: false },
-    profissional: { dashboard: true, agenda: true, clientes: true, funcionarios: false },
-    auxiliar: { dashboard: false, agenda: true, clientes: false, funcionarios: false }
+    gerente: {},
+    recepcionista: {},
+    profissional: {},
+    auxiliar: {}
   })
+
+  // Carrega as permissões salvas do banco de dados ao iniciar
+  useEffect(() => {
+    if (authLoading || !profile?.salao_id) return
+    carregarPermissoesDoBanco()
+  }, [authLoading, profile])
+
+  async function carregarPermissoesDoBanco() {
+    setCarregando(true)
+    try {
+      const { data, error } = await supabase
+        .from('permissoes_cargos')
+        .select('role, pagina_key, permitido')
+        .eq('salao_id', profile!.salao_id)
+
+      if (error) throw error
+
+      // Monta o objeto inicial com padrão true ou false
+      const novoMapa: Record<string, Record<string, boolean>> = {
+        gerente: { dashboard: true, agenda: true, clientes: true, funcionarios: true },
+        recepcionista: { dashboard: false, agenda: true, clientes: true, funcionarios: false },
+        profissional: { dashboard: true, agenda: true, clientes: true, funcionarios: false },
+        auxiliar: { dashboard: false, agenda: true, clientes: false, funcionarios: false }
+      }
+
+      if (data && data.length > 0) {
+        data.forEach((item: any) => {
+          if (!novoMapa[item.role]) novoMapa[item.role] = {}
+          novoMapa[item.role][item.pagina_key] = item.permitido
+        })
+      }
+
+      setPermissoes(novoMapa)
+    } catch (err: any) {
+      console.error('Erro ao carregar permissões:', err.message)
+    } finally {
+      setCarregando(false)
+    }
+  }
 
   function togglePermissao(telaId: string, valor: boolean) {
     setPermissoes(prev => ({
@@ -62,13 +106,44 @@ export default function PermissoesPage() {
     }))
   }
 
-  function handleSalvar() {
+  async function handleSalvar() {
+    if (!profile?.salao_id) {
+      alert('Erro: Salão não identificado.')
+      return
+    }
+
     setSalvando(true)
-    setTimeout(() => {
-      setSalvando(false)
+    setSucesso(false)
+
+    try {
+      // Prepara o array com todas as permissões de todos os cargos para enviar ao banco
+      const payload: any[] = []
+
+      Object.entries(permissoes).forEach(([role, telas]) => {
+        Object.entries(telas).forEach(([pagina_key, permitido]) => {
+          payload.push({
+            salao_id: profile.salao_id,
+            role: role,
+            pagina_key: pagina_key,
+            permitido: permitido
+          })
+        })
+      })
+
+      // Salva em lote na tabela permissoes_cargos usando upsert
+      const { error } = await supabase
+        .from('permissoes_cargos')
+        .upsert(payload, { onConflict: 'salao_id,role,pagina_key' })
+
+      if (error) throw error
+
       setSucesso(true)
-      setTimeout(() => setSucesso(false), 2000)
-    }, 600)
+      setTimeout(() => setSucesso(false), 3000)
+    } catch (err: any) {
+      alert('Erro ao salvar permissões no banco: ' + (err.message || err))
+    } finally {
+      setSalvando(false)
+    }
   }
 
   const corRosa = '#E91E8C'
@@ -89,10 +164,11 @@ export default function PermissoesPage() {
 
         <button
           onClick={handleSalvar}
-          disabled={salvando}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-white text-xs font-bold shadow-sm"
+          disabled={salvando || carregando}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-full text-white text-xs font-bold shadow-sm disabled:opacity-50"
           style={{ backgroundColor: corRosa }}>
-          <Save size={16} /> {salvando ? 'Salvando...' : 'Salvar'}
+          {salvando ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+          {salvando ? 'Salvando...' : 'Salvar'}
         </button>
       </div>
 
@@ -101,7 +177,7 @@ export default function PermissoesPage() {
         {/* FEEDBACK DE SUCESSO */}
         {sucesso && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-2xl text-xs font-bold flex items-center gap-2">
-            <Check size={16} /> Permissões salvas com sucesso!
+            <Check size={16} /> Permissões salvas com sucesso na tabela do banco!
           </div>
         )}
 
@@ -131,7 +207,7 @@ export default function PermissoesPage() {
           </div>
         </div>
 
-        {/* MÁTRIA DE PERMISSÕES DE TELA */}
+        {/* MATRIZ DE PERMISSÕES DE TELA */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">
@@ -142,49 +218,55 @@ export default function PermissoesPage() {
             </span>
           </div>
 
-          <div className="space-y-3">
-            {TELAS_SISTEMA.map(tela => {
-              const temAcesso = permissoes[cargoSelecionado]?.[tela.id] ?? false
+          {carregando ? (
+            <div className="bg-white p-8 rounded-3xl text-center text-gray-400 text-xs">
+              Carregando permissões...
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {TELAS_SISTEMA.map(tela => {
+                const temAcesso = permissoes[cargoSelecionado]?.[tela.id] ?? false
 
-              return (
-                <div key={tela.id} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-gray-900 text-base">{tela.nome}</h3>
-                        <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 text-[10px] font-semibold">
-                          {tela.tag}
-                        </span>
+                return (
+                  <div key={tela.id} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-gray-900 text-base">{tela.nome}</h3>
+                          <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 text-[10px] font-semibold">
+                            {tela.tag}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1 leading-relaxed">{tela.descricao}</p>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1 leading-relaxed">{tela.descricao}</p>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-50">
+                      <button
+                        onClick={() => togglePermissao(tela.id, true)}
+                        className={`flex items-center gap-1 px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
+                          temAcesso 
+                            ? 'bg-emerald-500 text-white shadow-sm' 
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}>
+                        <Check size={14} /> Sim
+                      </button>
+
+                      <button
+                        onClick={() => togglePermissao(tela.id, false)}
+                        className={`flex items-center gap-1 px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
+                          !temAcesso 
+                            ? 'bg-gray-200 text-gray-700' 
+                            : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                        }`}>
+                        <X size={14} /> Não
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-50">
-                    <button
-                      onClick={() => togglePermissao(tela.id, true)}
-                      className={`flex items-center gap-1 px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
-                        temAcesso 
-                          ? 'bg-emerald-500 text-white shadow-sm' 
-                          : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                      }`}>
-                      <Check size={14} /> Sim
-                    </button>
-
-                    <button
-                      onClick={() => togglePermissao(tela.id, false)}
-                      className={`flex items-center gap-1 px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
-                        !temAcesso 
-                          ? 'bg-gray-200 text-gray-700' 
-                          : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                      }`}>
-                      <X size={14} /> Não
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
       </div>
