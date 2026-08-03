@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { Users, UserPlus, Trash2, Clock, X, Settings, Shield, Check, Calendar, Lock } from 'lucide-react'
+import { Users, UserPlus, Trash2, X, Settings, Shield } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -31,7 +31,7 @@ export default function FuncionariosPage() {
   const [abaAtiva, setAbaAtiva] = useState<'cargo' | 'paginas' | 'escala' | 'ponto'>('cargo')
   const [salvandoConfig, setSalvandoConfig] = useState(false)
 
-  // Estados editáveis do funcionário selecionado
+  // Estados editáveis do funcionário selecionado (COM TODAS AS PÁGINAS DO SISTEMA)
   const [cargoEdit, setCargoEdit] = useState('comum')
   const [nivelAcessoEdit, setNivelAcessoEdit] = useState('restrito')
   const [paginasEdit, setPaginasEdit] = useState<any>({
@@ -39,12 +39,24 @@ export default function FuncionariosPage() {
     agenda_total: true,
     agenda_propria: false,
     clientes: true,
+    guia: true,
     servicos: true,
     pacotes: true,
-    financeiro: false,
-    avisos: true,
+    pacotes_clientes: true,
+    anamnese: true,
+    combos: true,
+    contratos: true,
+    horarios_vagos: true,
+    lembretes: true,
     produtos: false,
+    financeiro: false,
+    relatorios: false,
+    caixa: false,
+    contas: false,
     funcionarios: false,
+    avisos: true,
+    ia: false,
+    quem_somos: false,
     configuracoes: false
   })
   const [escalaEdit, setEscalaEdit] = useState<any>({
@@ -120,7 +132,7 @@ export default function FuncionariosPage() {
         .maybeSingle()
 
       if (errBusca || !usuarioAlvo) {
-        setErroVinculo('Nenhum usuário encontrado com este e-mail. Peça para ele criar uma conta no app primeiro.')
+        setErroVinculo('Nenhum usuário encontrado com este e-mail.')
         setLoadingVinculo(false)
         return
       }
@@ -178,7 +190,7 @@ export default function FuncionariosPage() {
     setNivelAcessoEdit(func.nivel_acesso || 'restrito')
     
     if (func.permissoes_paginas && typeof func.permissoes_paginas === 'object') {
-      setPaginasEdit(func.permissoes_paginas)
+      setPaginasEdit({ ...paginasEdit, ...func.permissoes_paginas })
     }
     if (func.escala_dias && typeof func.escala_dias === 'object') {
       setEscalaEdit(func.escala_dias)
@@ -235,7 +247,6 @@ export default function FuncionariosPage() {
     }
   }
 
-  // Cor principal declarada antecipadamente para evitar erros no carregamento
   const cor = salao?.cor_primaria || '#E91E8C'
 
   if (carregando || !profile) return (
@@ -309,7 +320,6 @@ export default function FuncionariosPage() {
         </div>
       </div>
 
-      {/* Modal para Vincular por E-mail */}
       {modalAberto && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
@@ -356,7 +366,6 @@ export default function FuncionariosPage() {
         </div>
       )}
 
-      {/* Modal de Configuração Completo com Abas (Cargo, Páginas, Escala, Ponto) */}
       {modalConfigAberto && funcSel && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-4 shadow-2xl border border-gray-100 max-h-[90vh] flex flex-col">
@@ -376,7 +385,6 @@ export default function FuncionariosPage() {
               </button>
             </div>
 
-            {/* Abas de Navegação */}
             <div className="grid grid-cols-4 gap-1 bg-gray-50 p-1 rounded-2xl border border-gray-100 shrink-0">
               <button type="button" onClick={() => setAbaAtiva('cargo')}
                 className={`py-2 text-xs font-semibold rounded-xl transition ${abaAtiva === 'cargo' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-800'}`}>
@@ -396,10 +404,8 @@ export default function FuncionariosPage() {
               </button>
             </div>
 
-            {/* Conteúdo das Abas */}
             <div className="flex-1 overflow-y-auto py-2 space-y-4">
               
-              {/* ABA CARGO */}
               {abaAtiva === 'cargo' && (
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -422,14 +428,14 @@ export default function FuncionariosPage() {
                 </div>
               )}
 
-              {/* ABA PÁGINAS */}
+              {/* ABA PÁGINAS COM TODAS AS OPÇÕES DO SISTEMA */}
               {abaAtiva === 'paginas' && (
                 <div className="space-y-3">
                   <p className="text-xs text-gray-500">Selecione quais páginas este funcionário pode visualizar:</p>
                   <div className="space-y-2">
                     {Object.keys(paginasEdit).map(pag => (
                       <label key={pag} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition">
-                        <span className="text-xs font-medium text-gray-800 capitalize">{pag.replace('_', ' ')}</span>
+                        <span className="text-xs font-medium text-gray-800 uppercase">{pag.replace('_', ' ')}</span>
                         <input type="checkbox" checked={paginasEdit[pag]}
                           onChange={e => setPaginasEdit({...paginasEdit, [pag]: e.target.checked})}
                           className="w-4 h-4 rounded accent-pink-600" />
@@ -439,7 +445,6 @@ export default function FuncionariosPage() {
                 </div>
               )}
 
-              {/* ABA ESCALA */}
               {abaAtiva === 'escala' && (
                 <div className="space-y-3">
                   <p className="text-xs text-gray-500">Defina os dias e horários de atendimento da escala:</p>
@@ -483,7 +488,6 @@ export default function FuncionariosPage() {
                 </div>
               )}
 
-              {/* ABA PONTO */}
               {abaAtiva === 'ponto' && (
                 <div className="space-y-4 py-4">
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
@@ -500,7 +504,6 @@ export default function FuncionariosPage() {
 
             </div>
 
-            {/* Rodapé do Modal */}
             <div className="flex gap-2 pt-3 border-t border-gray-100 shrink-0">
               <button type="button" onClick={() => setModalConfigAberto(false)}
                 className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold hover:bg-gray-50 transition">
