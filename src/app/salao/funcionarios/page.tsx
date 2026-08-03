@@ -193,33 +193,54 @@ export default function FuncionariosPage() {
     setSalvandoConfig(true)
 
     try {
+      // 1. Atualiza os dados básicos, escalas e ponto na tabela 'profiles'
       const dadosAtualizados = {
         cargo: cargoEdit,
         nivel_acesso: nivelAcessoEdit,
-        permissoes_paginas: paginasEdit,
+        permissoes_paginas: paginasEdit, // Mantém aqui para o modal carregar rápido depois
         escala_dias: escalaEdit,
         controle_ponto: pontoEdit,
         atualizado_por: profile.id
       }
 
-      const { error } = await supabase
+      const { error: erroPerfil } = await supabase
         .from('profiles')
         .update(dadosAtualizados)
         .eq('id', funcSel.id)
 
-      if (error) throw error
+      if (erroPerfil) throw erroPerfil
 
-      alert('Configurações salvas com sucesso!')
+      // 2. AGORA SIM: Prepara os dados para salvar na tabela 'permissoes_cargos'
+      const payloadPermissoes = Object.entries(paginasEdit).map(([pagina_key, permitido]) => ({
+        salao_id: salao.id,
+        user_id: funcSel.id,
+        role: cargoEdit,
+        pagina_key: pagina_key,
+        permitido: permitido
+      }))
+
+      // Salva as permissões individuais de cada página na tabela certa
+      if (payloadPermissoes.length > 0) {
+        const { error: erroPermissoes } = await supabase
+          .from('permissoes_cargos')
+          .upsert(payloadPermissoes, { onConflict: 'salao_id,user_id,pagina_key' })
+
+        if (erroPermissoes) {
+           console.error("Erro no Supabase ao salvar permissões:", erroPermissoes);
+           throw erroPermissoes;
+        }
+      }
+
+      alert('Configurações e permissões salvas com sucesso no banco de dados!')
       setModalConfigAberto(false)
       await buscarFuncionarios(salao.id)
+      
     } catch (err: any) {
       alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)))
     } finally {
       setSalvandoConfig(false)
     }
   }
-
-  const cor = salao?.cor_primaria || '#E91E8C'
 
   if (carregando || !profile) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
