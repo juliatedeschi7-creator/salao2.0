@@ -192,30 +192,31 @@ export default function FuncionariosPage() {
     if (!funcSel) return
     setSalvandoConfig(true)
 
-    const dadosAtualizados = {
-      cargo: cargoEdit,
-      nivel_acesso: nivelAcessoEdit,
-      permissoes_paginas: paginasEdit,
-      escala_dias: escalaEdit,
-      controle_ponto: pontoEdit,
-      atualizado_por: profile.id
+    try {
+      const dadosAtualizados = {
+        cargo: cargoEdit,
+        nivel_acesso: nivelAcessoEdit,
+        permissoes_paginas: paginasEdit,
+        escala_dias: escalaEdit,
+        controle_ponto: pontoEdit,
+        atualizado_por: profile.id
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(dadosAtualizados)
+        .eq('id', funcSel.id)
+
+      if (error) throw error
+
+      alert('Configurações salvas com sucesso!')
+      setModalConfigAberto(false)
+      await buscarFuncionarios(salao.id)
+    } catch (err: any) {
+      alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)))
+    } finally {
+      setSalvandoConfig(false)
     }
-
-    const { error } = await supabase
-      .from('profiles')
-      .update(dadosAtualizados)
-      .eq('id', funcSel.id)
-
-    setSalvandoConfig(false)
-
-    if (error) {
-      alert('Erro ao salvar: ' + error.message)
-      return
-    }
-
-    alert('Configurações salvas com sucesso!')
-    setModalConfigAberto(false)
-    await buscarFuncionarios(salao.id)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
