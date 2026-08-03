@@ -67,13 +67,13 @@ export default function ModalPermissoesFuncionario({
     try {
       setSalvando(true)
 
-      // 1. Salva no perfil (formato JSON antigo)
-      await supabase
-        .from('profiles')
-        .update({ permissoes })
-        .eq('id', funcionario.id)
+      // Verifica se temos os IDs necessários antes de enviar
+      if (!funcionario?.id || !funcionario?.salao_id) {
+        alert('Erro: ID do funcionário ou ID do salão está vazio! Verifique os dados.')
+        setSalvando(false)
+        return
+      }
 
-      // 2. Salva na tabela 'permissoes_cargos'
       const payload = Object.entries(permissoes).map(([pagina_key, dados]) => ({
         salao_id: funcionario.salao_id,
         user_id: funcionario.id,
@@ -81,6 +81,29 @@ export default function ModalPermissoesFuncionario({
         pagina_key,
         permitido: dados.acesso
       }))
+
+      console.log('Enviando payload para permissoes_cargos:', payload)
+
+      const { data, error } = await supabase
+        .from('permissoes_cargos')
+        .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
+
+      if (error) {
+        console.error('Erro retornado pelo Supabase:', error)
+        alert('Erro do Supabase: ' + error.message)
+      } else {
+        console.log('Salvo com sucesso!', data)
+        onSalvo()
+        onClose()
+      }
+    } catch (err: any) {
+      console.error('Erro crítico capturado:', err)
+      alert('Erro inesperado: ' + (err.message || err))
+    } finally {
+      // Garante que a bolinha de loading vai parar de rodar em qualquer hipótese
+      setSalvando(false)
+    }
+  }
 
       const { error } = await supabase
         .from('permissoes_cargos')
