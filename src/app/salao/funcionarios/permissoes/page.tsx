@@ -106,7 +106,7 @@ function PermissoesContent() {
     setPermissoes(prev => ({ ...prev, [paginaKey]: valor }))
   }
 
-  async function salvarPermissoes() {
+   async function salvarPermissoes() {
     if (!profile?.salao_id || !funcionarioSelecionado) {
       alert('Erro: Salão ID ou Funcionário não definidos.')
       return
@@ -126,13 +126,17 @@ function PermissoesContent() {
         permitido
       }))
 
+      console.log('--- ENVIANDO PAYLOAD PARA O SUPABASE ---', payload)
+
       const { data, error } = await supabase
         .from('permissoes_cargos')
         .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
         .select()
 
+      console.log('--- RESPOSTA DO SUPABASE ---', { data, error })
+
       if (error) {
-        console.error('Erro retornado pelo Supabase:', error)
+        console.error('Erro detalhado do Supabase:', error)
         throw error
       }
 
