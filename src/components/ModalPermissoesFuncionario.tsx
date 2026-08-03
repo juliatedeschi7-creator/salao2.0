@@ -5,14 +5,13 @@ import { supabase } from '@/lib/supabase'
 import { X } from 'lucide-react'
 
 export const PAGINAS_SISTEMA = [
-  { key: 'agenda', label: 'Agenda & Atendimentos', descricao: 'Ver horários e agendar' },
-  { key: 'clientes', label: 'Clientes & Evoluções', descricao: 'Acessar cadastro e fotos de antes/depois' },
-  { key: 'financeiro', label: 'Financeiro & Caixa', descricao: 'Faturamento, entradas e saídas' },
-  { key: 'servicos', label: 'Serviços & Catálogo', descricao: 'Cadastrar e editar preços de serviços' },
-  { key: 'pacotes', label: 'Pacotes & Promoções', descricao: 'Vender e gerenciar pacotes' },
-  { key: 'anamnese', label: 'Fichas de Anamnese', descricao: 'Visualizar e preencher fichas' },
-  { key: 'relatorios', label: 'Relatórios & Métricas', descricao: 'Desempenho e gráficos do salão' },
-  { key: 'configuracoes', label: 'Configurações do Salão', descricao: 'Dados do salão e horários de funcionamento' },
+  { key: 'avisos', label: 'Avisos', descricao: 'Visualizar avisos' },
+  { key: 'pacotes', label: 'Pacotes', descricao: 'Gerenciar pacotes' },
+  { key: 'servicos', label: 'Serviços', descricao: 'Gerenciar serviços' },
+  { key: 'dashboard', label: 'Dashboard', descricao: 'Visão geral' },
+  { key: 'financeiro', label: 'Financeiro', descricao: 'Controle financeiro' },
+  { key: 'agenda', label: 'Agenda Total', descricao: 'Visualizar agenda' },
+  { key: 'funcionarios', label: 'Funcionários', descricao: 'Gerenciar equipe' },
 ]
 
 type ModalPermissoesProps = {
@@ -28,15 +27,12 @@ export default function ModalPermissoesFuncionario({
   onClose,
   onSalvo
 }: ModalPermissoesProps) {
-  const [permissoes, setPermissoes] = useState<Record<string, { acesso: boolean; modo: 'dono' | 'funcionario' }>>(() => {
+  const [permissoes, setPermissoes] = useState<Record<string, boolean>>(() => {
     const permAtual = funcionario?.permissoes || {}
-    const inicial: Record<string, { acesso: boolean; modo: 'dono' | 'funcionario' }> = {}
+    const inicial: Record<string, boolean> = {}
 
     PAGINAS_SISTEMA.forEach(p => {
-      inicial[p.key] = {
-        acesso: permAtual[p.key]?.acesso ?? (funcionario?.role === 'admin' || funcionario?.role === 'dono'),
-        modo: permAtual[p.key]?.modo || (funcionario?.role === 'admin' || funcionario?.role === 'dono' ? 'dono' : 'funcionario')
-      }
+      inicial[p.key] = permAtual[p.key]?.acesso ?? permAtual[p.key] ?? false
     })
     return inicial
   })
@@ -46,54 +42,51 @@ export default function ModalPermissoesFuncionario({
   function alternarAcesso(key: string) {
     setPermissoes(prev => ({
       ...prev,
-      [key]: {
-        ...prev[key],
-        acesso: !prev[key]?.acesso
-      }
+      [key]: !prev[key]
     }))
   }
 
-  async function salvarPermissoes() {
+  async function salvarPermissoesDireto() {
     try {
       setSalvando(true)
 
       if (!funcionario?.id || !funcionario?.salao_id) {
-        alert('Erro: ID do funcionário ou ID do salão está vazio!')
+        alert('Erro: ID do funcionário ou salão não encontrado.')
         setSalvando(false)
         return
       }
 
-      // 1. Declaração explícita do payload no escopo correto
-      const payload = Object.entries(permissoes).map(([pagina_key, dados]) => ({
+      // Prepara o payload para a tabela permissoes_cargos
+      const payload = PAGINAS_SISTEMA.map(pag => ({
         salao_id: funcionario.salao_id,
         user_id: funcionario.id,
         role: funcionario.role || 'profissional',
-        pagina_key,
-        permitido: dados.acesso
+        pagina_key: pag.key,
+        permitido: !!permissoes[pag.key]
       }))
 
-      // 2. Salva no perfil (formato JSON)
-      await supabase
-        .from('profiles')
-        .update({ permissoes })
-        .eq('id', funcionario.id)
-
-      // 3. Salva na tabela 'permissoes_cargos' usando a variável payload declarada acima
+      // Insere/Atualiza na tabela do banco
       const { error } = await supabase
         .from('permissoes_cargos')
         .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
 
       if (error) {
-        console.error('Erro ao salvar cargos:', error)
-        alert('Erro ao salvar na tabela: ' + error.message)
-      } else {
-        onSalvo()
-        onClose()
+        alert('Erro ao salvar no banco: ' + error.message)
+        setSalvando(false)
+        return
       }
+
+      // Salva também no perfil para retrocompatibilidade
+      await supabase
+        .from('profiles')
+        .update({ permissoes })
+        .eq('id', funcionario.id)
+
+      alert('Permissões salvas com sucesso no banco!')
+      onSalvo()
+      onClose()
     } catch (err: any) {
-      console.error('Erro inesperado:', err)
-      alert('Ocorreu um erro ao salvar.')
-    } finally {
+      alert('Erro inesperado: ' + (err.message || err))
       setSalvando(false)
     }
   }
@@ -118,24 +111,22 @@ export default function ModalPermissoesFuncionario({
 
         <div className="space-y-3">
           {PAGINAS_SISTEMA.map(pag => {
-            const conf = permissoes[pag.key] || { acesso: false, modo: 'funcionario' }
+            const ativo = permissoes[pag.key] || false
             return (
-              <div key={pag.key} className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">{pag.label}</p>
-                    <p className="text-xs text-gray-400">{pag.descricao}</p>
-                  </div>
-                  <button
-                    onClick={() => alternarAcesso(pag.key)}
-                    className="w-12 h-6 rounded-full transition-all relative shrink-0"
-                    style={{ backgroundColor: conf.acesso ? cor : '#d1d5db' }}>
-                    <div
-                      className="w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm"
-                      style={{ left: conf.acesso ? '26px' : '2px' }}
-                    />
-                  </button>
+              <div key={pag.key} className="p-3.5 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">{pag.label}</p>
+                  <p className="text-xs text-gray-400">{pag.descricao}</p>
                 </div>
+                <button
+                  onClick={() => alternarAcesso(pag.key)}
+                  className="w-12 h-6 rounded-full transition-all relative shrink-0"
+                  style={{ backgroundColor: ativo ? cor : '#d1d5db' }}>
+                  <div
+                    className="w-5 h-5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm"
+                    style={{ left: ativo ? '26px' : '2px' }}
+                  />
+                </button>
               </div>
             )
           })}
@@ -148,7 +139,7 @@ export default function ModalPermissoesFuncionario({
             Cancelar
           </button>
           <button
-            onClick={salvarPermissoes}
+            onClick={salvarPermissoesDireto}
             disabled={salvando}
             className="flex-1 py-3 rounded-2xl text-white font-medium text-sm disabled:opacity-50 flex items-center justify-center"
             style={{ backgroundColor: cor }}>
