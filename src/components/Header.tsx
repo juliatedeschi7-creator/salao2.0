@@ -75,14 +75,26 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
 
   useEffect(() => {
     async function carregarPermissoesFuncionario() {
-      if (!profile?.salao_id) return
+      if (!profile?.salao_id || !profile?.id) return
 
       if (['funcionario', 'profissional', 'gerente', 'recepcao', 'auxiliar'].includes(userRole)) {
-        const { data: permissoesDB } = await supabase
+        // Tenta buscar primeiro as permissões individuais do funcionário logado
+        let { data: permissoesDB } = await supabase
           .from('permissoes_cargos')
           .select('pagina_key, permitido')
           .eq('salao_id', profile.salao_id)
-          .eq('role', userRole)
+          .eq('user_id', profile.id)
+
+        // Se não houver configuração individual salva ainda, usa o cargo como fallback
+        if (!permissoesDB || permissoesDB.length === 0) {
+          const { data: permissoesCargoDB } = await supabase
+            .from('permissoes_cargos')
+            .select('pagina_key, permitido')
+            .eq('salao_id', profile.salao_id)
+            .eq('role', userRole)
+          
+          permissoesDB = permissoesCargoDB
+        }
 
         if (permissoesDB && permissoesDB.length > 0) {
           const itensDinamicos: any[] = []
