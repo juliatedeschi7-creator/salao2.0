@@ -76,11 +76,11 @@ export default function ModalPermissoesFuncionario({
 
     if (errorProfile) {
       setSalvando(false)
-      alert('Erro ao salvar permissões no perfil. Tente novamente.')
+      alert('Erro ao salvar permissões no perfil: ' + errorProfile.message)
       return
     }
 
-    // 2. Prepara e salva também na tabela 'permissoes_cargos' para manter sincronizado
+    // 2. Prepara e salva na tabela 'permissoes_cargos'
     const payloadPermissoesCargos = Object.entries(permissoes).map(([pagina_key, dados]) => ({
       salao_id: funcionario.salao_id,
       user_id: funcionario.id,
@@ -95,14 +95,14 @@ export default function ModalPermissoesFuncionario({
 
     setSalvando(false)
 
-    if (!errorCargos) {
-      onSalvo()
-      onClose()
-    } else {
-      console.warn('Aviso: Salvo no perfil, mas houve detalhe na tabela cargos:', errorCargos)
-      onSalvo()
-      onClose()
+    if (errorCargos) {
+      alert('Erro ao salvar na tabela permissoes_cargos: ' + JSON.stringify(errorCargos))
+      console.error('Erro detalhado cargos:', errorCargos)
+      return
     }
+
+    onSalvo()
+    onClose()
   }
 
   return (
