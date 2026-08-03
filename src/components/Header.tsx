@@ -4,7 +4,7 @@ import {
   Home, Calendar, Users, BarChart2, Settings,
   Scissors, Package, FileText, UserCheck, Box,
   Sparkles, CreditCard, DollarSign, Clock, Heart,
-  CheckSquare, Notebook, LayoutDashboard
+  CheckSquare, Notebook, LayoutDashboard, PieChart
 } from 'lucide-react'
 import { useNotificacoes } from '@/lib/hooks/useNotificacoes'
 import { supabase } from '@/lib/supabase'
@@ -19,19 +19,16 @@ interface Props {
   corSecundaria?: string
 }
 
-// Mapeamento exato das chaves que aparecem na tela de permissões por funcionário
+// Mapeamento idêntico às chaves salvas pela tela de permissões do seu sistema
 const MAPA_ROTAS_SISTEMA: Record<string, { label: string; href: string; grupo: string; icon: any }> = {
-  'avisos': { label: 'Notificações / Avisos', href: '/salao/notificacoes', grupo: 'Outros', icon: Bell },
-  'pacotes': { label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento', icon: Package },
-  'clientes': { label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento', icon: Users },
-  'produtos': { label: 'Estoque / Produtos', href: '/salao/estoque', grupo: 'Gestão', icon: Box },
-  'servicos': { label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento', icon: Scissors },
   'dashboard': { label: 'Início', href: '/funcionario', grupo: '', icon: LayoutDashboard },
-  'financeiro': { label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão', icon: BarChart2 },
-  'agenda_total': { label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
-  'agenda_propria': { label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
-  'funcionarios': { label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe', icon: UserCheck },
-  'configuracoes': { label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros', icon: Settings },
+  'agenda': { label: 'Agenda de Serviços', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
+  'clientes': { label: 'Gestão de Clientes', href: '/salao/clientes', grupo: 'Atendimento', icon: Users },
+  'funcionarios': { label: 'Gestão de Funcionários', href: '/salao/funcionarios', grupo: 'Equipe', icon: UserCheck },
+  'servicos': { label: 'Serviços & Preços', href: '/salao/servicos', grupo: 'Atendimento', icon: Scissors },
+  'financeiro': { label: 'Caixa & Financeiro', href: '/salao/financeiro', grupo: 'Gestão', icon: BarChart2 },
+  'comissoes': { label: 'Comissões & Relatórios', href: '/salao/comissoes', grupo: 'Financeiro', icon: PieChart },
+  'configuracoes': { label: 'Configurações do Salão', href: '/salao/configuracoes', grupo: 'Sistema', icon: Settings },
 }
 
 const MENU_DONO = [
@@ -90,17 +87,17 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         if (permissoesDB && permissoesDB.length > 0) {
           const itensDinamicos: any[] = []
           
-          // Sempre garante o Início no topo
+          // Sempre garante o Início no topo para funcionários
           itensDinamicos.push({ icon: Home, label: 'Início', href: '/funcionario', grupo: '' })
 
-          const chavesAdicionadas = new Set<string>()
+          const rotasAdicionadas = new Set<string>()
 
           permissoesDB.forEach((p: any) => {
             if (p.permitido === true && MAPA_ROTAS_SISTEMA[p.pagina_key]) {
               const configRota = MAPA_ROTAS_SISTEMA[p.pagina_key]
-              // Evita duplicar rotas idênticas e pula o dashboard para não duplicar o Início
-              if (p.pagina_key !== 'dashboard' && !chavesAdicionadas.has(configRota.href)) {
-                chavesAdicionadas.add(configRota.href)
+              // Ignora o dashboard para não duplicar o Início e evita rotas repetidas
+              if (p.pagina_key !== 'dashboard' && !rotasAdicionadas.has(configRota.href)) {
+                rotasAdicionadas.add(configRota.href)
                 itensDinamicos.push({
                   icon: configRota.icon,
                   label: configRota.label,
@@ -111,7 +108,8 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
             }
           })
 
-          if (!itensDinamicos.some(i => i.href === '/salao/notificacoes')) {
+          // Garante que notificações sempre esteja disponível
+          if (!rotasAdicionadas.has('/salao/notificacoes')) {
             itensDinamicos.push({ icon: Bell, label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros' })
           }
 
@@ -120,7 +118,7 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         }
       }
 
-      // Fallback padrão
+      // Fallback padrão caso não haja dados na tabela
       setMenuFuncionarioDinamico([
         { icon: Home, label: 'Início', href: '/funcionario', grupo: '' },
         { icon: Calendar, label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento' },
