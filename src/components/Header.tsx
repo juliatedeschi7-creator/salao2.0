@@ -25,13 +25,25 @@ const MAPA_ROTAS_SISTEMA: Record<string, { label: string; href: string; grupo: s
   'agenda_total': { label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
   'agenda_propria': { label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
   'clientes': { label: 'Clientes', href: '/salao/clientes', grupo: 'Atendimento', icon: Users },
+  'guia': { label: 'Guia', href: '/salao/guia', grupo: 'Atendimento', icon: Notebook },
   'servicos': { label: 'Catálogo de Serviços', href: '/salao/servicos', grupo: 'Atendimento', icon: Scissors },
   'pacotes': { label: 'Pacotes', href: '/salao/pacotes', grupo: 'Atendimento', icon: Package },
-  'produtos': { label: 'Estoque / Produtos', href: '/salao/estoque', grupo: 'Gestão', icon: Box },
-  'financeiro': { label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão', icon: BarChart2 },
+  'pacotes_clientes': { label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes', grupo: 'Atendimento', icon: CreditCard },
+  'anamnese': { label: 'Fichas de Anamnese', href: '/salao/anamnese', grupo: 'Atendimento', icon: FileText },
+  'combos': { label: 'Combos Promocionais', href: '/salao/combos', grupo: 'Atendimento', icon: Package },
+  'contratos': { label: 'Contratos', href: '/salao/contratos', grupo: 'Atendimento', icon: FileText },
+  'horarios_vagos': { label: 'Horários vagos e de funcionamento', href: '/salao/horarios-vagos', grupo: 'Atendimento', icon: Clock },
+  'lembretes': { label: 'Lembretes', href: '/salao/lembretes', grupo: 'Atendimento', icon: CheckSquare },
   'funcionarios': { label: 'Funcionários', href: '/salao/funcionarios', grupo: 'Equipe', icon: UserCheck },
-  'configuracoes': { label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros', icon: Settings },
+  'produtos': { label: 'Estoque', href: '/salao/estoque', grupo: 'Gestão', icon: Box },
+  'financeiro': { label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão', icon: BarChart2 },
+  'relatorios': { label: 'Relatórios', href: '/salao/relatorios', grupo: 'Gestão', icon: DollarSign },
+  'caixa': { label: 'Caixa do Dia', href: '/salao/caixa', grupo: 'Gestão', icon: Clock },
+  'contas': { label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestão', icon: DollarSign },
   'avisos': { label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros', icon: Bell },
+  'ia': { label: 'Sugestões IA', href: '/salao/ia', grupo: 'Outros', icon: Sparkles },
+  'quem_somos': { label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros', icon: Heart },
+  'configuracoes': { label: 'Configurações', href: '/salao/configuracoes', grupo: 'Outros', icon: Settings },
 }
 
 const MENU_DONO = [
@@ -81,14 +93,12 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
       if (!profile?.salao_id || !profile?.id) return
 
       if (['funcionario', 'profissional', 'gerente', 'recepcao', 'auxiliar', 'comum', 'socio'].includes(userRole)) {
-        // Tenta buscar primeiro as permissões individuais do funcionário logado
         let { data: permissoesDB } = await supabase
           .from('permissoes_cargos')
           .select('pagina_key, permitido')
           .eq('salao_id', profile.salao_id)
           .eq('user_id', profile.id)
 
-        // Se não houver configuração individual salva ainda, usa o cargo como fallback
         if (!permissoesDB || permissoesDB.length === 0) {
           const { data: permissoesCargoDB } = await supabase
             .from('permissoes_cargos')
@@ -102,7 +112,6 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         if (permissoesDB && permissoesDB.length > 0) {
           const itensDinamicos: any[] = []
           
-          // Sempre garante o Início no topo para funcionários
           itensDinamicos.push({ icon: Home, label: 'Início', href: '/salao', grupo: '' })
 
           const rotasAdicionadas = new Set<string>()
@@ -131,7 +140,6 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
         }
       }
 
-      // Se for dono ou admin geral, usa o menu completo padrão
       setMenuFuncionarioDinamico(MENU_DONO)
     }
 
