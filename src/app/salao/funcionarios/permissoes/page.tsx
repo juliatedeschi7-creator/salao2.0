@@ -107,10 +107,48 @@ function PermissoesContent() {
   }
 
   async function salvarPermissoes() {
-    if (!profile?.salao_id || !funcionarioSelecionado) return
+    if (!profile?.salao_id || !funcionarioSelecionado) {
+      alert('Erro: Salão ID ou Funcionário não definidos.')
+      return
+    }
     setSalvando(true)
     setMensagem('')
 
+    try {
+      const funcAtual = funcionarios.find(f => f.id === funcionarioSelecionado)
+      const roleGenerico = funcAtual?.role || 'profissional'
+
+      const payload = Object.entries(permissoes).map(([pagina_key, permitido]) => ({
+        salao_id: profile.salao_id,
+        user_id: funcionarioSelecionado,
+        role: roleGenerico,
+        pagina_key,
+        permitido
+      }))
+
+      console.log('Enviando payload:', payload)
+
+      const { data, error } = await supabase
+        .from('permissoes_cargos')
+        .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
+        .select() // Pede para retornar o que foi inserido
+
+      if (error) {
+        console.error('Erro retornado pelo Supabase:', error)
+        alert('Erro do Supabase: ' + error.message)
+        throw error
+      }
+
+      console.log('Dados salvos com sucesso:', data)
+      setMensagem('Permissões individuais salvas com sucesso!')
+      setTimeout(() => setMensagem(''), 3000)
+    } catch (err: any) {
+      console.error('Erro geral ao salvar:', err)
+      alert('Erro ao salvar permissões: ' + (err.message || JSON.stringify(err)))
+    } finally {
+      setSalvando(false)
+    }
+  }
     try {
       const funcAtual = funcionarios.find(f => f.id === funcionarioSelecionado)
       const roleGenerico = funcAtual?.role || 'profissional'
