@@ -6,7 +6,6 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter, useParams } from 'next/navigation'
 import { ArrowLeft, Shield, Check, X, UserCheck, Crown } from 'lucide-react'
 
-// LISTA DE TODAS AS PÁGINAS DO SISTEMA
 const TODAS_AS_PAGINAS = [
   { id: 'dashboard', nome: 'Painel / Dashboard', categoria: 'Geral', desc: 'Visão geral, métricas e estatísticas' },
   { id: 'agenda', nome: 'Agenda de Serviços', categoria: 'Atendimento', desc: 'Visualizar, criar e remarcar agendamentos' },
@@ -26,11 +25,8 @@ export default function FuncionarioDetalhesPage() {
 
   const [funcionario, setFuncionario] = useState<any>(null)
   const [salao, setSalao] = useState<any>(null)
-  
-  // Estado do cargo: 'socio' ou 'comum'
   const [cargo, setCargo] = useState<string>('comum')
   const [permissoesCustom, setPermissoesCustom] = useState<Record<string, boolean>>({})
-  
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
 
@@ -48,28 +44,29 @@ export default function FuncionarioDetalhesPage() {
   async function carregarDados() {
     setCarregando(true)
     try {
-      const [salRes, funcRes] = await Promise.all([
+      const [salRes, funcRes, permRes] = await Promise.all([
         supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single(),
-        supabase.from('profiles').select('*').eq('id', funcionarioId).single()
+        supabase.from('profiles').select('*').eq('id', funcionarioId).single(),
+        supabase.from('permissoes_cargos').select('pagina_key, permitido').eq('user_id', funcionarioId).eq('salao_id', profile!.salao_id!)
       ])
 
       setSalao(salRes.data)
       const funcData = funcRes.data
       setFuncionario(funcData)
 
-      // Define o cargo atual (assume 'comum' caso venha vazio)
-      const cargoAtual = funcData?.cargo === 'socio' ? 'socio' : 'comum'
-      setCargo(cargoAtual)
+      setCargo(funcData?.cargo === 'socio' ? 'socio' : 'comum')
 
-      if (funcData?.permissoes_paginas) {
-        setPermissoesCustom(funcData.permissoes_paginas)
-      } else {
-        const padrao: Record<string, boolean> = {}
-        TODAS_AS_PAGINAS.forEach(p => {
-          padrao[p.id] = true
+      // Mapeia as permissões vindas da tabela permissoes_cargos
+      const mapa: Record<string, boolean> = {}
+      TODAS_AS_PAGINAS.forEach(p => { mapa[p.id] = true }) // padrão true
+
+      if (permRes.data && permRes.data.length > 0) {
+        permRes.data.forEach((p: any) => {
+          mapa[p.pagina_key] = p.permitido
         })
-        setPermissoesCustom(padrao)
       }
+      setPermissoesCustom(mapa)
+
     } catch (err) {
       console.error('Erro ao carregar dados:', err)
     } finally {
@@ -78,25 +75,36 @@ export default function FuncionarioDetalhesPage() {
   }
 
   async function salvarPermissoes() {
-    if (!funcionarioId || !profile) return
+    if (!funcionarioId || !profile?.salao_id) return
     setSalvando(true)
 
     try {
-      // Se for sócio, podemos opcionalmente setar todas as permissões como true
       const novasPermissoes = cargo === 'socio' 
         ? TODAS_AS_PAGINAS.reduce((acc, p) => ({ ...acc, [p.id]: true }), {})
         : permissoesCustom
 
-      const { error } = await supabase
+      // 1. Atualiza o cargo na tabela profiles
+      const { error: errProfile } = await supabase
         .from('profiles')
-        .update({ 
-          cargo: cargo,
-          permissoes_paginas: novasPermissoes,
-          atualizado_por: profile.id // Registra quem fez a alteração
-        })
+        .update({ cargo: cargo })
         .eq('id', funcionarioId)
 
-      if (error) throw error
+      if (errProfile) throw errProfile
+
+      // 2. Salva linha por linha na tabela permissoes_cargos para alimentar a base corretamente
+      const payloadCargos = Object.entries(novasPermissoes).map(([pagina_key, permitido]) => ({
+        salao_id: profile.salao_id,
+        user_id: funcionarioId,
+        role: cargo,
+        pagina_key,
+        permitido
+      }))
+
+      const { error: errCargos } = await supabase
+        .from('permissoes_cargos')
+        .upsert(payloadCargos, { onConflict: 'salao_id,user_id,pagina_key' })
+
+      if (errCargos) throw errCargos
 
       alert('Permissões e cargo atualizados com sucesso!')
       router.push('/salao/funcionarios')
@@ -111,11 +119,8 @@ export default function FuncionarioDetalhesPage() {
 
   if (authLoading || carregando) {
     return (
-      <div className="min-h-screen pb-8 bg-[#f8f9fa]">
-        <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-          <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-          <h1 className="font-bold text-gray-900 text-lg flex-1">Carregando...</h1>
-        </div>
+      <div className="min-h-screen pb-8 bg-[#f8f9fa] flex items-center justify-center">
+        <p className="text-gray-500 font-medium">Carregando...</p>
       </div>
     )
   }
@@ -139,7 +144,6 @@ export default function FuncionarioDetalhesPage() {
       </div>
 
       <div className="px-4 py-4 max-w-xl mx-auto flex flex-col gap-4">
-        {/* CARD DO FUNCIONÁRIO */}
         <div className="bg-white p-4 rounded-2xl border border-gray-100 flex items-center gap-3 shadow-sm">
           <div className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-base shrink-0"
             style={{ backgroundColor: cor }}>
@@ -151,7 +155,6 @@ export default function FuncionarioDetalhesPage() {
           </div>
         </div>
 
-        {/* SELEÇÃO DE CARGO: SÓCIO/DONO VS COMUM */}
         <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
           <p className="font-bold text-gray-900 text-sm">Definição de Cargo</p>
           <div className="grid grid-cols-2 gap-3">
@@ -176,17 +179,16 @@ export default function FuncionarioDetalhesPage() {
             >
               <Crown size={18} className={cargo === 'socio' ? 'text-pink-600' : 'text-gray-400'} />
               <span className="text-xs">Sócio / Dono</span>
-              <span className="text-[10px] text-gray-400 font-normal">Acesso total a todas as páginas</span>
+              <span className="text-[10px] text-gray-400 font-normal">Acesso total</span>
             </button>
           </div>
         </div>
 
-        {/* AVISO SE FOR SÓCIO OU LISTA DE PÁGINAS SE FOR COMUM */}
         {cargo === 'socio' ? (
           <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
             <Crown size={20} className="text-amber-600 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-900 leading-relaxed">
-              Como este usuário é <strong>Sócio/Dono</strong>, ele possui acesso liberado a todas as páginas do sistema automaticamente, assim como você.
+              Como este usuário é <strong>Sócio/Dono</strong>, ele possui acesso liberado a todas as páginas do sistema automaticamente.
             </p>
           </div>
         ) : (
@@ -198,7 +200,6 @@ export default function FuncionarioDetalhesPage() {
               </p>
             </div>
 
-            {/* LISTA DE PÁGINAS INDIVIDUAIS */}
             <div className="flex flex-col gap-2.5">
               {TODAS_AS_PAGINAS.map(pagina => {
                 const permitido = permissoesCustom[pagina.id] ?? true
@@ -239,7 +240,6 @@ export default function FuncionarioDetalhesPage() {
           </>
         )}
 
-        {/* BOTÃO DE SALVAR */}
         <div className="pt-2">
           <button 
             onClick={salvarPermissoes} 
