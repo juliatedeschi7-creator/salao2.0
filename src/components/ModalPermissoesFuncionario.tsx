@@ -67,17 +67,41 @@ export default function ModalPermissoesFuncionario({
 
   async function salvarPermissoes() {
     setSalvando(true)
-    const { error } = await supabase
+
+    // 1. Salva no formato antigo (coluna 'permissoes' na tabela profiles)
+    const { error: errorProfile } = await supabase
       .from('profiles')
       .update({ permissoes })
       .eq('id', funcionario.id)
 
+    if (errorProfile) {
+      setSalvando(false)
+      alert('Erro ao salvar permissões no perfil. Tente novamente.')
+      return
+    }
+
+    // 2. Prepara e salva também na tabela 'permissoes_cargos' para manter sincronizado
+    const payloadPermissoesCargos = Object.entries(permissoes).map(([pagina_key, dados]) => ({
+      salao_id: funcionario.salao_id,
+      user_id: funcionario.id,
+      role: funcionario.role || 'profissional',
+      pagina_key,
+      permitido: dados.acesso
+    }))
+
+    const { error: errorCargos } = await supabase
+      .from('permissoes_cargos')
+      .upsert(payloadPermissoesCargos, { onConflict: 'salao_id,user_id,pagina_key' })
+
     setSalvando(false)
-    if (!error) {
+
+    if (!errorCargos) {
       onSalvo()
       onClose()
     } else {
-      alert('Erro ao salvar permissões. Tente novamente.')
+      console.warn('Aviso: Salvo no perfil, mas houve detalhe na tabela cargos:', errorCargos)
+      onSalvo()
+      onClose()
     }
   }
 
