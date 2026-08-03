@@ -53,27 +53,17 @@ export default function ModalPermissoesFuncionario({
     }))
   }
 
-  function alterarModo(key: string, modo: 'dono' | 'funcionario') {
-    setPermissoes(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        modo
-      }
-    }))
-  }
-
   async function salvarPermissoes() {
     try {
       setSalvando(true)
 
-      // Verifica se temos os IDs necessários antes de enviar
       if (!funcionario?.id || !funcionario?.salao_id) {
-        alert('Erro: ID do funcionário ou ID do salão está vazio! Verifique os dados.')
+        alert('Erro: ID do funcionário ou ID do salão está vazio!')
         setSalvando(false)
         return
       }
 
+      // 1. Declaração explícita do payload no escopo correto
       const payload = Object.entries(permissoes).map(([pagina_key, dados]) => ({
         salao_id: funcionario.salao_id,
         user_id: funcionario.id,
@@ -82,29 +72,13 @@ export default function ModalPermissoesFuncionario({
         permitido: dados.acesso
       }))
 
-      console.log('Enviando payload para permissoes_cargos:', payload)
+      // 2. Salva no perfil (formato JSON)
+      await supabase
+        .from('profiles')
+        .update({ permissoes })
+        .eq('id', funcionario.id)
 
-      const { data, error } = await supabase
-        .from('permissoes_cargos')
-        .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
-
-      if (error) {
-        console.error('Erro retornado pelo Supabase:', error)
-        alert('Erro do Supabase: ' + error.message)
-      } else {
-        console.log('Salvo com sucesso!', data)
-        onSalvo()
-        onClose()
-      }
-    } catch (err: any) {
-      console.error('Erro crítico capturado:', err)
-      alert('Erro inesperado: ' + (err.message || err))
-    } finally {
-      // Garante que a bolinha de loading vai parar de rodar em qualquer hipótese
-      setSalvando(false)
-    }
-  }
-
+      // 3. Salva na tabela 'permissoes_cargos' usando a variável payload declarada acima
       const { error } = await supabase
         .from('permissoes_cargos')
         .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
