@@ -189,18 +189,17 @@ export default function FuncionariosPage() {
   }
 
   async function salvarAlteracoesConfig() {
-    if (!funcSel) return
+    if (!funcSel || !salao) return
     setSalvandoConfig(true)
 
     try {
-      // 1. Atualiza os dados básicos, escalas e ponto na tabela 'profiles'
       const dadosAtualizados = {
         cargo: cargoEdit,
         nivel_acesso: nivelAcessoEdit,
-        permissoes_paginas: paginasEdit, // Mantém aqui para o modal carregar rápido depois
+        permissoes_paginas: paginasEdit,
         escala_dias: escalaEdit,
         controle_ponto: pontoEdit,
-        atualizado_por: profile.id
+        atualizado_por: profile?.id
       }
 
       const { error: erroPerfil } = await supabase
@@ -210,7 +209,6 @@ export default function FuncionariosPage() {
 
       if (erroPerfil) throw erroPerfil
 
-      // 2. AGORA SIM: Prepara os dados para salvar na tabela 'permissoes_cargos'
       const payloadPermissoes = Object.entries(paginasEdit).map(([pagina_key, permitido]) => ({
         salao_id: salao.id,
         user_id: funcSel.id,
@@ -219,28 +217,26 @@ export default function FuncionariosPage() {
         permitido: permitido
       }))
 
-      // Salva as permissões individuais de cada página na tabela certa
       if (payloadPermissoes.length > 0) {
         const { error: erroPermissoes } = await supabase
           .from('permissoes_cargos')
           .upsert(payloadPermissoes, { onConflict: 'salao_id,user_id,pagina_key' })
 
-        if (erroPermissoes) {
-           console.error("Erro no Supabase ao salvar permissões:", erroPermissoes);
-           throw erroPermissoes;
-        }
+        if (erroPermissoes) throw erroPermissoes
       }
 
-      alert('Configurações e permissões salvas com sucesso no banco de dados!')
+      alert('Configurações e permissões salvas com sucesso!')
       setModalConfigAberto(false)
       await buscarFuncionarios(salao.id)
-      
     } catch (err: any) {
       alert('Erro ao salvar: ' + (err.message || JSON.stringify(err)))
     } finally {
       setSalvandoConfig(false)
     }
   }
+
+  // Cor principal declarada antecipadamente para evitar erros no carregamento
+  const cor = salao?.cor_primaria || '#E91E8C'
 
   if (carregando || !profile) return (
     <div className="min-h-screen flex items-center justify-center bg-white">
@@ -258,7 +254,6 @@ export default function FuncionariosPage() {
       <Header profile={profile} salaoNome={salao?.nome} corPrimaria={cor} />
       
       <div className="px-4 py-5 flex flex-col gap-4 max-w-xl mx-auto">
-        {/* Topo ajustado para não quebrar o botão */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
           <div>
             <h1 className="text-lg font-bold text-gray-900">Equipe de Profissionais</h1>
