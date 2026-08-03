@@ -2,9 +2,8 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { X, ShieldCheck, Check, Lock, ShieldAlert } from 'lucide-react'
+import { X } from 'lucide-react'
 
-// Lista de todas as páginas do sistema
 export const PAGINAS_SISTEMA = [
   { key: 'agenda', label: 'Agenda & Atendimentos', descricao: 'Ver horários e agendar' },
   { key: 'clientes', label: 'Clientes & Evoluções', descricao: 'Acessar cadastro e fotos de antes/depois' },
@@ -29,7 +28,6 @@ export default function ModalPermissoesFuncionario({
   onClose,
   onSalvo
 }: ModalPermissoesProps) {
-  // Inicializa o estado com o JSON atual do funcionário ou padrão
   const [permissoes, setPermissoes] = useState<Record<string, { acesso: boolean; modo: 'dono' | 'funcionario' }>>(() => {
     const permAtual = funcionario?.permissoes || {}
     const inicial: Record<string, { acesso: boolean; modo: 'dono' | 'funcionario' }> = {}
@@ -66,49 +64,46 @@ export default function ModalPermissoesFuncionario({
   }
 
   async function salvarPermissoes() {
-    setSalvando(true)
+    try {
+      setSalvando(true)
 
-    // 1. Salva no formato antigo (coluna 'permissoes' na tabela profiles)
-    const { error: errorProfile } = await supabase
-      .from('profiles')
-      .update({ permissoes })
-      .eq('id', funcionario.id)
+      // 1. Salva no perfil (formato JSON antigo)
+      await supabase
+        .from('profiles')
+        .update({ permissoes })
+        .eq('id', funcionario.id)
 
-    if (errorProfile) {
+      // 2. Salva na tabela 'permissoes_cargos'
+      const payload = Object.entries(permissoes).map(([pagina_key, dados]) => ({
+        salao_id: funcionario.salao_id,
+        user_id: funcionario.id,
+        role: funcionario.role || 'profissional',
+        pagina_key,
+        permitido: dados.acesso
+      }))
+
+      const { error } = await supabase
+        .from('permissoes_cargos')
+        .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
+
+      if (error) {
+        console.error('Erro ao salvar cargos:', error)
+        alert('Erro ao salvar na tabela: ' + error.message)
+      } else {
+        onSalvo()
+        onClose()
+      }
+    } catch (err: any) {
+      console.error('Erro inesperado:', err)
+      alert('Ocorreu um erro ao salvar.')
+    } finally {
       setSalvando(false)
-      alert('Erro ao salvar permissões no perfil: ' + errorProfile.message)
-      return
     }
-
-    // 2. Prepara e salva na tabela 'permissoes_cargos'
-    const payloadPermissoesCargos = Object.entries(permissoes).map(([pagina_key, dados]) => ({
-      salao_id: funcionario.salao_id,
-      user_id: funcionario.id,
-      role: funcionario.role || 'profissional',
-      pagina_key,
-      permitido: dados.acesso
-    }))
-
-    const { error: errorCargos } = await supabase
-      .from('permissoes_cargos')
-      .upsert(payloadPermissoesCargos, { onConflict: 'salao_id,user_id,pagina_key' })
-
-    setSalvando(false)
-
-    if (errorCargos) {
-      alert('Erro ao salvar na tabela permissoes_cargos: ' + JSON.stringify(errorCargos))
-      console.error('Erro detalhado cargos:', errorCargos)
-      return
-    }
-
-    onSalvo()
-    onClose()
   }
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-        {/* HEADER */}
         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: cor }}>
@@ -124,7 +119,6 @@ export default function ModalPermissoesFuncionario({
           </button>
         </div>
 
-        {/* LISTA DE PÁGINAS E PERMISSÕES */}
         <div className="space-y-3">
           {PAGINAS_SISTEMA.map(pag => {
             const conf = permissoes[pag.key] || { acesso: false, modo: 'funcionario' }
@@ -135,8 +129,6 @@ export default function ModalPermissoesFuncionario({
                     <p className="text-sm font-semibold text-gray-800">{pag.label}</p>
                     <p className="text-xs text-gray-400">{pag.descricao}</p>
                   </div>
-
-                  {/* TOGGLE ACESSO (SIM / NÃO) */}
                   <button
                     onClick={() => alternarAcesso(pag.key)}
                     className="w-12 h-6 rounded-full transition-all relative shrink-0"
@@ -147,38 +139,11 @@ export default function ModalPermissoesFuncionario({
                     />
                   </button>
                 </div>
-
-                {/* TIPO DE ACESSO (SE PERMITIDO): DONO OU FUNCIONÁRIO */}
-                {conf.acesso && (
-                  <div className="flex items-center gap-2 pt-1 border-t border-gray-200/60">
-                    <span className="text-xs text-gray-500 font-medium mr-1">Nível:</span>
-                    <button
-                      onClick={() => alterarModo(pag.key, 'funcionario')}
-                      className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all ${
-                        conf.modo === 'funcionario'
-                          ? 'bg-gray-900 text-white shadow-xs'
-                          : 'bg-white text-gray-500 border border-gray-200'
-                      }`}>
-                      👤 Como Funcionário
-                    </button>
-
-                    <button
-                      onClick={() => alterarModo(pag.key, 'dono')}
-                      className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 transition-all ${
-                        conf.modo === 'dono'
-                          ? 'bg-amber-500 text-white shadow-xs'
-                          : 'bg-white text-gray-500 border border-gray-200'
-                      }`}>
-                      👑 Como Dono (Total)
-                    </button>
-                  </div>
-                )}
               </div>
             )
           })}
         </div>
 
-        {/* BOTOES DE AÇÃO */}
         <div className="flex gap-3 pt-2">
           <button
             onClick={onClose}
@@ -188,7 +153,7 @@ export default function ModalPermissoesFuncionario({
           <button
             onClick={salvarPermissoes}
             disabled={salvando}
-            className="flex-1 py-3 rounded-2xl text-white font-medium text-sm disabled:opacity-50"
+            className="flex-1 py-3 rounded-2xl text-white font-medium text-sm disabled:opacity-50 flex items-center justify-center"
             style={{ backgroundColor: cor }}>
             {salvando ? 'Salvando...' : 'Salvar Permissões'}
           </button>
