@@ -33,7 +33,6 @@ function PermissoesContent() {
   const [salvando, setSalvando] = useState(false)
   const [mensagem, setMensagem] = useState('')
 
-  // 1. Carrega a lista de funcionários do salão
   useEffect(() => {
     if (loading) return
     if (!profile) {
@@ -59,14 +58,13 @@ function PermissoesContent() {
         setFuncionarios(data)
         setFuncionarioSelecionado(data[0].id)
       }
-    } catch (err) {
-      console.error('Erro ao carregar funcionários:', err)
+    } catch (err: any) {
+      alert('Erro ao carregar funcionários: ' + err.message)
     } finally {
       setCarregandoFuncs(false)
     }
   }
 
-  // 2. Carrega as permissões do funcionário selecionado
   useEffect(() => {
     if (!funcionarioSelecionado || !profile?.salao_id) return
     carregarPermissoesDoUsuario(funcionarioSelecionado)
@@ -96,7 +94,7 @@ function PermissoesContent() {
 
       setPermissoes(mapaPermissoes)
     } catch (err: any) {
-      console.error('Erro ao carregar permissões:', err)
+      alert('Erro ao carregar permissões do usuário: ' + err.message)
     } finally {
       setCarregando(false)
     }
@@ -106,11 +104,16 @@ function PermissoesContent() {
     setPermissoes(prev => ({ ...prev, [paginaKey]: valor }))
   }
 
-   async function salvarPermissoes() {
-    if (!profile?.salao_id || !funcionarioSelecionado) {
-      alert('Erro: Salão ID ou Funcionário não definidos.')
+  async function salvarPermissoes() {
+    if (!profile?.salao_id) {
+      alert('ERRO: profile.salao_id está vazio! Você está logado corretamente?')
       return
     }
+    if (!funcionarioSelecionado) {
+      alert('ERRO: Nenhum funcionário selecionado!')
+      return
+    }
+
     setSalvando(true)
     setMensagem('')
 
@@ -126,25 +129,23 @@ function PermissoesContent() {
         permitido
       }))
 
-      console.log('--- ENVIANDO PAYLOAD PARA O SUPABASE ---', payload)
+      alert(`Preparando para salvar ${payload.length} itens para o funcionário ID: ${funcionarioSelecionado}`)
 
       const { data, error } = await supabase
         .from('permissoes_cargos')
         .upsert(payload, { onConflict: 'salao_id,user_id,pagina_key' })
         .select()
 
-      console.log('--- RESPOSTA DO SUPABASE ---', { data, error })
-
       if (error) {
-        console.error('Erro detalhado do Supabase:', error)
+        alert('ERRO DO SUPABASE AO SALVAR: ' + JSON.stringify(error))
         throw error
       }
 
+      alert('Sucesso absoluto! Retorno do banco: ' + JSON.stringify(data))
       setMensagem('Permissões individuais salvas com sucesso!')
       setTimeout(() => setMensagem(''), 3000)
     } catch (err: any) {
-      console.error('Erro geral ao salvar:', err)
-      alert('Erro ao salvar permissões: ' + (err.message || JSON.stringify(err)))
+      alert('EXCEÇÃO CAPTURADA: ' + (err.message || JSON.stringify(err)))
     } finally {
       setSalvando(false)
     }
@@ -164,6 +165,7 @@ function PermissoesContent() {
         </div>
 
         <button
+          type="button"
           onClick={salvarPermissoes}
           disabled={salvando || carregando || !funcionarioSelecionado}
           className="px-4 py-2 bg-pink-500 text-white rounded-xl text-xs font-bold shadow-md hover:bg-pink-600 active:scale-95 transition-all flex items-center gap-1.5 disabled:opacity-50"
