@@ -4,7 +4,7 @@ import {
   Home, Calendar, Users, BarChart2, Settings,
   Scissors, Package, FileText, UserCheck, Box,
   Sparkles, CreditCard, DollarSign, Clock, Heart,
-  CheckSquare, Notebook, LayoutDashboard, PieChart
+  CheckSquare, Notebook, LayoutDashboard
 } from 'lucide-react'
 import { useNotificacoes } from '@/lib/hooks/useNotificacoes'
 import { supabase } from '@/lib/supabase'
@@ -19,7 +19,7 @@ interface Props {
   corSecundaria?: string
 }
 
-// Mapeamento completo contendo todas as páginas do sistema para bater com a tabela de permissões
+// Mapeamento correto com todas as rotas exatas do projeto
 const MAPA_ROTAS_SISTEMA: Record<string, { label: string; href: string; grupo: string; icon: any }> = {
   'dashboard': { label: 'Início', href: '/funcionario', grupo: '', icon: LayoutDashboard },
   'agenda_total': { label: 'Agenda', href: '/salao/agenda', grupo: 'Atendimento', icon: Calendar },
