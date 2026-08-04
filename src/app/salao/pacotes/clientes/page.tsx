@@ -106,10 +106,10 @@ export default function PacotesClientesPage() {
 
     const pacotesComHistorico = await Promise.all((data || []).map(async (pc) => {
       const { data: hist } = await supabase
-        .from('cliente_pacotes_historico')
+        .from('sessoes_pacote')
         .select('*')
         .eq('cliente_pacote_id', pc.id)
-        .order('data', { ascending: false })
+        .order('data_sessao', { ascending: false })
 
       return {
         ...pc,
@@ -140,25 +140,19 @@ export default function PacotesClientesPage() {
         vendido_por: profile.nome || 'Equipe'
       }
 
-      console.log('Enviando para cliente_pacotes:', dadosParaInserir)
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('cliente_pacotes')
         .insert(dadosParaInserir)
-        .select()
 
       if (error) {
-        console.error('Erro detalhado do Supabase:', error)
-        alert('Erro ao atribuir pacote: ' + error.message + ' (Detalhe: ' + (error.details || '') + ')')
+        alert('Erro ao atribuir pacote: ' + error.message)
         return
       }
 
-      console.log('Pacote inserido com sucesso:', data)
       setModalVenderAberto(false)
       setPacoteEscolhido('')
       await carregarPacotesDoCliente(clienteSelecionado.id)
     } catch (err: any) {
-      console.error('Erro catch:', err)
       alert('Erro inesperado: ' + err.message)
     } finally {
       setSalvando(false)
@@ -184,26 +178,20 @@ export default function PacotesClientesPage() {
         vendido_por: profile.nome || 'Equipe'
       }
 
-      console.log('Enviando pacote manual:', dadosParaInserir)
-
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('cliente_pacotes')
         .insert(dadosParaInserir)
-        .select()
 
       if (error) {
-        console.error('Erro detalhado do Supabase (manual):', error)
-        alert('Erro ao cadastrar pacote antigo: ' + error.message + ' (Detalhe: ' + (error.details || '') + ')')
+        alert('Erro ao cadastrar pacote antigo: ' + error.message)
         return
       }
 
-      console.log('Pacote manual inserido com sucesso:', data)
       setModalAntigoAberto(false)
       setNomePacoteAntigo('')
       setSessoesTotalAntigo('')
       await carregarPacotesDoCliente(clienteSelecionado.id)
     } catch (err: any) {
-      console.error('Erro catch manual:', err)
       alert('Erro inesperado: ' + err.message)
     } finally {
       setSalvando(false)
@@ -217,11 +205,11 @@ export default function PacotesClientesPage() {
 
     try {
       const { error: errHist } = await supabase
-        .from('cliente_pacotes_historico')
+        .from('sessoes_pacote')
         .insert({
           cliente_pacote_id: pacoteAlvoSessao.id,
           servico: servicoSessao,
-          data: dataSessao
+          data_sessao: dataSessao
         })
 
       if (errHist) throw errHist
@@ -251,7 +239,7 @@ export default function PacotesClientesPage() {
     if (!confirm('Deseja excluir esta sessão do histórico e devolver 1 sessão?')) return
 
     try {
-      await supabase.from('cliente_pacotes_historico').delete().eq('id', histId)
+      await supabase.from('sessoes_pacote').delete().eq('id', histId)
 
       const novasRestantes = Math.min(total, restantesAtuais + 1)
       await supabase
@@ -388,7 +376,8 @@ export default function PacotesClientesPage() {
                         ) : (
                           <div className="flex flex-col gap-1.5">
                             {historico.map((h: any) => {
-                              const dataFormatada = h.data ? h.data.split('-').reverse().join('/') : ''
+                              const dataSessaoStr = h.data_sessao || h.data
+                              const dataFormatada = dataSessaoStr ? dataSessaoStr.split('-').reverse().join('/') : ''
                               return (
                                 <div key={h.id} className="flex items-center justify-between text-xs text-gray-700 bg-gray-50 px-3 py-2 rounded-xl">
                                   <div className="flex gap-3">
