@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { CreditCard, Users, Search, Plus, Trash2, CheckCircle, AlertCircle, X, ChevronRight } from 'lucide-react'
+import { CreditCard, Users, Search, Plus, Trash2, AlertCircle, X, ChevronRight, Calendar } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -19,12 +19,23 @@ export default function PacotesClientesPage() {
   const [busca, setBusca] = useState('')
   const [carregando, setCarregando] = useState(true)
 
-  // Cliente selecionado para ver/adicionar pacotes
+  // Cliente selecionado e pacotes
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
   const [pacotesCliente, setPacotesCliente] = useState<any[]>([])
   const [pacotesDisponiveis, setPacotesDisponiveis] = useState<any[]>([])
+  
+  // Modais
   const [modalVenderAberto, setModalVenderAberto] = useState(false)
+  const [modalAntigoAberto, setModalAntigoAberto] = useState(false)
+  const [modalSessaoAberto, setModalSessaoAberto] = useState(false)
+  const [pacoteAlvoSessao, setPacoteAlvoSessao] = useState<any>(null)
+
+  // Inputs formulários
   const [pacoteEscolhido, setPacoteEscolhido] = useState('')
+  const [nomePacoteAntigo, setNomePacoteAntigo] = useState('')
+  const [sessoesTotalAntigo, setSessoesTotalAntigo] = useState('')
+  const [servicoSessao, setServicoSessao] = useState('')
+  const [dataSessao, setDataSessao] = useState(new Date().toISOString().split('T')[0])
   const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
@@ -52,7 +63,6 @@ export default function PacotesClientesPage() {
         const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
         setSalao(sal)
 
-        // Buscar clientes do salão
         const { data: listaClientes } = await supabase
           .from('clientes')
           .select('*')
@@ -61,7 +71,6 @@ export default function PacotesClientesPage() {
 
         setClientes(listaClientes || [])
 
-        // Buscar pacotes criados pelo salão (para poder vender para a cliente)
         const { data: listaPacotes } = await supabase
           .from('pacotes')
           .select('*')
@@ -86,8 +95,9 @@ export default function PacotesClientesPage() {
   async function carregarPacotesDoCliente(clienteId: string) {
     const { data } = await supabase
       .from('cliente_pacotes')
-      .select('*, pacotes(*)')
+      .select('*, pacotes(*), cliente_pacotes_historico(*)')
       .eq('cliente_id', clienteId)
+      .order('created_at', { ascending: false })
 
     setPacotesCliente(data || [])
   }
@@ -99,20 +109,23 @@ export default function PacotesClientesPage() {
 
     try {
       const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
-      
+      const total = pacoteObj?.sessoes || 1
+
       const { error } = await supabase
         .from('cliente_pacotes')
         .insert({
           salao_id: salao.id,
           cliente_id: clienteSelecionado.id,
           pacote_id: pacoteEscolhido,
-          sessoes_restantes: pacoteObj?.sessoes || 1,
-          status: 'ativo'
+          sessoes_total: total,
+          sessoes_restantes: total,
+          status: 'ativo',
+          tipo_cadastro: 'sistema',
+          vendido_por: profile.nome || 'Equipe'
         })
 
       if (error) throw error
 
-      alert('Pacote atribuído com sucesso!')
       setModalVenderAberto(false)
       setPacoteEscolhido('')
       await carregarPacotesDoCliente(clienteSelecionado.id)
@@ -120,6 +133,97 @@ export default function PacotesClientesPage() {
       alert('Erro ao atribuir pacote: ' + err.message)
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function cadastrarPacoteAntigo(e: React.FormEvent) {
+    e.preventDefault()
+    if (!nomePacoteAntigo || !sessoesTotalAntigo || !clienteSelecionado || !salao) return
+    setSalvando(true)
+
+    try {
+      const total = parseInt(sessoesTotalAntigo) || 1
+
+      const { error } = await supabase
+        .from('cliente_pacotes')
+        .insert({
+          salao_id: salao.id,
+          cliente_id: clienteSelecionado.id,
+          sessoes_total: total,
+          sessoes_restantes: total,
+          status: 'ativo',
+          tipo_cadastro: 'manual',
+          nome_personalizado: nomePacoteAntigo,
+          vendido_por: profile.nome || 'Equipe'
+        })
+
+      if (error) throw error
+
+      setModalAntigoAberto(false)
+      setNomePacoteAntigo('')
+      setSessoesTotalAntigo('')
+      await carregarPacotesDoCliente(clienteSelecionado.id)
+    } catch (err: any) {
+      alert('Erro ao cadastrar pacote antigo: ' + err.message)
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function adicionarSessaoRealizada(e: React.FormEvent) {
+    e.preventDefault()
+    if (!pacoteAlvoSessao || !servicoSessao) return
+    setSalvando(true)
+
+    try {
+      // Registrar no histórico
+      const { error: errHist } = await supabase
+        .from('cliente_pacotes_historico')
+        .insert({
+          cliente_pacote_id: pacoteAlvoSessao.id,
+          servico: servicoSessao,
+          data: dataSessao
+        })
+
+      if (errHist) throw errHist
+
+      // Atualizar sessões restantes e status se zerar
+      const novasRestantes = Math.max(0, pacoteAlvoSessao.sessoes_restantes - 1)
+      const novoStatus = novasRestantes === 0 ? 'concluido' : 'ativo'
+
+      const { error: errUp } = await supabase
+        .from('cliente_pacotes')
+        .update({ sessoes_restantes: novasRestantes, status: novoStatus })
+        .eq('id', pacoteAlvoSessao.id)
+
+      if (errUp) throw errUp
+
+      setModalSessaoAberto(false)
+      setServicoSessao('')
+      setPacoteAlvoSessao(null)
+      await carregarPacotesDoCliente(clienteSelecionado.id)
+    } catch (err: any) {
+      alert('Erro ao adicionar sessão: ' + err.message)
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function excluirHistorico(histId: string, pacoteId: string, restantesAtuais: number, total: number) {
+    if (!confirm('Deseja excluir esta sessão do histórico e devolver 1 sessão?')) return
+
+    try {
+      await supabase.from('cliente_pacotes_historico').delete().eq('id', histId)
+
+      const novasRestantes = Math.min(total, restantesAtuais + 1)
+      await supabase
+        .from('cliente_pacotes')
+        .update({ sessoes_restantes: novasRestantes, status: 'ativo' })
+        .eq('id', pacoteId)
+
+      await carregarPacotesDoCliente(clienteSelecionado.id)
+    } catch (err: any) {
+      alert('Erro ao excluir sessão: ' + err.message)
     }
   }
 
@@ -165,50 +269,123 @@ export default function PacotesClientesPage() {
 
       <div className="px-4 py-5 flex flex-col gap-4 max-w-xl mx-auto">
         
-        {/* Seção de Detalhes da Cliente Selecionada */}
         {clienteSelecionado ? (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
-              <div>
-                <button onClick={() => setClienteSelecionado(null)} className="text-xs font-semibold text-gray-400 hover:text-gray-600 mb-1 flex items-center gap-1">
-                  ← Voltar para lista de clientes
-                </button>
-                <h1 className="text-lg font-bold text-gray-900">{clienteSelecionado.nome}</h1>
-                <p className="text-xs text-gray-500">{clienteSelecionado.telefone || 'Sem telefone'}</p>
-              </div>
-              <button onClick={() => setModalVenderAberto(true)}
-                className="text-white px-3.5 py-2.5 rounded-2xl text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
-                style={{ backgroundColor: cor }}>
-                <Plus size={16} /> Novo Pacote
+            <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-3">
+              <button onClick={() => setClienteSelecionado(null)} className="text-xs font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1 self-start">
+                ← Voltar para lista de clientes
               </button>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-lg font-bold text-gray-900">{clienteSelecionado.nome}</h1>
+                  <p className="text-xs text-gray-500">{clienteSelecionado.telefone || 'Sem telefone'}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setModalVenderAberto(true)}
+                  className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
+                  style={{ backgroundColor: cor }}>
+                  <Plus size={16} /> Vender Pacote
+                </button>
+                <button onClick={() => setModalAntigoAberto(true)}
+                  className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-gray-50 transition">
+                  <Calendar size={16} /> Pacote Antigo
+                </button>
+              </div>
             </div>
 
             <div className="space-y-3">
-              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pacotes Ativos da Cliente</h2>
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pacotes da cliente</h2>
               
               {pacotesCliente.length === 0 ? (
                 <div className="bg-white p-8 rounded-3xl text-center border border-gray-100 shadow-sm flex flex-col items-center gap-2">
                   <AlertCircle size={32} className="text-gray-300" />
-                  <p className="text-gray-500 text-sm">Esta cliente não possui pacotes ativos.</p>
+                  <p className="text-gray-500 text-sm">Esta cliente não possui pacotes cadastrados.</p>
                 </div>
               ) : (
-                pacotesCliente.map(pc => (
-                  <div key={pc.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-bold text-gray-900 text-sm">{pc.pacotes?.nome || 'Pacote'}</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Sessões restantes: <span className="font-bold text-gray-800">{pc.sessoes_restantes}</span></p>
+                pacotesCliente.map(pc => {
+                  const nomePacote = pc.tipo_cadastro === 'manual' ? pc.nome_personalizado : (pc.pacotes?.nome || 'Pacote')
+                  const total = pc.sessoes_total || pc.pacotes?.sessoes || 1
+                  const restantes = pc.sessoes_restantes ?? total
+                  const usadas = Math.max(0, total - restantes)
+                  const progressoPct = Math.min(100, (usadas / total) * 100)
+                  const status = pc.status || 'ativo'
+                  const historico = pc.cliente_pacotes_historico || []
+
+                  return (
+                    <div key={pc.id} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-3">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-gray-900 text-base">{nomePacote}</h3>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${status === 'ativo' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                              {status}
+                            </span>
+                          </div>
+                          <span className="inline-block mt-1 text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-lg">
+                            {pc.tipo_cadastro === 'manual' ? 'Cadastro manual' : 'Sistema'}
+                          </span>
+                        </div>
+                        <button onClick={() => excluirPacoteCliente(pc.id)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition" title="Remover pacote">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex justify-between text-xs text-gray-500 font-medium">
+                          <span>{usadas} usadas</span>
+                          <span>{restantes} restantes</span>
+                        </div>
+                        <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressoPct}%`, backgroundColor: cor }} />
+                        </div>
+                      </div>
+
+                      {/* Histórico de sessões */}
+                      <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Historico de sessoes</span>
+                        
+                        {historico.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic">Nenhuma sessão realizada ainda.</p>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {historico.map((h: any) => {
+                              const dataFormatada = h.data ? h.data.split('-').reverse().join('/') : ''
+                              return (
+                                <div key={h.id} className="flex items-center justify-between text-xs text-gray-700 bg-gray-50 px-3 py-2 rounded-xl">
+                                  <div className="flex gap-3">
+                                    <span className="font-medium text-gray-500">{dataFormatada}</span>
+                                    <span className="font-semibold text-gray-900">{h.servico}</span>
+                                  </div>
+                                  <button onClick={() => excluirHistorico(h.id, pc.id, restantes, total)} className="text-gray-400 hover:text-red-500 p-1">
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {status === 'ativo' && (
+                        <button onClick={() => { setPacoteAlvoSessao(pc); setModalSessaoAberto(true); }}
+                          className="w-full border py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 mt-1"
+                          style={{ borderColor: cor, color: cor }}>
+                          <Plus size={16} /> Adicionar sessão realizada
+                        </button>
+                      )}
+
+                      <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50">
+                        Vendido por: <span className="font-medium text-gray-600">{pc.vendido_por || 'Equipe'}</span>
+                      </div>
                     </div>
-                    <button onClick={() => excluirPacoteCliente(pc.id)}
-                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition" title="Remover pacote">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
         ) : (
-          /* Lista de Clientes */
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
               <div>
@@ -252,17 +429,14 @@ export default function PacotesClientesPage() {
         )}
       </div>
 
-      {/* Modal para Atribuir Novo Pacote à Cliente */}
+      {/* Modal Vender Pacote */}
       {modalVenderAberto && clienteSelecionado && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900">Atribuir Pacote</h3>
-              <button onClick={() => setModalVenderAberto(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={20} />
-              </button>
+              <h3 className="text-base font-bold text-gray-900">Vender Pacote</h3>
+              <button onClick={() => setModalVenderAberto(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
-
             <form onSubmit={venderPacote} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-900">Selecione o Pacote</label>
@@ -274,16 +448,70 @@ export default function PacotesClientesPage() {
                   ))}
                 </select>
               </div>
-
               <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setModalVenderAberto(false)}
-                  className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold hover:bg-gray-50 transition">
-                  Cancelar
+                <button type="button" onClick={() => setModalVenderAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
+                <button type="submit" disabled={salvando} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
+                  {salvando ? 'Salvando...' : 'Vender'}
                 </button>
-                <button type="submit" disabled={salvando}
-                  className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold active:scale-95 transition flex items-center justify-center"
-                  style={{ backgroundColor: cor }}>
-                  {salvando ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Atribuir'}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Pacote Antigo (Manual) */}
+      {modalAntigoAberto && clienteSelecionado && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">Cadastrar Pacote Antigo</h3>
+              <button onClick={() => setModalAntigoAberto(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={cadastrarPacoteAntigo} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Nome do Pacote</label>
+                <input type="text" placeholder="Ex: 4 mãos e 1 pé" value={nomePacoteAntigo} onChange={e => setNomePacoteAntigo(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Total de Sessões</label>
+                <input type="number" min="1" placeholder="Ex: 5" value={sessoesTotalAntigo} onChange={e => setSessoesTotalAntigo(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalAntigoAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
+                <button type="submit" disabled={salvando} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
+                  {salvando ? 'Salvando...' : 'Cadastrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Adicionar Sessão Realizada */}
+      {modalSessaoAberto && pacoteAlvoSessao && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">Adicionar Sessão Realizada</h3>
+              <button onClick={() => setModalSessaoAberto(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={adicionarSessaoRealizada} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Serviço Realizado</label>
+                <input type="text" placeholder="Ex: Manicure ou Pedicure" value={servicoSessao} onChange={e => setServicoSessao(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Data da Sessão</label>
+                <input type="date" value={dataSessao} onChange={e => setDataSessao(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalSessaoAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
+                <button type="submit" disabled={salvando} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
+                  {salvando ? 'Salvando...' : 'Adicionar'}
                 </button>
               </div>
             </form>
