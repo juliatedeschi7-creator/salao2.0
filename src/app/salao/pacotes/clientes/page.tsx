@@ -359,7 +359,7 @@ export default function PacotesClientesPage() {
                       </div>
 
                       <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Historico de sessoes</span>
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Histórico de sessões</span>
                         
                         {historico.length === 0 ? (
                           <p className="text-xs text-gray-400 italic">Nenhuma sessão realizada ainda.</p>
