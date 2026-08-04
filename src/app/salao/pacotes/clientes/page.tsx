@@ -1,263 +1,297 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/hooks/useAuth'
+import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, Edit3, Check, X } from 'lucide-react'
+import { CreditCard, Users, Search, Plus, Trash2, CheckCircle, AlertCircle, X, ChevronRight } from 'lucide-react'
+import Header from '@/components/Header'
+import BottomNav from '@/components/BottomNav'
 
-export default function PacotesPage() {
-  const { profile, loading } = useAuth()
+export default function PacotesClientesPage() {
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const router = useRouter()
-  const [salao, setSalao] = useState<any>(null)
-  const [pacotes, setPacotes] = useState<any[]>([])
-  const [modal, setModal] = useState(false)
-  const [editando, setEditando] = useState<any>(null)
-  const [salvando, setSalvando] = useState(false)
-  const [erro, setErro] = useState('')
 
-  const [form, setForm] = useState({
-    nome: '',
-    descricao: '',
-    preco: '',
-    sessoes_inclusas: '1',
-    validade_dias: '30',
-    regras: ''
-  })
+  const [profile, setProfile] = useState<any>(null)
+  const [salao, setSalao] = useState<any>(null)
+  const [clientes, setClientes] = useState<any[]>([])
+  const [busca, setBusca] = useState('')
+  const [carregando, setCarregando] = useState(true)
+
+  // Cliente selecionado para ver/adicionar pacotes
+  const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
+  const [pacotesCliente, setPacotesCliente] = useState<any[]>([])
+  const [pacotesDisponiveis, setPacotesDisponiveis] = useState<any[]>([])
+  const [modalVenderAberto, setModalVenderAberto] = useState(false)
+  const [pacoteEscolhido, setPacoteEscolhido] = useState('')
+  const [salvando, setSalvando] = useState(false)
 
   useEffect(() => {
-    if (loading) return
-    if (!profile) { router.push('/login'); return }
+    async function carregar() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { router.replace('/login'); return }
 
-    const p = profile as any
-    // 1. Donos, sócios e admins têm acesso total nativo
-    const ehAdminOuSocio = ['dono_salao', 'socio', 'admin'].includes(profile.tipo) || p.acesso_total
+        const { data: prof } = await supabase
+          .from('profiles').select('*').eq('id', session.user.id).single()
 
-    // 2. Se for funcionário comum, verificamos se o dono marcou a permissão específica
-    const temPermissaoFuncionario = profile.tipo === 'funcionario' && (
-      p.acesso_total === true ||
-      p.pode_ver_combos === true ||
-      p.pode_gerenciar_pacotes === true ||
-      p.pode_ver_pacotes === true
-    )
+        if (!prof) { router.replace('/login'); return }
 
-    if (!ehAdminOuSocio && !temPermissaoFuncionario) {
-      alert('Você não tem permissão para acessar esta página.')
-      router.push('/salao/dashboard')
-      return
+        let salaoId = prof.salao_id
+        if (!salaoId) {
+          const { data: salDono } = await supabase
+            .from('saloes').select('id').eq('dono_id', session.user.id).maybeSingle()
+          if (salDono) salaoId = salDono.id
+        }
+
+        if (!salaoId) { router.replace('/criar-salao'); return }
+
+        setProfile(prof)
+
+        const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
+        setSalao(sal)
+
+        // Buscar clientes do salão
+        const { data: listaClientes } = await supabase
+          .from('clientes')
+          .select('*')
+          .eq('salao_id', salaoId)
+          .order('nome', { ascending: true })
+
+        setClientes(listaClientes || [])
+
+        // Buscar pacotes criados pelo salão (para poder vender para a cliente)
+        const { data: listaPacotes } = await supabase
+          .from('pacotes')
+          .select('*')
+          .eq('salao_id', salaoId)
+
+        setPacotesDisponiveis(listaPacotes || [])
+
+      } catch (e) {
+        console.error('Erro ao carregar:', e)
+      } finally {
+        setCarregando(false)
+      }
     }
+    carregar()
+  }, [])
 
-    if (profile.salao_id) carregarDados()
-  }, [loading, profile])
-
-  async function carregarDados() {
-    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
-    setSalao(sal)
-    const { data: pacs } = await supabase.from('pacotes').select('*').eq('salao_id', profile!.salao_id!).order('nome')
-    setPacotes(pacs || [])
+  async function abrirDetalhesCliente(cliente: any) {
+    setClienteSelecionado(cliente)
+    await carregarPacotesDoCliente(cliente.id)
   }
 
-  function abrirNovo() {
-    setEditando(null)
-    setForm({
-      nome: '',
-      descricao: '',
-      preco: '',
-      sessoes_inclusas: '5',
-      validade_dias: '60',
-      regras: 'O pacote é pessoal e intransferível.\nValidade impressa deve ser respeitada.\nCancelamentos com menos de 24h implicam em perda da sessão.'
-    })
-    setErro('')
-    setModal(true)
+  async function carregarPacotesDoCliente(clienteId: string) {
+    const { data } = await supabase
+      .from('clientes_pacotes')
+      .select('*, pacotes(*)')
+      .eq('cliente_id', clienteId)
+
+    setPacotesCliente(data || [])
   }
 
-  function abrirEditar(pacote: any) {
-    setEditando(pacote)
-    setForm({
-      nome: pacote.nome || '',
-      descricao: pacote.descricao || '',
-      preco: pacote.preco ? String(pacote.preco) : '',
-      sessoes_inclusas: String(pacote.sessoes_inclusas || 1),
-      validade_dias: pacote.validade_dias ? String(pacote.validade_dias) : '30',
-      regras: pacote.regras || ''
-    })
-    setErro('')
-    setModal(true)
-  }
-
-  async function salvar() {
-    if (!form.nome.trim() || !form.preco) {
-      setErro('Preencha o nome e o preço do pacote.')
-      return
-    }
+  async function venderPacote(e: React.FormEvent) {
+    e.preventDefault()
+    if (!pacoteEscolhido || !clienteSelecionado || !salao) return
     setSalvando(true)
-    setErro('')
 
-    const dados = {
-      salao_id: profile!.salao_id,
-      nome: form.nome.trim(),
-      descricao: form.descricao.trim(),
-      preco: parseFloat(form.preco) || 0,
-      sessoes_inclusas: parseInt(form.sessoes_inclusas) || 1,
-      validade_dias: parseInt(form.validade_dias) || 30,
-      regras: form.regras.trim(),
-      status: 'ativo'
-    }
+    try {
+      const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
+      
+      const { error } = await supabase
+        .from('clientes_pacotes')
+        .insert({
+          salao_id: salao.id,
+          cliente_id: clienteSelecionado.id,
+          pacote_id: pacoteEscolhido,
+          sessoes_restantes: pacoteObj?.sessoes || 1,
+          status: 'ativo'
+        })
 
-    let erroSupabase = null
-    if (editando) {
-      const { error } = await supabase.from('pacotes').update(dados).eq('id', editando.id)
-      erroSupabase = error
-    } else {
-      const { error } = await supabase.from('pacotes').insert(dados)
-      erroSupabase = error
-    }
+      if (error) throw error
 
-    if (erroSupabase) {
-      setErro('Erro ao salvar: ' + erroSupabase.message)
+      alert('Pacote atribuído com sucesso!')
+      setModalVenderAberto(false)
+      setPacoteEscolhido('')
+      await carregarPacotesDoCliente(clienteSelecionado.id)
+    } catch (err: any) {
+      alert('Erro ao atribuir pacote: ' + err.message)
+    } finally {
       setSalvando(false)
-      return
     }
-
-    setModal(false)
-    setSalvando(false)
-    carregarDados()
   }
 
-  async function alternarStatus(pacote: any) {
-    const novoStatus = pacote.status === 'ativo' ? 'inativo' : 'ativo'
-    const { error } = await supabase.from('pacotes').update({ status: novoStatus }).eq('id', pacote.id)
-    if (error) {
-      alert('Erro ao alterar status: ' + error.message)
-      return
-    }
-    carregarDados()
-  }
+  async function excluirPacoteCliente(idVinculo: string) {
+    if (!confirm('Deseja realmente remover este pacote da cliente?')) return
 
-  async function excluir(id: string) {
-    if (!confirm('Deseja realmente excluir este pacote?')) return
-    const { error } = await supabase.from('pacotes').delete().eq('id', id)
+    const { error } = await supabase
+      .from('clientes_pacotes')
+      .delete()
+      .eq('id', idVinculo)
+
     if (error) {
       alert('Erro ao excluir: ' + error.message)
       return
     }
-    carregarDados()
+
+    if (clienteSelecionado) {
+      await carregarPacotesDoCliente(clienteSelecionado.id)
+    }
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
 
-  return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-8">
-      <div className="bg-white px-4 py-4 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-          <h1 className="font-bold text-gray-900 text-lg">Gerenciar Pacotes</h1>
-        </div>
-        <button onClick={abrirNovo} className="w-9 h-9 rounded-full flex items-center justify-center text-white" style={{ backgroundColor: cor }}>
-          <Plus size={20} />
-        </button>
-      </div>
+  if (carregando || !profile) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    </div>
+  )
 
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {pacotes.length === 0 ? (
-          <div className="card text-center py-8">
-            <p className="text-gray-400 text-sm">Nenhum pacote cadastrado ainda</p>
+  const clientesFiltrados = clientes.filter(c => 
+    c.nome?.toLowerCase().includes(busca.toLowerCase()) || 
+    c.telefone?.includes(busca)
+  )
+
+  const navItems = [
+    { icon: Users, label: 'Início', href: '/salao' },
+    { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes' },
+  ]
+
+  return (
+    <div className="min-h-screen pb-24 bg-gray-50">
+      <Header profile={profile} salaoNome={salao?.nome} corPrimaria={cor} />
+
+      <div className="px-4 py-5 flex flex-col gap-4 max-w-xl mx-auto">
+        
+        {/* Seção de Detalhes da Cliente Selecionada */}
+        {clienteSelecionado ? (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
+              <div>
+                <button onClick={() => setClienteSelecionado(null)} className="text-xs font-semibold text-gray-400 hover:text-gray-600 mb-1 flex items-center gap-1">
+                  ← Voltar para lista de clientes
+                </button>
+                <h1 className="text-lg font-bold text-gray-900">{clienteSelecionado.nome}</h1>
+                <p className="text-xs text-gray-500">{clienteSelecionado.telefone || 'Sem telefone'}</p>
+              </div>
+              <button onClick={() => setModalVenderAberto(true)}
+                className="text-white px-3.5 py-2.5 rounded-2xl text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+                style={{ backgroundColor: cor }}>
+                <Plus size={16} /> Novo Pacote
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pacotes Ativos da Cliente</h2>
+              
+              {pacotesCliente.length === 0 ? (
+                <div className="bg-white p-8 rounded-3xl text-center border border-gray-100 shadow-sm flex flex-col items-center gap-2">
+                  <AlertCircle size={32} className="text-gray-300" />
+                  <p className="text-gray-500 text-sm">Esta cliente não possui pacotes ativos.</p>
+                </div>
+              ) : (
+                pacotesCliente.map(pc => (
+                  <div key={pc.id} className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-sm">{pc.pacotes?.nome || 'Pacote'}</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">Sessões restantes: <span className="font-bold text-gray-800">{pc.sessoes_restantes}</span></p>
+                    </div>
+                    <button onClick={() => excluirPacoteCliente(pc.id)}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition" title="Remover pacote">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         ) : (
-          pacotes.map(p => (
-            <div key={p.id} className="card flex flex-col gap-2">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-bold text-gray-900 text-base">{p.nome}</p>
-                  {p.descricao && <p className="text-xs text-gray-500 mt-0.5">{p.descricao}</p>}
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-base" style={{ color: cor }}>
-                    R$ {Number(p.preco).toFixed(2)}
-                  </p>
-                  <span className={'text-[10px] px-2 py-0.5 rounded-full font-medium inline-block mt-1 ' + (p.status === 'ativo' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500')}>
-                    {p.status}
-                  </span>
-                </div>
+          /* Lista de Clientes */
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-3 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
+              <div>
+                <h1 className="text-lg font-bold text-gray-900">Pacotes por Cliente</h1>
+                <p className="text-xs text-gray-500">Selecione uma cliente para gerenciar os pacotes</p>
               </div>
-
-              <div className="flex items-center gap-4 text-xs text-gray-500 border-t border-gray-100 pt-2 mt-1">
-                <span>📦 {p.sessoes_inclusas} sessões</span>
-                <span>⏳ {p.validade_dias} dias de validade</span>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-                <button onClick={() => alternarStatus(p)} className="text-xs px-3 py-1.5 rounded-lg bg-gray-50 text-gray-600 font-medium">
-                  {p.status === 'ativo' ? 'Desativar' : 'Ativar'}
-                </button>
-                <button onClick={() => abrirEditar(p)} className="p-1.5 rounded-lg bg-gray-50 text-gray-600">
-                  <Edit3 size={15} />
-                </button>
-                <button onClick={() => excluir(p.id)} className="p-1.5 rounded-lg bg-red-50 text-red-500">
-                  <Trash2 size={15} />
-                </button>
+              <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
+                <input type="text" placeholder="Buscar cliente por nome ou telefone..."
+                  value={busca} onChange={e => setBusca(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-10 pr-4 py-3 text-xs outline-none placeholder-gray-400" />
               </div>
             </div>
-          ))
+
+            <div className="flex flex-col gap-2">
+              {clientesFiltrados.length === 0 ? (
+                <div className="bg-white p-8 rounded-3xl text-center border border-gray-100 shadow-sm flex flex-col items-center gap-2">
+                  <Users size={32} className="text-gray-300" />
+                  <p className="text-gray-500 text-sm">Nenhuma cliente encontrada.</p>
+                </div>
+              ) : (
+                clientesFiltrados.map(cliente => (
+                  <div key={cliente.id} onClick={() => abrirDetalhesCliente(cliente)}
+                    className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 cursor-pointer hover:border-pink-300 transition">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-xs uppercase shrink-0"
+                        style={{ backgroundColor: cor }}>
+                        {cliente.nome ? cliente.nome[0] : 'C'}
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-gray-900 text-sm">{cliente.nome}</h3>
+                        <p className="text-xs text-gray-400">{cliente.telefone || 'Sem telefone'}</p>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-gray-400" />
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         )}
       </div>
 
-      {modal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="font-bold text-gray-900 text-lg">{editando ? 'Editar Pacote' : 'Novo Pacote'}</h3>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do Pacote</label>
-              <input className="input-field" placeholder="Ex: Pacote 10 Sessões de Massagem"
-                value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição (opcional)</label>
-              <input className="input-field" placeholder="Ex: Válido para massagem relaxante ou modeladora"
-                value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} />
-            </div>
-
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Preço (R$)</label>
-                <input className="input-field" type="number" step="0.01" placeholder="0.00"
-                  value={form.preco} onChange={e => setForm(f => ({ ...f, preco: e.target.value }))} />
-              </div>
-              <div className="w-28">
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Sessões</label>
-                <input className="input-field" type="number" min="1"
-                  value={form.sessoes_inclusas} onChange={e => setForm(f => ({ ...f, sessoes_inclusas: e.target.value }))} />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Validade em dias</label>
-              <input className="input-field" type="number" min="1" placeholder="Ex: 60"
-                value={form.validade_dias} onChange={e => setForm(f => ({ ...f, validade_dias: e.target.value }))} />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Regras do Pacote (exibidas para a cliente)</label>
-              <textarea className="input-field resize-none" rows={3} placeholder="Descreva as regras de uso..."
-                value={form.regras} onChange={e => setForm(f => ({ ...f, regras: e.target.value }))} />
-            </div>
-
-            {erro && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                <p className="text-red-600 text-sm">{erro}</p>
-              </div>
-            )}
-
-            <div className="flex gap-3 mt-2">
-              <button onClick={() => setModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={salvando ? undefined : salvar} disabled={salvando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>
-                {salvando ? 'Salvando...' : 'Salvar'}
+      {/* Modal para Atribuir Novo Pacote à Cliente */}
+      {modalVenderAberto && clienteSelecionado && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">Atribuir Pacote</h3>
+              <button onClick={() => setModalVenderAberto(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
               </button>
             </div>
+
+            <form onSubmit={venderPacote} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Selecione o Pacote</label>
+                <select value={pacoteEscolhido} onChange={e => setPacoteEscolhido(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none text-gray-700">
+                  <option value="">Selecione...</option>
+                  {pacotesDisponiveis.map(p => (
+                    <option key={p.id} value={p.id}>{p.nome} ({p.sessoes} sessões)</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalVenderAberto(false)}
+                  className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold hover:bg-gray-50 transition">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={salvando}
+                  className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold active:scale-95 transition flex items-center justify-center"
+                  style={{ backgroundColor: cor }}>
+                  {salvando ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Atribuir'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      <BottomNav items={navItems} corPrimaria={cor} />
     </div>
   )
 }
