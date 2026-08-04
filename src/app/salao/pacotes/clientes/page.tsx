@@ -94,30 +94,30 @@ export default function PacotesClientesPage() {
 
   async function carregarPacotesDoCliente(clienteId: string) {
     const { data, error } = await supabase
-      .from('cliente_pacotes')
-      .select('*, pacotes(*)')
-      .eq('cliente_id', clienteId)
-      .order('created_at', { ascending: false })
+      .from('sessoes_pacote')
+      .select('*')
+      .eq('cliente_pacote_id', clienteId)
+      .order('data_sessao', { ascending: false })
 
     if (error) {
       console.error('Erro ao buscar pacotes:', error.message)
       return
     }
 
-    const pacotesComHistorico = await Promise.all((data || []).map(async (pc) => {
-      const { data: hist } = await supabase
-        .from('sessoes_pacote')
-        .select('*')
-        .eq('cliente_pacote_id', pc.id)
-        .order('data_sessao', { ascending: false })
-
-      return {
-        ...pc,
-        cliente_pacotes_historico: hist || []
+    if (data && data.length > 0) {
+      const pacoteUnificado = {
+        id: clienteId,
+        tipo_cadastro: 'manual',
+        nome_personalizado: data[0].servico_realizado || 'Pacote de Sessões',
+        sessoes_total: data.length,
+        sessoes_restantes: data.length,
+        status: 'ativo',
+        cliente_pacotes_historico: data
       }
-    }))
-
-    setPacotesCliente(pacotesComHistorico)
+      setPacotesCliente([pacoteUnificado])
+    } else {
+      setPacotesCliente([])
+    }
   }
 
   async function venderPacote(e: React.FormEvent) {
@@ -127,9 +127,7 @@ export default function PacotesClientesPage() {
 
     try {
       const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
-      const total = pacoteObj?.sessoes || 1
 
-      // GRAVAÇÃO DIRETA NA TABELA sessoes_pacote (jeito antigo)
       const dadosParaInserir = {
         cliente_pacote_id: clienteSelecionado.id,
         servico_realizado: pacoteObj?.nome || 'Pacote',
@@ -306,8 +304,8 @@ export default function PacotesClientesPage() {
                 </div>
               ) : (
                 pacotesCliente.map(pc => {
-                  const nomePacote = pc.tipo_cadastro === 'manual' ? pc.nome_personalizado : (pc.pacotes?.nome || 'Pacote')
-                  const total = pc.sessoes_total || pc.pacotes?.sessoes || 1
+                  const nomePacote = pc.nome_personalizado || 'Pacote'
+                  const total = pc.sessoes_total || 1
                   const restantes = pc.sessoes_restantes ?? total
                   const usadas = Math.max(0, total - restantes)
                   const progressoPct = Math.min(100, (usadas / total) * 100)
@@ -325,7 +323,7 @@ export default function PacotesClientesPage() {
                             </span>
                           </div>
                           <span className="inline-block mt-1 text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-lg">
-                            {pc.tipo_cadastro === 'manual' ? 'Cadastro manual' : 'Sistema'}
+                            Cadastro manual
                           </span>
                         </div>
                         <button onClick={() => excluirPacoteCliente(pc.id)}
@@ -379,7 +377,7 @@ export default function PacotesClientesPage() {
                       )}
 
                       <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50">
-                        Vendido por: <span className="font-medium text-gray-600">{pc.vendido_por || 'Equipe'}</span>
+                        Vendido por: <span className="font-medium text-gray-600">Equipe</span>
                       </div>
                     </div>
                   )
