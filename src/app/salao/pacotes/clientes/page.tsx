@@ -129,26 +129,37 @@ export default function PacotesClientesPage() {
       const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
       const total = pacoteObj?.sessoes || 1
 
-      const { error } = await supabase
+      const dadosParaInserir = {
+        salao_id: salao.id,
+        cliente_id: clienteSelecionado.id,
+        pacote_id: pacoteEscolhido,
+        sessoes_total: total,
+        sessoes_restantes: total,
+        status: 'ativo',
+        tipo_cadastro: 'sistema',
+        vendido_por: profile.nome || 'Equipe'
+      }
+
+      console.log('Enviando para cliente_pacotes:', dadosParaInserir)
+
+      const { data, error } = await supabase
         .from('cliente_pacotes')
-        .insert({
-          salao_id: salao.id,
-          cliente_id: clienteSelecionado.id,
-          pacote_id: pacoteEscolhido,
-          sessoes_total: total,
-          sessoes_restantes: total,
-          status: 'ativo',
-          tipo_cadastro: 'sistema',
-          vendido_por: profile.nome || 'Equipe'
-        })
+        .insert(dadosParaInserir)
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('Erro detalhado do Supabase:', error)
+        alert('Erro ao atribuir pacote: ' + error.message + ' (Detalhe: ' + (error.details || '') + ')')
+        return
+      }
 
+      console.log('Pacote inserido com sucesso:', data)
       setModalVenderAberto(false)
       setPacoteEscolhido('')
       await carregarPacotesDoCliente(clienteSelecionado.id)
     } catch (err: any) {
-      alert('Erro ao atribuir pacote: ' + err.message)
+      console.error('Erro catch:', err)
+      alert('Erro inesperado: ' + err.message)
     } finally {
       setSalvando(false)
     }
@@ -162,27 +173,38 @@ export default function PacotesClientesPage() {
     try {
       const total = parseInt(sessoesTotalAntigo) || 1
 
-      const { error } = await supabase
+      const dadosParaInserir = {
+        salao_id: salao.id,
+        cliente_id: clienteSelecionado.id,
+        sessoes_total: total,
+        sessoes_restantes: total,
+        status: 'ativo',
+        tipo_cadastro: 'manual',
+        nome_personalizado: nomePacoteAntigo,
+        vendido_por: profile.nome || 'Equipe'
+      }
+
+      console.log('Enviando pacote manual:', dadosParaInserir)
+
+      const { data, error } = await supabase
         .from('cliente_pacotes')
-        .insert({
-          salao_id: salao.id,
-          cliente_id: clienteSelecionado.id,
-          sessoes_total: total,
-          sessoes_restantes: total,
-          status: 'ativo',
-          tipo_cadastro: 'manual',
-          nome_personalizado: nomePacoteAntigo,
-          vendido_por: profile.nome || 'Equipe'
-        })
+        .insert(dadosParaInserir)
+        .select()
 
-      if (error) throw error
+      if (error) {
+        console.error('Erro detalhado do Supabase (manual):', error)
+        alert('Erro ao cadastrar pacote antigo: ' + error.message + ' (Detalhe: ' + (error.details || '') + ')')
+        return
+      }
 
+      console.log('Pacote manual inserido com sucesso:', data)
       setModalAntigoAberto(false)
       setNomePacoteAntigo('')
       setSessoesTotalAntigo('')
       await carregarPacotesDoCliente(clienteSelecionado.id)
     } catch (err: any) {
-      alert('Erro ao cadastrar pacote antigo: ' + err.message)
+      console.error('Erro catch manual:', err)
+      alert('Erro inesperado: ' + err.message)
     } finally {
       setSalvando(false)
     }
