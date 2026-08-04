@@ -89,37 +89,22 @@ export default function PacotesClientesPage() {
 
   async function abrirDetalhesCliente(cliente: any) {
     setClienteSelecionado(cliente)
-    await carregarPacotesDoCliente(cliente.id)
+    await carregarPacotesDoCliente(cliente.nome)
   }
 
-  async function carregarPacotesDoCliente(clienteId: string) {
-    // Buscamos todas as sessões cadastradas para este cliente
+  async function carregarPacotesDoCliente(clienteNome: string) {
     const { data, error } = await supabase
-      .from('sessoes_pacote')
+      .from('pacotes_clientes_resumo')
       .select('*')
-      .eq('cliente_pacote_id', clienteId)
-      .order('data_sessao', { ascending: false })
+      .eq('cliente_nome', clienteNome)
+      .order('created_at', { ascending: false })
 
     if (error) {
       console.error('Erro ao buscar pacotes:', error.message)
       return
     }
 
-    if (data && data.length > 0) {
-      // Agrupamos as sessões para mostrar na interface como um bloco de pacote
-      const pacoteUnificado = {
-        id: clienteId,
-        cliente_pacote_id: clienteId,
-        nome_personalizado: data[0].servico_realizado || 'Pacote de Sessões',
-        sessoes_total: data.length,
-        sessoes_restantes: data.length,
-        status: 'ativo',
-        cliente_pacotes_historico: data
-      }
-      setPacotesCliente([pacoteUnificado])
-    } else {
-      setPacotesCliente([])
-    }
+    setPacotesCliente(data || [])
   }
 
   async function venderPacote(e: React.FormEvent) {
@@ -132,15 +117,14 @@ export default function PacotesClientesPage() {
       const totalSessoes = pacoteObj?.sessoes || 1
       const nomeServico = pacoteObj?.nome || 'Pacote'
 
-      // Inserimos a primeira sessão do pacote recém-vendido
       const { error } = await supabase
-        .from('sessoes_pacote')
+        .from('pacotes_clientes_resumo')
         .insert({
-          cliente_pacote_id: clienteSelecionado.id,
-          servico_realizado: nomeServico,
-          data_sessao: new Date().toISOString().split('T')[0],
-          observacoes: 'Venda de pacote',
-          profissional_id: profile.id
+          cliente_nome: clienteSelecionado.nome,
+          servico: nomeServico,
+          sessoes_total: totalSessoes,
+          sessoes_restantes: totalSessoes,
+          data_sessao: new Date().toISOString().split('T')[0]
         })
 
       if (error) {
@@ -150,7 +134,7 @@ export default function PacotesClientesPage() {
 
       setModalVenderAberto(false)
       setPacoteEscolhido('')
-      await carregarPacotesDoCliente(clienteSelecionado.id)
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
     } catch (err: any) {
       alert('Erro inesperado: ' + err.message)
     } finally {
@@ -164,15 +148,15 @@ export default function PacotesClientesPage() {
     setSalvando(true)
 
     try {
-      // Cadastra a primeira sessão indicando o pacote antigo
+      const totalNum = parseInt(sessoesTotalAntigo) || 1
       const { error } = await supabase
-        .from('sessoes_pacote')
+        .from('pacotes_clientes_resumo')
         .insert({
-          cliente_pacote_id: clienteSelecionado.id,
-          servico_realizado: nomePacoteAntigo,
-          data_sessao: new Date().toISOString().split('T')[0],
-          observacoes: 'Cadastro manual antigo',
-          profissional_id: profile.id
+          cliente_nome: clienteSelecionado.nome,
+          servico: nomePacoteAntigo,
+          sessoes_total: totalNum,
+          sessoes_restantes: totalNum,
+          data_sessao: new Date().toISOString().split('T')[0]
         })
 
       if (error) {
@@ -183,7 +167,7 @@ export default function PacotesClientesPage() {
       setModalAntigoAberto(false)
       setNomePacoteAntigo('')
       setSessoesTotalAntigo('')
-      await carregarPacotesDoCliente(clienteSelecionado.id)
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
     } catch (err: any) {
       alert('Erro inesperado: ' + err.message)
     } finally {
@@ -193,53 +177,47 @@ export default function PacotesClientesPage() {
 
   async function adicionarSessaoRealizada(e: React.FormEvent) {
     e.preventDefault()
-    if (!pacoteAlvoSessao || !servicoSessao || !clienteSelecionado) return
+    if (!pacoteAlvoSessao || !clienteSelecionado) return
+    
+    if (pacoteAlvoSessao.sessoes_restantes <= 0) {
+      alert('Este pacote não possui mais sessões restantes.')
+      return
+    }
+
     setSalvando(true)
 
     try {
-      const { error: errHist } = await supabase
-        .from('sessoes_pacote')
-        .insert({
-          cliente_pacote_id: clienteSelecionado.id,
-          servico_realizado: servicoSessao,
-          data_sessao: dataSessao,
-          observacoes: 'Sessão avulsa realizada',
-          profissional_id: profile.id
-        })
+      const novasRestantes = pacoteAlvoSessao.sessoes_restantes - 1
+      const novoStatus = novasRestantes === 0 ? 'concluido' : 'ativo'
 
-      if (errHist) throw errHist
+      const { error } = await supabase
+        .from('pacotes_clientes_resumo')
+        .update({ 
+          sessoes_restantes: novasRestantes,
+          status: novoStatus 
+        })
+        .eq('id', pacoteAlvoSessao.id)
+
+      if (error) throw error
 
       setModalSessaoAberto(false)
       setServicoSessao('')
       setPacoteAlvoSessao(null)
-      await carregarPacotesDoCliente(clienteSelecionado.id)
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
     } catch (err: any) {
-      alert('Erro ao adicionar sessão: ' + err.message)
+      alert('Erro ao abater sessão: ' + err.message)
     } finally {
       setSalvando(false)
     }
   }
 
-  async function excluirHistorico(histId: string) {
-    if (!confirm('Deseja excluir esta sessão do histórico?')) return
-
-    try {
-      await supabase.from('sessoes_pacote').delete().eq('id', histId)
-      if (clienteSelecionado) {
-        await carregarPacotesDoCliente(clienteSelecionado.id)
-      }
-    } catch (err: any) {
-      alert('Erro ao excluir sessão: ' + err.message)
-    }
-  }
-
-  async function excluirPacoteCliente(clienteId: string) {
-    if (!confirm('Deseja realmente remover este pacote e limpar o histórico da cliente?')) return
+  async function excluirPacoteCliente(pacoteId: string) {
+    if (!confirm('Deseja realmente remover este pacote?')) return
 
     const { error } = await supabase
-      .from('sessoes_pacote')
+      .from('pacotes_clientes_resumo')
       .delete()
-      .eq('cliente_pacote_id', clienteId)
+      .eq('id', pacoteId)
 
     if (error) {
       alert('Erro ao excluir: ' + error.message)
@@ -247,7 +225,7 @@ export default function PacotesClientesPage() {
     }
 
     if (clienteSelecionado) {
-      await carregarPacotesDoCliente(clienteSelecionado.id)
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
     }
   }
 
@@ -310,11 +288,10 @@ export default function PacotesClientesPage() {
                 </div>
               ) : (
                 pacotesCliente.map(pc => {
-                  const nomePacote = pc.nome_personalizado || 'Pacote'
+                  const nomeServico = pc.servico || 'Pacote'
                   const total = pc.sessoes_total || 1
-                  const historico = pc.cliente_pacotes_historico || []
-                  const usadas = historico.length
-                  const restantes = Math.max(0, total - usadas)
+                  const restantes = pc.sessoes_restantes ?? total
+                  const usadas = Math.max(0, total - restantes)
                   const progressoPct = Math.min(100, (usadas / total) * 100)
                   const status = pc.status || 'ativo'
 
@@ -323,16 +300,16 @@ export default function PacotesClientesPage() {
                       <div className="flex items-start justify-between">
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-gray-900 text-base">{nomePacote}</h3>
+                            <h3 className="font-bold text-gray-900 text-base">{nomeServico}</h3>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${status === 'ativo' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
                               {status}
                             </span>
                           </div>
                           <span className="inline-block mt-1 text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-lg">
-                            Registro manual
+                            Total: {total} sessões
                           </span>
                         </div>
-                        <button onClick={() => excluirPacoteCliente(pc.cliente_pacote_id)}
+                        <button onClick={() => excluirPacoteCliente(pc.id)}
                           className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition" title="Remover pacote">
                           <Trash2 size={16} />
                         </button>
@@ -348,42 +325,16 @@ export default function PacotesClientesPage() {
                         </div>
                       </div>
 
-                      <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Histórico de sessões</span>
-                        
-                        {historico.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic">Nenhuma sessão realizada ainda.</p>
-                        ) : (
-                          <div className="flex flex-col gap-1.5">
-                            {historico.map((h: any) => {
-                              const dataSessaoStr = h.data_sessao
-                              const dataFormatada = dataSessaoStr ? dataSessaoStr.split('-').reverse().join('/') : ''
-                              return (
-                                <div key={h.id} className="flex items-center justify-between text-xs text-gray-700 bg-gray-50 px-3 py-2 rounded-xl">
-                                  <div className="flex gap-3">
-                                    <span className="font-medium text-gray-500">{dataFormatada}</span>
-                                    <span className="font-semibold text-gray-900">{h.servico_realizado}</span>
-                                  </div>
-                                  <button onClick={() => excluirHistorico(h.id)} className="text-gray-400 hover:text-red-500 p-1">
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
-
-                      {status === 'ativo' && (
+                      {status === 'ativo' && restantes > 0 && (
                         <button onClick={() => { setPacoteAlvoSessao(pc); setModalSessaoAberto(true); }}
                           className="w-full border py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 mt-1"
                           style={{ borderColor: cor, color: cor }}>
-                          <Plus size={16} /> Adicionar sessão realizada
+                          <Plus size={16} /> Dar baixa em 1 sessão
                         </button>
                       )}
 
                       <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50">
-                        Profissional ID: <span className="font-medium text-gray-600">{profile.id.slice(0, 8)}...</span>
+                        Criado em: <span className="font-medium text-gray-600">{new Date(pc.created_at).toLocaleDateString('pt-BR')}</span>
                       </div>
                     </div>
                   )
@@ -495,32 +446,23 @@ export default function PacotesClientesPage() {
         </div>
       )}
 
-      {/* Modal Adicionar Sessão Realizada */}
+      {/* Modal Confirmar Baixa de Sessão */}
       {modalSessaoAberto && pacoteAlvoSessao && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900">Adicionar Sessão Realizada</h3>
+              <h3 className="text-base font-bold text-gray-900">Dar Baixa em Sessão</h3>
               <button onClick={() => setModalSessaoAberto(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
-            <form onSubmit={adicionarSessaoRealizada} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-900">Serviço Realizado</label>
-                <input type="text" placeholder="Ex: Manicure ou Pedicure" value={servicoSessao} onChange={e => setServicoSessao(e.target.value)} required
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-gray-900">Data da Sessão</label>
-                <input type="date" value={dataSessao} onChange={e => setDataSessao(e.target.value)} required
-                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button type="button" onClick={() => setModalSessaoAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
-                <button type="submit" disabled={salvando} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
-                  {salvando ? 'Salvando...' : 'Adicionar'}
-                </button>
-              </div>
-            </form>
+            <p className="text-xs text-gray-600">
+              Deseja dar baixa em 1 sessão do pacote <strong className="text-gray-900">{pacoteAlvoSessao.servico}</strong>? Isso atualizará as sessões restantes para <strong className="text-gray-900">{pacoteAlvoSessao.sessoes_restantes - 1}</strong>.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button type="button" onClick={() => setModalSessaoAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
+              <button type="button" disabled={salvando} onClick={adicionarSessaoRealizada} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
+                {salvando ? 'Salvando...' : 'Confirmar Baixa'}
+              </button>
+            </div>
           </div>
         </div>
       )}
