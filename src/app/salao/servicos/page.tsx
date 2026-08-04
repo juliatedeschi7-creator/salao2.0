@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText, Share2, Check } from 'lucide-react'
+import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText, Share2, Check, Filter } from 'lucide-react'
 
 export default function ServicosPage() {
   const { profile, loading } = useAuth()
@@ -18,6 +18,8 @@ export default function ServicosPage() {
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todos')
   const [modal, setModal] = useState(false)
   const [modalCategorias, setModalCategorias] = useState(false)
+  const [modalCompartilhar, setModalCompartilhar] = useState(false)
+  const [categoriaCompartilhar, setCategoriaCompartilhar] = useState('Todos')
   const [modalOrcamento, setModalOrcamento] = useState<any>(null)
   const [editando, setEditando] = useState<any>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
@@ -85,22 +87,45 @@ export default function ServicosPage() {
     setCarregando(false)
   }
 
-  const linkCatalogo = typeof window !== 'undefined'
-    ? `${window.location.origin}/servicos?salao=${salao?.slug || salao?.id}`
-    : ''
+  // Funções de Compartilhamento Personalizadas
+  function compartilharTextoWhatsApp() {
+    const servicosParaCompartilhar = categoriaCompartilhar === 'Todos'
+      ? servicos
+      : servicos.filter(s => s.categoria === categoriaCompartilhar)
 
-  function compartilharCatalogo() {
-    if (navigator.share) {
-      navigator.share({
-        title: salao?.nome || 'Catálogo de Serviços',
-        text: `Confira nossos serviços e valores no ${salao?.nome || 'salão'}:`,
-        url: linkCatalogo,
-      }).catch(() => {})
-    } else {
-      navigator.clipboard.writeText(linkCatalogo)
-      setCopiado(true)
-      setTimeout(() => setCopiado(false), 2500)
+    let texto = `✨ *Catálogo de Serviços - ${salao?.nome || 'Nosso Salão'}* ✨\n\n`
+    
+    if (categoriaCompartilhar !== 'Todos') {
+      texto += `📌 *Categoria: ${categoriaCompartilhar}*\n\n`
     }
+
+    servicosParaCompartilhar.forEach(servico => {
+      const preco = servico.tipo_preco === 'variavel' 
+        ? `A partir de R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}` 
+        : `R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}`
+      
+      texto += `🔹 *${servico.nome}*\n`
+      texto += `💰 ${preco} | ⏱️ ${formatarDuracao(servico.duracao_minutos)}\n`
+      if (servico.descricao) {
+        texto += `📝 _${servico.descricao}_\n`
+      }
+      texto += `\n`
+    })
+
+    texto += `📲 Agende seu horário conosco!`
+
+    const urlWhatsApp = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`
+    window.open(urlWhatsApp, '_blank')
+    setModalCompartilhar(false)
+  }
+
+  function gerarPdfFiltrado() {
+    const urlPdf = categoriaCompartilhar === 'Todos'
+      ? `/salao/catalogo`
+      : `/salao/catalogo?categoria=${encodeURIComponent(categoriaCompartilhar)}`
+    
+    window.open(urlPdf, '_blank')
+    setModalCompartilhar(false)
   }
 
   function abrirModal(s?: any) {
@@ -256,10 +281,11 @@ export default function ServicosPage() {
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
         <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">Catálogo de Serviços</h1>
         
-        <button onClick={compartilharCatalogo}
+        {/* Botão de Compartilhar (Abre o modal de escolha) */}
+        <button onClick={() => setModalCompartilhar(true)}
           title="Compartilhar Catálogo / Preços"
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center transition-colors">
-          {copiado ? <Check size={16} className="text-green-600" /> : <Share2 size={16} className="text-gray-600" />}
+          <Share2 size={16} className="text-gray-600" />
         </button>
 
         <button onClick={() => router.push('/salao/catalogo')}
@@ -400,6 +426,51 @@ export default function ServicosPage() {
           )
         })}
       </div>
+
+      {/* Modal de Compartilhamento (Texto WhatsApp ou PDF filtrado por categoria) */}
+      {modalCompartilhar && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                <Share2 size={20} style={{ color: cor }} /> Compartilhar Catálogo
+              </h3>
+              <button onClick={() => setModalCompartilhar(false)}><X size={20} className="text-gray-400" /></button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
+                <Filter size={14} /> Filtrar Categoria para Envio
+              </label>
+              <select 
+                value={categoriaCompartilhar}
+                onChange={e => setCategoriaCompartilhar(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none bg-gray-50"
+              >
+                <option value="Todos">Todas as categorias</option>
+                {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-2.5 pt-2">
+              <button 
+                onClick={compartilharTextoWhatsApp}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
+              >
+                <MessageSquare size={18} /> Compartilhar Escrito (WhatsApp)
+              </button>
+
+              <button 
+                onClick={gerarPdfFiltrado}
+                className="w-full text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
+                style={{ backgroundColor: cor }}
+              >
+                <FileText size={18} /> Gerar / Visualizar PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalOrcamento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
