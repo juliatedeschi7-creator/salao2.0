@@ -93,6 +93,7 @@ export default function PacotesClientesPage() {
   }
 
   async function carregarPacotesDoCliente(clienteId: string) {
+    // Buscamos todas as sessões cadastradas para este cliente
     const { data, error } = await supabase
       .from('sessoes_pacote')
       .select('*')
@@ -105,9 +106,10 @@ export default function PacotesClientesPage() {
     }
 
     if (data && data.length > 0) {
+      // Agrupamos as sessões para mostrar na interface como um bloco de pacote
       const pacoteUnificado = {
         id: clienteId,
-        tipo_cadastro: 'manual',
+        cliente_pacote_id: clienteId,
         nome_personalizado: data[0].servico_realizado || 'Pacote de Sessões',
         sessoes_total: data.length,
         sessoes_restantes: data.length,
@@ -127,17 +129,19 @@ export default function PacotesClientesPage() {
 
     try {
       const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
+      const totalSessoes = pacoteObj?.sessoes || 1
+      const nomeServico = pacoteObj?.nome || 'Pacote'
 
-      const dadosParaInserir = {
-        cliente_pacote_id: clienteSelecionado.id,
-        servico_realizado: pacoteObj?.nome || 'Pacote',
-        data_sessao: new Date().toISOString().split('T')[0],
-        observacoes: 'Venda de pacote'
-      }
-
+      // Inserimos a primeira sessão do pacote recém-vendido
       const { error } = await supabase
         .from('sessoes_pacote')
-        .insert(dadosParaInserir)
+        .insert({
+          cliente_pacote_id: clienteSelecionado.id,
+          servico_realizado: nomeServico,
+          data_sessao: new Date().toISOString().split('T')[0],
+          observacoes: 'Venda de pacote',
+          profissional_id: profile.id
+        })
 
       if (error) {
         alert('Erro ao atribuir pacote: ' + error.message)
@@ -160,16 +164,16 @@ export default function PacotesClientesPage() {
     setSalvando(true)
 
     try {
-      const dadosParaInserir = {
-        cliente_pacote_id: clienteSelecionado.id,
-        servico_realizado: nomePacoteAntigo,
-        data_sessao: new Date().toISOString().split('T')[0],
-        observacoes: 'Cadastro manual antigo'
-      }
-
+      // Cadastra a primeira sessão indicando o pacote antigo
       const { error } = await supabase
         .from('sessoes_pacote')
-        .insert(dadosParaInserir)
+        .insert({
+          cliente_pacote_id: clienteSelecionado.id,
+          servico_realizado: nomePacoteAntigo,
+          data_sessao: new Date().toISOString().split('T')[0],
+          observacoes: 'Cadastro manual antigo',
+          profissional_id: profile.id
+        })
 
       if (error) {
         alert('Erro ao cadastrar pacote antigo: ' + error.message)
@@ -189,16 +193,18 @@ export default function PacotesClientesPage() {
 
   async function adicionarSessaoRealizada(e: React.FormEvent) {
     e.preventDefault()
-    if (!pacoteAlvoSessao || !servicoSessao) return
+    if (!pacoteAlvoSessao || !servicoSessao || !clienteSelecionado) return
     setSalvando(true)
 
     try {
       const { error: errHist } = await supabase
         .from('sessoes_pacote')
         .insert({
-          cliente_pacote_id: pacoteAlvoSessao.id,
+          cliente_pacote_id: clienteSelecionado.id,
           servico_realizado: servicoSessao,
-          data_sessao: dataSessao
+          data_sessao: dataSessao,
+          observacoes: 'Sessão avulsa realizada',
+          profissional_id: profile.id
         })
 
       if (errHist) throw errHist
@@ -227,13 +233,13 @@ export default function PacotesClientesPage() {
     }
   }
 
-  async function excluirPacoteCliente(idVinculo: string) {
-    if (!confirm('Deseja realmente remover este pacote da cliente?')) return
+  async function excluirPacoteCliente(clienteId: string) {
+    if (!confirm('Deseja realmente remover este pacote e limpar o histórico da cliente?')) return
 
     const { error } = await supabase
       .from('sessoes_pacote')
       .delete()
-      .eq('cliente_pacote_id', idVinculo)
+      .eq('cliente_pacote_id', clienteId)
 
     if (error) {
       alert('Erro ao excluir: ' + error.message)
@@ -306,11 +312,11 @@ export default function PacotesClientesPage() {
                 pacotesCliente.map(pc => {
                   const nomePacote = pc.nome_personalizado || 'Pacote'
                   const total = pc.sessoes_total || 1
-                  const restantes = pc.sessoes_restantes ?? total
-                  const usadas = Math.max(0, total - restantes)
+                  const historico = pc.cliente_pacotes_historico || []
+                  const usadas = historico.length
+                  const restantes = Math.max(0, total - usadas)
                   const progressoPct = Math.min(100, (usadas / total) * 100)
                   const status = pc.status || 'ativo'
-                  const historico = pc.cliente_pacotes_historico || []
 
                   return (
                     <div key={pc.id} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-3">
@@ -323,10 +329,10 @@ export default function PacotesClientesPage() {
                             </span>
                           </div>
                           <span className="inline-block mt-1 text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-lg">
-                            Cadastro manual
+                            Registro manual
                           </span>
                         </div>
-                        <button onClick={() => excluirPacoteCliente(pc.id)}
+                        <button onClick={() => excluirPacoteCliente(pc.cliente_pacote_id)}
                           className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition" title="Remover pacote">
                           <Trash2 size={16} />
                         </button>
@@ -334,7 +340,7 @@ export default function PacotesClientesPage() {
 
                       <div className="flex flex-col gap-1.5">
                         <div className="flex justify-between text-xs text-gray-500 font-medium">
-                          <span>{usadas} usadas</span>
+                          <span>{usadas} realizadas</span>
                           <span>{restantes} restantes</span>
                         </div>
                         <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
@@ -350,7 +356,7 @@ export default function PacotesClientesPage() {
                         ) : (
                           <div className="flex flex-col gap-1.5">
                             {historico.map((h: any) => {
-                              const dataSessaoStr = h.data_sessao || h.data
+                              const dataSessaoStr = h.data_sessao
                               const dataFormatada = dataSessaoStr ? dataSessaoStr.split('-').reverse().join('/') : ''
                               return (
                                 <div key={h.id} className="flex items-center justify-between text-xs text-gray-700 bg-gray-50 px-3 py-2 rounded-xl">
@@ -377,7 +383,7 @@ export default function PacotesClientesPage() {
                       )}
 
                       <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50">
-                        Vendido por: <span className="font-medium text-gray-600">Equipe</span>
+                        Profissional ID: <span className="font-medium text-gray-600">{profile.id.slice(0, 8)}...</span>
                       </div>
                     </div>
                   )
