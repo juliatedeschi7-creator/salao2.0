@@ -65,21 +65,25 @@ export default function FuncionarioDashboard() {
     </div>
   )
 
-  const navItems = [
+  // Itens de navegação dinâmicos baseados no cargo
+  const navItems = profile?.role === 'dono_salao' ? [
     { icon: Calendar, label: 'Início', href: '/funcionario' },
     { icon: Calendar, label: 'Agenda', href: '/funcionario/agenda' },
     { icon: Users, label: 'Clientes', href: '/salao/clientes' },
     { icon: DollarSign, label: 'Finanças', href: '/salao/financeiro' },
     { icon: Bell, label: 'Avisos', href: '/salao/notificacoes' },
+  ] : [
+    { icon: Calendar, label: 'Início', href: '/funcionario' },
+    { icon: Calendar, label: 'Agenda', href: '/funcionario/agenda' },
+    // Adicione aqui apenas as rotas que o funcionário tem permissão de ver
   ]
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-24">
-      {/* Header padrão igual ao do Dono (com menu lateral hambúrguer) */}
+      {/* Header padrão */}
       <Header profile={profile} salaoNome={salao?.nome} corPrimaria={cor} />
 
       <div className="px-4 py-5 space-y-4 max-w-xl mx-auto">
-        {/* Saudação idêntica */}
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{saudacao}, {profile?.nome?.split(' ')[0]}! ✨</h1>
           <p className="text-xs text-gray-500 capitalize mt-0.5">
@@ -87,7 +91,6 @@ export default function FuncionarioDashboard() {
           </p>
         </div>
 
-        {/* Alerta de confirmações se houver */}
         {aguardandoConfirmacao > 0 && (
           <div onClick={() => router.push('/salao/notificacoes')}
             className="bg-amber-50 border border-amber-200/60 p-4 rounded-2xl flex items-center justify-between cursor-pointer shadow-sm">
@@ -103,7 +106,6 @@ export default function FuncionarioDashboard() {
           </div>
         )}
 
-        {/* Cards de Métricas do Dia */}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
             <p className="text-xs text-gray-400 font-medium">Atendimentos hoje</p>
@@ -115,7 +117,6 @@ export default function FuncionarioDashboard() {
           </div>
         </div>
 
-        {/* Seção Agenda de Hoje */}
         <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-gray-900">Agenda de Hoje</h2>
@@ -138,7 +139,6 @@ export default function FuncionarioDashboard() {
         </div>
       </div>
 
-      {/* Barra de Navegação Inferior igual à do Dono */}
       <BottomNav items={navItems} corPrimaria={cor} />
     </div>
   )
