@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { Users, UserPlus, Trash2, X, Settings, Shield } from 'lucide-react'
+import { Users, UserPlus, Trash2, X, Settings, Shield, Lock, Unlock } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -31,34 +31,37 @@ export default function FuncionariosPage() {
   const [abaAtiva, setAbaAtiva] = useState<'cargo' | 'paginas' | 'escala' | 'ponto'>('cargo')
   const [salvandoConfig, setSalvandoConfig] = useState(false)
 
-  // Estados editáveis do funcionário selecionado (COM TODAS AS PÁGINAS DO SISTEMA)
+  // Estados editáveis do funcionário selecionado
   const [cargoEdit, setCargoEdit] = useState('comum')
   const [nivelAcessoEdit, setNivelAcessoEdit] = useState('restrito')
+  
+  // Cada página agora aceita: false (oculta), 'leitura' (só ver), ou 'edicao' (ver e mexer)
   const [paginasEdit, setPaginasEdit] = useState<any>({
-    dashboard: true,
-    agenda_total: true,
+    dashboard: 'edicao',
+    agenda_total: 'edicao',
     agenda_propria: false,
-    clientes: true,
-    guia: true,
-    servicos: true,
-    pacotes: true,
-    pacotes_clientes: true,
-    anamnese: true,
-    combos: true,
-    contratos: true,
-    horarios_vagos: true,
-    lembretes: true,
+    clientes: 'edicao',
+    guia: 'leitura',
+    servicos: 'leitura',
+    pacotes: 'leitura',
+    pacotes_clientes: 'leitura',
+    anamnese: 'leitura',
+    combos: 'leitura',
+    contratos: 'leitura',
+    horarios_vagos: 'leitura',
+    lembretes: 'edicao',
     produtos: false,
     financeiro: false,
     relatorios: false,
     caixa: false,
     contas: false,
     funcionarios: false,
-    avisos: true,
+    avisos: 'edicao',
     ia: false,
     quem_somos: false,
     configuracoes: false
   })
+
   const [escalaEdit, setEscalaEdit] = useState<any>({
     seg: { ativo: false, entrada: '09:00', saida: '18:00' },
     ter: { ativo: true, entrada: '08:00', saida: '18:00' },
@@ -190,7 +193,13 @@ export default function FuncionariosPage() {
     setNivelAcessoEdit(func.nivel_acesso || 'restrito')
     
     if (func.permissoes_paginas && typeof func.permissoes_paginas === 'object') {
-      setPaginasEdit({ ...paginasEdit, ...func.permissoes_paginas })
+      const convertidas: any = {}
+      Object.entries(func.permissoes_paginas).forEach(([k, v]) => {
+        if (v === true) convertidas[k] = 'edicao'
+        else if (v === false) convertidas[k] = false
+        else convertidas[k] = v
+      })
+      setPaginasEdit({ ...paginasEdit, ...convertidas })
     }
     if (func.escala_dias && typeof func.escala_dias === 'object') {
       setEscalaEdit(func.escala_dias)
@@ -221,12 +230,13 @@ export default function FuncionariosPage() {
 
       if (erroPerfil) throw erroPerfil
 
-      const payloadPermissoes = Object.entries(paginasEdit).map(([pagina_key, permitido]) => ({
+      const payloadPermissoes = Object.entries(paginasEdit).map(([pagina_key, tipoAcesso]) => ({
         salao_id: salao.id,
         user_id: funcSel.id,
         role: cargoEdit,
         pagina_key: pagina_key,
-        permitido: permitido
+        permitido: tipoAcesso !== false,
+        nivel_permissao: tipoAcesso // 'leitura' ou 'edicao'
       }))
 
       if (payloadPermissoes.length > 0) {
@@ -428,19 +438,36 @@ export default function FuncionariosPage() {
                 </div>
               )}
 
-              {/* ABA PÁGINAS COM TODAS AS OPÇÕES DO SISTEMA */}
+              {/* ABA PÁGINAS COM CONTROLE DE LEITURA OU EDIÇÃO */}
               {abaAtiva === 'paginas' && (
                 <div className="space-y-3">
-                  <p className="text-xs text-gray-500">Selecione quais páginas este funcionário pode visualizar:</p>
+                  <p className="text-xs text-gray-500">Defina o nível de acesso para cada página do sistema:</p>
                   <div className="space-y-2">
-                    {Object.keys(paginasEdit).map(pag => (
-                      <label key={pag} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition">
-                        <span className="text-xs font-medium text-gray-800 uppercase">{pag.replace('_', ' ')}</span>
-                        <input type="checkbox" checked={paginasEdit[pag]}
-                          onChange={e => setPaginasEdit({...paginasEdit, [pag]: e.target.checked})}
-                          className="w-4 h-4 rounded accent-pink-600" />
-                      </label>
-                    ))}
+                    {Object.keys(paginasEdit).map(pag => {
+                      const statusAtual = paginasEdit[pag] // false, 'leitura', 'edicao'
+                      return (
+                        <div key={pag} className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl border border-gray-100 gap-2">
+                          <span className="text-xs font-bold text-gray-800 uppercase">{pag.replace('_', ' ')}</span>
+                          
+                          <div className="flex items-center gap-1">
+                            <button type="button"
+                              onClick={() => setPaginasEdit({...paginasEdit, [pag]: statusAtual === false ? 'leitura' : false})}
+                              className={`px-3 py-1.5 rounded-xl text-[11px] font-semibold transition ${statusAtual !== false ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-gray-200 text-gray-500'}`}>
+                              {statusAtual !== false ? 'Ativo' : 'Oculto'}
+                            </button>
+
+                            {statusAtual !== false && (
+                              <select value={statusAtual}
+                                onChange={e => setPaginasEdit({...paginasEdit, [pag]: e.target.value})}
+                                className="bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-[11px] font-semibold text-gray-700 outline-none">
+                                <option value="leitura">👁️ Só Leitura</option>
+                                <option value="edicao">✏️ Pode Editar</option>
+                              </select>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
