@@ -93,13 +93,31 @@ export default function PacotesClientesPage() {
   }
 
   async function carregarPacotesDoCliente(clienteId: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('cliente_pacotes')
-      .select('*, pacotes(*), cliente_pacotes_historico(*)')
+      .select('*, pacotes(*)')
       .eq('cliente_id', clienteId)
       .order('created_at', { ascending: false })
 
-    setPacotesCliente(data || [])
+    if (error) {
+      console.error('Erro ao buscar pacotes:', error.message)
+      return
+    }
+
+    const pacotesComHistorico = await Promise.all((data || []).map(async (pc) => {
+      const { data: hist } = await supabase
+        .from('cliente_pacotes_historico')
+        .select('*')
+        .eq('cliente_pacote_id', pc.id)
+        .order('data', { ascending: false })
+
+      return {
+        ...pc,
+        cliente_pacotes_historico: hist || []
+      }
+    }))
+
+    setPacotesCliente(pacotesComHistorico)
   }
 
   async function venderPacote(e: React.FormEvent) {
@@ -176,7 +194,6 @@ export default function PacotesClientesPage() {
     setSalvando(true)
 
     try {
-      // Registrar no histórico
       const { error: errHist } = await supabase
         .from('cliente_pacotes_historico')
         .insert({
@@ -187,7 +204,6 @@ export default function PacotesClientesPage() {
 
       if (errHist) throw errHist
 
-      // Atualizar sessões restantes e status se zerar
       const novasRestantes = Math.max(0, pacoteAlvoSessao.sessoes_restantes - 1)
       const novoStatus = novasRestantes === 0 ? 'concluido' : 'ativo'
 
@@ -342,7 +358,6 @@ export default function PacotesClientesPage() {
                         </div>
                       </div>
 
-                      {/* Histórico de sessões */}
                       <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
                         <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Historico de sessoes</span>
                         
