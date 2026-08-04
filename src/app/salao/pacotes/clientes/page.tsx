@@ -129,19 +129,16 @@ export default function PacotesClientesPage() {
       const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
       const total = pacoteObj?.sessoes || 1
 
+      // GRAVAÇÃO DIRETA NA TABELA sessoes_pacote (jeito antigo)
       const dadosParaInserir = {
-        salao_id: salao.id,
-        cliente_id: clienteSelecionado.id,
-        pacote_id: pacoteEscolhido,
-        sessoes_total: total,
-        sessoes_restantes: total,
-        status: 'ativo',
-        tipo_cadastro: 'sistema',
-        vendido_por: profile.nome || 'Equipe'
+        cliente_pacote_id: clienteSelecionado.id,
+        servico_realizado: pacoteObj?.nome || 'Pacote',
+        data_sessao: new Date().toISOString().split('T')[0],
+        observacoes: 'Venda de pacote'
       }
 
       const { error } = await supabase
-        .from('cliente_pacotes')
+        .from('sessoes_pacote')
         .insert(dadosParaInserir)
 
       if (error) {
@@ -165,21 +162,15 @@ export default function PacotesClientesPage() {
     setSalvando(true)
 
     try {
-      const total = parseInt(sessoesTotalAntigo) || 1
-
       const dadosParaInserir = {
-        salao_id: salao.id,
-        cliente_id: clienteSelecionado.id,
-        sessoes_total: total,
-        sessoes_restantes: total,
-        status: 'ativo',
-        tipo_cadastro: 'manual',
-        nome_personalizado: nomePacoteAntigo,
-        vendido_por: profile.nome || 'Equipe'
+        cliente_pacote_id: clienteSelecionado.id,
+        servico_realizado: nomePacoteAntigo,
+        data_sessao: new Date().toISOString().split('T')[0],
+        observacoes: 'Cadastro manual antigo'
       }
 
       const { error } = await supabase
-        .from('cliente_pacotes')
+        .from('sessoes_pacote')
         .insert(dadosParaInserir)
 
       if (error) {
@@ -208,21 +199,11 @@ export default function PacotesClientesPage() {
         .from('sessoes_pacote')
         .insert({
           cliente_pacote_id: pacoteAlvoSessao.id,
-          servico: servicoSessao,
+          servico_realizado: servicoSessao,
           data_sessao: dataSessao
         })
 
       if (errHist) throw errHist
-
-      const novasRestantes = Math.max(0, pacoteAlvoSessao.sessoes_restantes - 1)
-      const novoStatus = novasRestantes === 0 ? 'concluido' : 'ativo'
-
-      const { error: errUp } = await supabase
-        .from('cliente_pacotes')
-        .update({ sessoes_restantes: novasRestantes, status: novoStatus })
-        .eq('id', pacoteAlvoSessao.id)
-
-      if (errUp) throw errUp
 
       setModalSessaoAberto(false)
       setServicoSessao('')
@@ -235,19 +216,14 @@ export default function PacotesClientesPage() {
     }
   }
 
-  async function excluirHistorico(histId: string, pacoteId: string, restantesAtuais: number, total: number) {
-    if (!confirm('Deseja excluir esta sessão do histórico e devolver 1 sessão?')) return
+  async function excluirHistorico(histId: string) {
+    if (!confirm('Deseja excluir esta sessão do histórico?')) return
 
     try {
       await supabase.from('sessoes_pacote').delete().eq('id', histId)
-
-      const novasRestantes = Math.min(total, restantesAtuais + 1)
-      await supabase
-        .from('cliente_pacotes')
-        .update({ sessoes_restantes: novasRestantes, status: 'ativo' })
-        .eq('id', pacoteId)
-
-      await carregarPacotesDoCliente(clienteSelecionado.id)
+      if (clienteSelecionado) {
+        await carregarPacotesDoCliente(clienteSelecionado.id)
+      }
     } catch (err: any) {
       alert('Erro ao excluir sessão: ' + err.message)
     }
@@ -257,9 +233,9 @@ export default function PacotesClientesPage() {
     if (!confirm('Deseja realmente remover este pacote da cliente?')) return
 
     const { error } = await supabase
-      .from('cliente_pacotes')
+      .from('sessoes_pacote')
       .delete()
-      .eq('id', idVinculo)
+      .eq('cliente_pacote_id', idVinculo)
 
     if (error) {
       alert('Erro ao excluir: ' + error.message)
@@ -382,9 +358,9 @@ export default function PacotesClientesPage() {
                                 <div key={h.id} className="flex items-center justify-between text-xs text-gray-700 bg-gray-50 px-3 py-2 rounded-xl">
                                   <div className="flex gap-3">
                                     <span className="font-medium text-gray-500">{dataFormatada}</span>
-                                    <span className="font-semibold text-gray-900">{h.servico}</span>
+                                    <span className="font-semibold text-gray-900">{h.servico_realizado}</span>
                                   </div>
-                                  <button onClick={() => excluirHistorico(h.id, pc.id, restantes, total)} className="text-gray-400 hover:text-red-500 p-1">
+                                  <button onClick={() => excluirHistorico(h.id)} className="text-gray-400 hover:text-red-500 p-1">
                                     <X size={14} />
                                   </button>
                                 </div>
