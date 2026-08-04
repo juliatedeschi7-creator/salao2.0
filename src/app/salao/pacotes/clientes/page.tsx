@@ -85,7 +85,7 @@ export default function PacotesClientesPage() {
 
   async function carregarPacotesDoCliente(clienteId: string) {
     const { data } = await supabase
-      .from('clientes_pacotes')
+      .from('cliente_pacotes')
       .select('*, pacotes(*)')
       .eq('cliente_id', clienteId)
 
@@ -101,7 +101,7 @@ export default function PacotesClientesPage() {
       const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
       
       const { error } = await supabase
-        .from('clientes_pacotes')
+        .from('cliente_pacotes')
         .insert({
           salao_id: salao.id,
           cliente_id: clienteSelecionado.id,
@@ -127,7 +127,7 @@ export default function PacotesClientesPage() {
     if (!confirm('Deseja realmente remover este pacote da cliente?')) return
 
     const { error } = await supabase
-      .from('clientes_pacotes')
+      .from('cliente_pacotes')
       .delete()
       .eq('id', idVinculo)
 
