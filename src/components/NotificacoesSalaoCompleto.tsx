@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, Package } from 'lucide-react'
+import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, Package, MessageCircle } from 'lucide-react'
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 type PacoteOpcao = {
@@ -50,15 +50,37 @@ export default function NotificacoesDonoPage() {
       router.push('/login')
       return
     }
-    if (profile.salao_id) carregarDados()
+    if (profile.salao_id) {
+      carregarDados()
+      registrarPushNotification()
+    }
   }, [loading, profile])
+
+  async function registrarPushNotification() {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
+      try {
+        const registration = await navigator.serviceWorker.ready
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        })
+        await supabase.from('push_subscriptions').upsert({
+          user_id: profile?.id,
+          salao_id: profile?.salao_id,
+          subscription: subscription.toJSON()
+        }, { onConflict: 'user_id' })
+      } catch (err) {
+        console.error('Erro ao registrar push:', err)
+      }
+    }
+  }
 
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
     const { data: sols } = await supabase.from('solicitacoes_agendamento')
-      .select('*, clientes(nome, email), servicos(nome, duracao_minutos)')
+      .select('*, clientes(nome, email, telefone), servicos(nome, duracao_minutos)')
       .eq('salao_id', profile!.salao_id!)
       .in('status', ['pendente', 'horario_sugerido'])
       .order('created_at', { ascending: false })
@@ -66,7 +88,7 @@ export default function NotificacoesDonoPage() {
 
     const ontem = new Date(); ontem.setDate(ontem.getDate() - 1)
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome), servicos(nome), confirmacoes_atendimento(*)')
+      .select('*, clientes(nome, telefone), servicos(nome), confirmacoes_atendimento(*)')
       .eq('salao_id', profile!.salao_id!)
       .eq('status', 'confirmado')
       .gte('data_hora', ontem.toISOString())
@@ -92,21 +114,14 @@ export default function NotificacoesDonoPage() {
     setNotificacoesExcluidas(excluidas || [])
   }
 
-  // ─── Ação ao clicar na notificação ───────────────────────────────────────
   async function handleClicarNotificacao(n: any) {
     if (!n.lida) {
       await supabase.from('notificacoes').update({ lida: true }).eq('id', n.id)
       setNotificacoes(prev => prev.map(item => item.id === n.id ? { ...item, lida: true } : item))
     }
-
-    if (n.url) {
-      router.push(n.url)
-    } else if (n.tipo === 'duplicado' || n.titulo?.toLowerCase().includes('duplicado')) {
-      router.push('/clientes')
-    }
+    if (n.url) router.push(n.url)
   }
 
-  // ─── Monta lista de serviços com pacotes disponíveis ────────────────────
   async function montarCoberturas(agendamento: any): Promise<CoberturaServico[]> {
     const idsServicos: string[] = Array.isArray(agendamento.servicos_ids) && agendamento.servicos_ids.length > 0
       ? agendamento.servicos_ids
@@ -128,7 +143,6 @@ export default function NotificacoesDonoPage() {
 
     return idsServicos.map(id => {
       const srv = (servicosInfo || []).find((s: any) => s.id === id)
-
       const pacotesCobrem = pacotesAtivos.filter((cp: any) => {
         const itens: any[] = cp.pacotes?.pacote_itens || []
         if (itens.length > 0) return itens.some((i: any) => i.servico_id === id)
@@ -168,7 +182,6 @@ export default function NotificacoesDonoPage() {
     ))
   }
 
-  // ─── Confirma e desconta dos pacotes escolhidos ──────────────────────────
   async function confirmarAtendimento() {
     if (!servicoRealizado || !modalConfirmar) return
     setSalvando(true)
@@ -183,8 +196,8 @@ export default function NotificacoesDonoPage() {
     await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', modalConfirmar.id)
 
     const hoje = new Date().toISOString().slice(0, 10)
-
     const descontos: Record<string, { nome: string; peso: number }[]> = {}
+    
     for (const cob of coberturas) {
       if (!cob.clientePacoteIdSelecionado) continue
       if (!descontos[cob.clientePacoteIdSelecionado]) descontos[cob.clientePacoteIdSelecionado] = []
@@ -193,7 +206,6 @@ export default function NotificacoesDonoPage() {
 
     for (const [cpId, itens] of Object.entries(descontos)) {
       const totalPeso = itens.reduce((acc, i) => acc + i.peso, 0)
-
       const { data: cp } = await supabase.from('cliente_pacotes')
         .select('sessoes_usadas, sessoes_total').eq('id', cpId).single()
       if (!cp) continue
@@ -219,15 +231,14 @@ export default function NotificacoesDonoPage() {
     const totalDescontados = Object.values(descontos)
       .reduce((acc, itens) => acc + itens.reduce((a, i) => a + i.peso, 0), 0)
 
-    // LÓGICA INTELIGENTE: Verifica se todos os pacotes aplicáveis acabaram ou se não há pacote ativo
+    // Verificação inteligente de pacotes esgotados ou inexistentes
     const semPacoteOuAcabou = coberturas.length === 0 || coberturas.every(cob => {
       const pacoteSelecionadoInfo = cob.pacotesDisponiveis.find(p => p.clientePacoteId === cob.clientePacoteIdSelecionado)
-      // Se não selecionou pacote ou se o pacote selecionado ficou zerado nas sessões
       return !cob.clientePacoteIdSelecionado || (pacoteSelecionadoInfo && pacoteSelecionadoInfo.sessoesRestantes - cob.sessoesEquivalentes <= 0)
     })
 
     if (semPacoteOuAcabou) {
-      const iniciarNovo = confirm('O pacote desta cliente acabou ou não há sessões suficientes. Deseja adicionar/vender um novo pacote agora?')
+      const iniciarNovo = confirm('Esta cliente não possui mais sessões disponíveis ou o pacote acabou. Deseja criar um novo pacote para ela agora?')
       if (iniciarNovo) {
         router.push(`/salao/pacotes/clientes?cliente_id=${modalConfirmar.cliente_id}&novo=true`)
         return
@@ -257,7 +268,6 @@ export default function NotificacoesDonoPage() {
     carregarDados()
   }
 
-  // ─── Demais funções ───────────────────────────────────────────────────────
   async function sugerirHorarios(solicitacao: any) {
     const horarios = horariosLivres.filter(h => h)
     if (!horarios.length) return
@@ -265,6 +275,7 @@ export default function NotificacoesDonoPage() {
     await supabase.from('solicitacoes_agendamento').update({
       status: 'horario_sugerido', horarios_sugeridos: horarios, profissional_id: profile!.id
     }).eq('id', solicitacao.id)
+
     const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
     if (cp?.profile_id) {
       await notificar({
@@ -282,48 +293,46 @@ export default function NotificacoesDonoPage() {
     await supabase.from('solicitacoes_agendamento').update({
       status: 'pendente', horarios_sugeridos: null, profissional_id: null
     }).eq('id', solicitacao.id)
-    const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
-    if (cp?.profile_id) {
-      await notificar({
-        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
-        titulo: '⚠️ Horários indisponíveis',
-        mensagem: `Os horários sugeridos para ${solicitacao.servicos?.nome} não estão mais disponíveis.`,
-        tipo: 'sistema',
-        url: '/cliente/agendamentos'
-      })
-    }
     carregarDados()
   }
 
   async function recusarSolicitacao(solicitacao: any) {
     await supabase.from('solicitacoes_agendamento').update({ status: 'recusado' }).eq('id', solicitacao.id)
-    const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
-    if (cp?.profile_id) {
-      await notificar({
-        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
-        titulo: 'Solicitação não disponível',
-        mensagem: `Não foi possível atender sua solicitação de ${solicitacao.servicos?.nome} no momento.`,
-        tipo: 'sistema',
-        url: '/cliente/agendamentos'
-      })
-    }
     carregarDados()
+  }
+
+  function enviarWhatsAppHorarios(solicitacao: any) {
+    const telefone = solicitacao.clientes?.telefone?.replace(/\D/g, '')
+    if (!telefone) {
+      alert('Telefone do cliente não cadastrado.')
+      return
+    }
+    const listaHorarios = (solicitacao.horarios_sugeridos || []).map((h: string, index: number) => 
+      `*Opção ${index + 1}:* ${new Date(h).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} às ${new Date(h).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+    ).join('\n')
+
+    const texto = encodeURIComponent(
+      `Olá, ${solicitacao.clientes?.nome}! Aqui do *${salao?.nome || 'Salão'}*. Separamos os seguintes horários disponíveis para o seu atendimento de *${solicitacao.servicos?.nome}*:\n\n${listaHorarios}\n\nQual destas opções fica melhor para você?`
+    )
+    window.open(`https://wa.me/55${telefone}?text=${texto}`, '_blank')
+  }
+
+  function enviarWhatsAppCancelamento(solicitacao: any) {
+    const telefone = solicitacao.clientes?.telefone?.replace(/\D/g, '')
+    if (!telefone) {
+      alert('Telefone do cliente não cadastrado.')
+      return
+    }
+    const texto = encodeURIComponent(
+      `Olá, ${solicitacao.clientes?.nome}! Aqui é do *${salao?.nome || 'Salão'}*. Infelizmente este horário já não temos mais disponível, mas estamos aguardando seu retorno para verificarmos outra data ideal para você!`
+    )
+    window.open(`https://wa.me/55${telefone}?text=${texto}`, '_blank')
   }
 
   async function removerHorarioIndividual(solicitacao: any, horarioRemover: string) {
     const novos = solicitacao.horarios_sugeridos.filter((h: string) => h !== horarioRemover)
     if (novos.length === 0) { cancelarSugestao(solicitacao); return }
     await supabase.from('solicitacoes_agendamento').update({ horarios_sugeridos: novos }).eq('id', solicitacao.id)
-    const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
-    if (cp?.profile_id) {
-      await notificar({
-        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
-        titulo: '⚠️ Um horário foi removido',
-        mensagem: `Um dos horários sugeridos para ${solicitacao.servicos?.nome} não está mais disponível.`,
-        tipo: 'horario_sugerido',
-        url: '/cliente/agendamentos'
-      })
-    }
     carregarDados()
   }
 
@@ -375,7 +384,6 @@ export default function NotificacoesDonoPage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-
         {/* PEDIDOS */}
         {aba === 'pedidos' && (
           solicitacoes.length === 0 ? (
@@ -392,14 +400,6 @@ export default function NotificacoesDonoPage() {
                   <p className="text-xs text-gray-400">
                     {new Date(s.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
-                  {(s.data_preferida || s.periodo_preferido) && (
-                    <p className="text-xs font-medium mt-1" style={{ color: cor }}>
-                      📅 Prefere: {s.data_preferida
-                        ? new Date(s.data_preferida + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })
-                        : 'qualquer dia'}
-                      {s.periodo_preferido ? ` · ${PERIODO_LABEL[s.periodo_preferido] || s.periodo_preferido}` : ''}
-                    </p>
-                  )}
                 </div>
                 <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
                   (s.status === 'horario_sugerido' ? 'bg-blue-50 text-blue-600' : 'bg-yellow-50 text-yellow-600')}>
@@ -409,7 +409,13 @@ export default function NotificacoesDonoPage() {
 
               {s.status === 'horario_sugerido' && s.horarios_sugeridos && (
                 <div className="bg-blue-50 rounded-xl p-3 flex flex-col gap-2">
-                  <p className="text-xs font-medium text-blue-700">Horários sugeridos — toque ✕ para remover:</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-blue-700">Horários sugeridos:</p>
+                    <button onClick={() => enviarWhatsAppHorarios(s)}
+                      className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
+                      <MessageCircle size={13} /> Enviar WhatsApp
+                    </button>
+                  </div>
                   {s.horarios_sugeridos.map((h: string, i: number) => (
                     <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
                       <p className="text-xs text-blue-600 font-medium">
@@ -432,9 +438,9 @@ export default function NotificacoesDonoPage() {
                       style={{ backgroundColor: cor }}>
                       <Clock size={14} />Sugerir horários
                     </button>
-                    <button onClick={() => recusarSolicitacao(s)}
-                      className="px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
-                      <X size={14} />
+                    <button onClick={() => { recusarSolicitacao(s); enviarWhatsAppCancelamento(s); }}
+                      className="px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium flex items-center gap-1">
+                      <X size={14} /> Recusar / Avisar
                     </button>
                   </>
                 )}
@@ -445,7 +451,7 @@ export default function NotificacoesDonoPage() {
                       style={{ borderColor: cor, color: cor }}>
                       <Clock size={14} />Alterar horários
                     </button>
-                    <button onClick={() => cancelarSugestao(s)}
+                    <button onClick={() => { cancelarSugestao(s); enviarWhatsAppCancelamento(s); }}
                       className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
                       <RotateCcw size={14} />Retirar oferta
                     </button>
@@ -521,9 +527,6 @@ export default function NotificacoesDonoPage() {
                 <div className="flex-1">
                   <p className="font-semibold text-gray-900 text-sm">{n.titulo}</p>
                   <p className="text-sm text-gray-500 mt-0.5">{n.mensagem}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {new Date(n.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </p>
                 </div>
                 <button onClick={() => restaurarNotificacao(n.id)}
                   className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
@@ -545,12 +548,9 @@ export default function NotificacoesDonoPage() {
               </h3>
               <button onClick={() => setModalSugestao(null)}><X size={20} className="text-gray-400" /></button>
             </div>
-            <p className="text-sm text-gray-500">{modalSugestao.clientes?.nome} — {modalSugestao.servicos?.nome}</p>
             {horariosLivres.map((h, i) => (
               <div key={i}>
-                <label className="text-xs font-medium text-gray-500 block mb-1">
-                  Opção {i + 1} {i === 0 ? '(obrigatória)' : '(opcional)'}
-                </label>
+                <label className="text-xs font-medium text-gray-500 block mb-1">Opção {i + 1}</label>
                 <input type="datetime-local" className="input-field"
                   value={h} onChange={e => { const n = [...horariosLivres]; n[i] = e.target.value; setHorariosLivres(n) }}
                   style={{ colorScheme: 'light' }} />
@@ -569,15 +569,13 @@ export default function NotificacoesDonoPage() {
         </div>
       )}
 
-      {/* Modal confirmar atendimento com seleção de pacote por serviço */}
+      {/* Modal confirmar atendimento */}
       {modalConfirmar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-lg">Confirmar atendimento</h3>
-              <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}>
-                <X size={20} className="text-gray-400" />
-              </button>
+              <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}><X size={20} className="text-gray-400" /></button>
             </div>
 
             <p className="text-sm text-gray-600 font-medium">{modalConfirmar.clientes?.nome}</p>
@@ -589,67 +587,35 @@ export default function NotificacoesDonoPage() {
               </div>
             ) : coberturas.length > 0 ? (
               <div className="flex flex-col gap-3">
-                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                  Serviços deste atendimento
-                </p>
                 {coberturas.map(cob => (
                   <div key={cob.servicoId} className="bg-gray-50 rounded-2xl p-3 flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${cor}18` }}>
-                        <Package size={13} style={{ color: cor }} />
-                      </div>
-                      <p className="font-semibold text-gray-900 text-sm">
-                        {cob.servicoNome}
-                        {cob.sessoesEquivalentes > 1 && (
-                          <span className="text-xs font-normal text-gray-400"> (vale {cob.sessoesEquivalentes} sessões)</span>
-                        )}
-                      </p>
-                    </div>
-
-                    {cob.pacotesDisponiveis.length === 0 ? (
-                      <p className="text-xs text-gray-400 ml-9">Sem pacote ativo para este serviço</p>
-                    ) : (
-                      <div className="ml-9">
-                        <label className="text-xs text-gray-500 mb-1 block">Descontar de qual pacote?</label>
-                        <select
-                          className="input-field text-sm py-2"
-                          value={cob.clientePacoteIdSelecionado || ''}
-                          onChange={e => alterarPacoteServico(cob.servicoId, e.target.value || null)}>
-                          <option value="">Não usar pacote</option>
-                          {cob.pacotesDisponiveis.map(op => (
-                            <option key={op.clientePacoteId} value={op.clientePacoteId}>
-                              {op.nome} ({op.sessoesRestantes} sessão{op.sessoesRestantes !== 1 ? 'ões' : ''} restante{op.sessoesRestantes !== 1 ? 's' : ''})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    <p className="font-semibold text-gray-900 text-sm">{cob.servicoNome}</p>
+                    <select
+                      className="input-field text-sm py-2"
+                      value={cob.clientePacoteIdSelecionado || ''}
+                      onChange={e => alterarPacoteServico(cob.servicoId, e.target.value || null)}>
+                      <option value="">Não usar pacote / Sem pacote</option>
+                      {cob.pacotesDisponiveis.map(op => (
+                        <option key={op.clientePacoteId} value={op.clientePacoteId}>
+                          {op.nome} ({op.sessoesRestantes} restantes)
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ))}
-
-                {coberturas.some(c => c.clientePacoteIdSelecionado) && (
-                  <div className="bg-green-50 rounded-xl px-3 py-2">
-                    <p className="text-xs text-green-700 font-medium">
-                      ✓ {coberturas.filter(c => c.clientePacoteIdSelecionado)
-                        .reduce((acc, c) => acc + c.sessoesEquivalentes, 0)} sessão(ões) serão descontadas dos pacotes selecionados
-                    </p>
-                  </div>
-                )}
               </div>
-            ) : null}
+            ) : (
+              <p className="text-xs text-red-500">Este cliente não possui pacotes ativos cadastrados.</p>
+            )}
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">O que foi realizado?</label>
-              <input className="input-field" placeholder="Ex: Manicure + Pedicure tradicionais"
-                value={servicoRealizado} onChange={e => setServicoRealizado(e.target.value)} />
+              <input className="input-field" value={servicoRealizado} onChange={e => setServicoRealizado(e.target.value)} />
             </div>
 
             <div className="flex gap-3">
               <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
-                Cancelar
-              </button>
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
               <button onClick={confirmarAtendimento} disabled={salvando || !servicoRealizado}
                 className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40"
                 style={{ backgroundColor: cor }}>
