@@ -34,6 +34,8 @@ export default function PacotesClientesPage() {
   const [pacoteEscolhido, setPacoteEscolhido] = useState('')
   const [nomePacoteAntigo, setNomePacoteAntigo] = useState('')
   const [sessoesTotalAntigo, setSessoesTotalAntigo] = useState('')
+  
+  // Inputs para dar baixa na sessão com detalhes
   const [servicoSessao, setServicoSessao] = useState('')
   const [dataSessao, setDataSessao] = useState(new Date().toISOString().split('T')[0])
   const [salvando, setSalvando] = useState(false)
@@ -124,7 +126,8 @@ export default function PacotesClientesPage() {
           servico: nomeServico,
           sessoes_total: totalSessoes,
           sessoes_restantes: totalSessoes,
-          data_sessao: new Date().toISOString().split('T')[0]
+          data_sessao: new Date().toISOString().split('T')[0],
+          status: 'ativo'
         })
 
       if (error) {
@@ -156,7 +159,8 @@ export default function PacotesClientesPage() {
           servico: nomePacoteAntigo,
           sessoes_total: totalNum,
           sessoes_restantes: totalNum,
-          data_sessao: new Date().toISOString().split('T')[0]
+          data_sessao: new Date().toISOString().split('T')[0],
+          status: 'ativo'
         })
 
       if (error) {
@@ -175,9 +179,9 @@ export default function PacotesClientesPage() {
     }
   }
 
-  async function adicionarSessaoRealizada(e: React.FormEvent) {
+  async function registrarSessaoRealizada(e: React.FormEvent) {
     e.preventDefault()
-    if (!pacoteAlvoSessao || !clienteSelecionado) return
+    if (!pacoteAlvoSessao || !clienteSelecionado || !servicoSessao) return
     
     if (pacoteAlvoSessao.sessoes_restantes <= 0) {
       alert('Este pacote não possui mais sessões restantes.')
@@ -194,7 +198,8 @@ export default function PacotesClientesPage() {
         .from('pacotes_clientes_resumo')
         .update({ 
           sessoes_restantes: novasRestantes,
-          status: novoStatus 
+          status: novoStatus,
+          servico: `${pacoteAlvoSessao.servico} (Realizado: ${servicoSessao} em ${dataSessao.split('-').reverse().join('/')})`
         })
         .eq('id', pacoteAlvoSessao.id)
 
@@ -202,10 +207,11 @@ export default function PacotesClientesPage() {
 
       setModalSessaoAberto(false)
       setServicoSessao('')
+      setDataSessao(new Date().toISOString().split('T')[0])
       setPacoteAlvoSessao(null)
       await carregarPacotesDoCliente(clienteSelecionado.nome)
     } catch (err: any) {
-      alert('Erro ao abater sessão: ' + err.message)
+      alert('Erro ao registrar sessão: ' + err.message)
     } finally {
       setSalvando(false)
     }
@@ -329,7 +335,7 @@ export default function PacotesClientesPage() {
                         <button onClick={() => { setPacoteAlvoSessao(pc); setModalSessaoAberto(true); }}
                           className="w-full border py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 mt-1"
                           style={{ borderColor: cor, color: cor }}>
-                          <Plus size={16} /> Dar baixa em 1 sessão
+                          <Plus size={16} /> Adicionar Sessão Realizada
                         </button>
                       )}
 
@@ -446,23 +452,32 @@ export default function PacotesClientesPage() {
         </div>
       )}
 
-      {/* Modal Confirmar Baixa de Sessão */}
+      {/* Modal Adicionar Sessão Realizada com Data e Serviço */}
       {modalSessaoAberto && pacoteAlvoSessao && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900">Dar Baixa em Sessão</h3>
+              <h3 className="text-base font-bold text-gray-900">Adicionar Sessão Realizada</h3>
               <button onClick={() => setModalSessaoAberto(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
-            <p className="text-xs text-gray-600">
-              Deseja dar baixa em 1 sessão do pacote <strong className="text-gray-900">{pacoteAlvoSessao.servico}</strong>? Isso atualizará as sessões restantes para <strong className="text-gray-900">{pacoteAlvoSessao.sessoes_restantes - 1}</strong>.
-            </p>
-            <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setModalSessaoAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
-              <button type="button" disabled={salvando} onClick={adicionarSessaoRealizada} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
-                {salvando ? 'Salvando...' : 'Confirmar Baixa'}
-              </button>
-            </div>
+            <form onSubmit={registrarSessaoRealizada} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Serviço Realizado</label>
+                <input type="text" placeholder="Ex: Manicure ou Pedicure" value={servicoSessao} onChange={e => setServicoSessao(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Data da Sessão</label>
+                <input type="date" value={dataSessao} onChange={e => setDataSessao(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalSessaoAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
+                <button type="submit" disabled={salvando} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
+                  {salvando ? 'Salvando...' : 'Adicionar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
