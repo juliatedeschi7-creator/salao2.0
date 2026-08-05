@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, MessageCircle, Share2, Bookmark } from 'lucide-react'
+import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, MessageCircle } from 'lucide-react'
 
 // ─── Tipos ──────────────────────────────────────────────────────────────────
 type PacoteOpcao = {
@@ -22,19 +22,12 @@ type CoberturaServico = {
   pacotesDisponiveis: PacoteOpcao[]
 }
 
-type ServicoCatalogo = {
-  id: string
-  nome: string
-  preco: number
-  categoria_id?: string
-  categoria?: { nome: string }
-}
-
 export default function NotificacoesDonoPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [aba, setAba] = useState<'pedidos' | 'confirmacoes' | 'avisos' | 'excluidas' | 'catalogo'>('pedidos')
+  // Aba 'catalogo' removida das opções principais
+  const [aba, setAba] = useState<'pedidos' | 'confirmacoes' | 'avisos' | 'excluidas'>('pedidos')
   
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
   const [confirmacoes, setConfirmacoes] = useState<any[]>([])
@@ -49,18 +42,6 @@ export default function NotificacoesDonoPage() {
   const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
   const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
 
-  // Estados para Disparo do Catálogo com Preview e Seleção Granular
-  const [categoriasLista, setCategoriasLista] = useState<any[]>([])
-  const [servicosLista, setServicosLista] = useState<ServicoCatalogo[]>([])
-  const [servicosSelecionadosIds, setServicosSelecionadosIds] = useState<string[]>([])
-  
-  // Modal e Template de Preview do WhatsApp
-  const [modalPreviewOpen, setModalPreviewOpen] = useState(false)
-  const [templateMensagem, setTemplateMensagem] = useState(
-    'Olá, tudo bem? 💖 Passando para lembrar dos nossos serviços e valores:\n\n{itens}\n\nAgende já o seu horário! ✨'
-  )
-  const [telefoneDestinoWp, setTelefoneDestinoWp] = useState('')
-
   useEffect(() => {
     if (loading) return
     if (!profile) {
@@ -69,7 +50,6 @@ export default function NotificacoesDonoPage() {
     }
     if (profile.salao_id) {
       carregarDados()
-      carregarCatalogoServicos()
       registrarPushNotification()
     }
   }, [loading, profile])
@@ -96,9 +76,6 @@ export default function NotificacoesDonoPage() {
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
-    if (sal?.template_whatsapp_catalogo) {
-      setTemplateMensagem(sal.template_whatsapp_catalogo)
-    }
 
     const { data: sols } = await supabase.from('solicitacoes_agendamento')
       .select('*, clientes(nome, email, telefone), servicos(nome, duracao_minutos)')
@@ -109,7 +86,7 @@ export default function NotificacoesDonoPage() {
 
     const ontem = new Date(); ontem.setDate(ontem.getDate() - 1)
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome, telefone), servicos(nome), confirmacoes_atendimento(*)')
+      .select('*, clientes(nome, telefone, id), servicos(nome, id), confirmacoes_atendimento(*)')
       .eq('salao_id', profile!.salao_id!)
       .eq('status', 'confirmado')
       .gte('data_hora', ontem.toISOString())
@@ -135,81 +112,6 @@ export default function NotificacoesDonoPage() {
     setNotificacoesExcluidas(excluidas || [])
   }
 
-  async function carregarCatalogoServicos() {
-    const { data: cats } = await supabase.from('categorias').select('*').eq('salao_id', profile!.salao_id!)
-    setCategoriasLista(cats || [])
-
-    const { data: srvs } = await supabase.from('servicos').select('*, categoria:categorias(nome)').eq('salao_id', profile!.salao_id!)
-    setServicosLista(srvs || [])
-  }
-
-  function toggleServicoSelecao(id: string) {
-    if (servicosSelecionadosIds.includes(id)) {
-      setServicosSelecionadosIds(servicosSelecionadosIds.filter(i => i !== id))
-    } else {
-      setServicosSelecionadosIds([...servicosSelecionadosIds, id])
-    }
-  }
-
-  function selecionarTodosCategoria(catId: string | null) {
-    const idsDaCat = servicosLista.filter(s => (s.categoria_id === catId || (!catId && !s.categoria_id))).map(s => s.id)
-    const todosJaEstao = idsDaCat.every(id => servicosSelecionadosIds.includes(id))
-    if (todosJaEstao) {
-      setServicosSelecionadosIds(servicosSelecionadosIds.filter(id => !idsDaCat.includes(id)))
-    } else {
-      const combinados = Array.from(new Set([...servicosSelecionadosIds, ...idsDaCat]))
-      setServicosSelecionadosIds(combinados)
-    }
-  }
-
-  function gerarTextoPreview(): string {
-    const itensSelecionados = servicosLista.filter(s => servicosSelecionadosIds.includes(s.id))
-    
-    const agrupado: Record<string, ServicoCatalogo[]> = {}
-    itensSelecionados.forEach(item => {
-      const nomeCat = item.categoria?.nome || 'Outros'
-      if (!agrupado[nomeCat]) agrupado[nomeCat] = []
-      agrupado[nomeCat].push(item)
-    })
-
-    let blocoItens = ''
-    for (const [cat, itens] of Object.entries(agrupado)) {
-      blocoItens += `📌 *${cat}*\n`
-      itens.forEach(i => {
-        const precoFormatado = Number(i.preco || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-        blocoItens += `• ${i.nome} - ${precoFormatado}\n`
-      })
-      blocoItens += `\n`
-    }
-
-    return templateMensagem.replace('{itens}', blocoItens.trim())
-  }
-
-  async function salvarTemplatePadrao() {
-    await supabase.from('saloes').update({ template_whatsapp_catalogo: templateMensagem }).eq('id', profile!.salao_id!)
-    alert('Pré-molde salvo como seu modelo padrão com sucesso! 🚀')
-  }
-
-  function abrirPreviewWp() {
-    if (servicosSelecionadosIds.length === 0) {
-      alert('Selecione ao menos um serviço ou item do catálogo para enviar.')
-      return
-    }
-    setModalPreviewOpen(true)
-  }
-
-  function dispararWhatsAppFinal() {
-    const textoFinal = encodeURIComponent(gerarTextoPreview())
-    const telLimpo = telefoneDestinoWp ? telefoneDestinoWp.replace(/\D/g, '') : ''
-    
-    if (telLimpo) {
-      window.open(`https://api.whatsapp.com/send?phone=55${telLimpo}&text=${textoFinal}`, '_blank')
-    } else {
-      window.open(`https://api.whatsapp.com/send?text=${textoFinal}`, '_blank')
-    }
-    setModalPreviewOpen(false)
-  }
-
   async function handleClicarNotificacao(n: any) {
     if (!n.lida) {
       await supabase.from('notificacoes').update({ lida: true }).eq('id', n.id)
@@ -231,16 +133,16 @@ export default function NotificacoesDonoPage() {
       .select('id, nome, sessoes_equivalentes')
       .eq('salao_id', profile!.salao_id!)
 
-    // Consulta direta à view 'pacotes_clientes_resumo' utilizando a coluna sessoes_restantes
+    // Consulta robusta na view 'pacotes_clientes_resumo', mapeando com segurança as colunas e IDs possíveis
     const { data: resumoPacotes } = await supabase.from('pacotes_clientes_resumo')
       .select('*')
       .eq('cliente_id', agendamento.cliente_id)
       .gt('sessoes_restantes', 0)
 
     const opcoesGerais: PacoteOpcao[] = (resumoPacotes || []).map((cp: any) => ({
-      clientePacoteId: cp.id || cp.cliente_pacote_id,
+      clientePacoteId: cp.cliente_pacote_id || cp.id,
       nome: cp.pacote_nome || cp.nome || 'Pacote Ativo',
-      sessoesRestantes: cp.sessoes_restantes,
+      sessoesRestantes: Number(cp.sessoes_restantes || 0),
     }))
 
     if (idsServicos.length === 0) {
@@ -452,15 +354,14 @@ export default function NotificacoesDonoPage() {
     pedidos: solicitacoes.length,
     confirmacoes: confirmacoes.length,
     avisos: notificacoes.filter(n => !n.lida).length,
-    excluidas: 0,
-    catalogo: 0
+    excluidas: 0
   }
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-12">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Central de Atendimento & Disparos</h1>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Central de Atendimento</h1>
       </div>
 
       <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
@@ -468,7 +369,6 @@ export default function NotificacoesDonoPage() {
           { key: 'pedidos', label: 'Pedidos' },
           { key: 'confirmacoes', label: 'Confirmar' },
           { key: 'avisos', label: 'Avisos' },
-          { key: 'catalogo', label: '✨ Enviar Catálogo' },
           { key: 'excluidas', label: 'Excluídas' },
         ] as const).map(t => (
           <button key={t.key} onClick={() => setAba(t.key)}
@@ -617,97 +517,6 @@ export default function NotificacoesDonoPage() {
           ))
         )}
 
-        {/* CATÁLOGO */}
-        {aba === 'catalogo' && (
-          <div className="flex flex-col gap-4">
-            <div className="card bg-white p-4 flex flex-col gap-2">
-              <h2 className="font-bold text-gray-900 text-base">Selecione o que deseja enviar</h2>
-              <p className="text-xs text-gray-500">Escolha serviços específicos dentro de cada categoria para montar sua mensagem personalizada para o WhatsApp.</p>
-            </div>
-
-            {categoriasLista.length === 0 && servicosLista.length === 0 ? (
-              <div className="card text-center py-8">
-                <p className="text-sm text-gray-400">Nenhum serviço cadastrado no catálogo.</p>
-              </div>
-            ) : (
-              <>
-                {categoriasLista.map(cat => {
-                  const srvsDestaCat = servicosLista.filter(s => s.categoria_id === cat.id)
-                  if (srvsDestaCat.length === 0) return null
-                  const todosDaCatSelecionados = srvsDestaCat.every(s => servicosSelecionadosIds.includes(s.id))
-
-                  return (
-                    <div key={cat.id} className="card bg-white p-4 flex flex-col gap-3">
-                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                        <span className="font-bold text-sm text-gray-800" style={{ color: cor }}>📁 {cat.nome}</span>
-                        <button onClick={() => selecionarTodosCategoria(cat.id)}
-                          className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200">
-                          {todosDaCatSelecionados ? 'Desmarcar todos' : 'Selecionar categoria'}
-                        </button>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        {srvsDestaCat.map(srv => {
-                          const selecionado = servicosSelecionadosIds.includes(srv.id)
-                          return (
-                            <label key={srv.id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${selecionado ? 'border-pink-500 bg-pink-50/30' : 'border-gray-100 bg-gray-50'}`}>
-                              <div className="flex items-center gap-2.5">
-                                <input type="checkbox" checked={selecionado} onChange={() => toggleServicoSelecao(srv.id)}
-                                  className="w-4 h-4 rounded text-pink-600 focus:ring-pink-500" />
-                                <span className="text-sm font-medium text-gray-900">{srv.nome}</span>
-                              </div>
-                              <span className="text-xs font-semibold text-gray-600">
-                                {Number(srv.preco || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                              </span>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-
-                {servicosLista.filter(s => !s.categoria_id).length > 0 && (
-                  <div className="card bg-white p-4 flex flex-col gap-3">
-                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                      <span className="font-bold text-sm text-gray-800">📁 Outros Serviços</span>
-                      <button onClick={() => selecionarTodosCategoria(null)}
-                        className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-gray-100 text-gray-600">
-                        Selecionar todos
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {servicosLista.filter(s => !s.categoria_id).map(srv => {
-                        const selecionado = servicosSelecionadosIds.includes(srv.id)
-                        return (
-                          <label key={srv.id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer ${selecionado ? 'border-pink-500 bg-pink-50/30' : 'border-gray-100 bg-gray-50'}`}>
-                            <div className="flex items-center gap-2.5">
-                              <input type="checkbox" checked={selecionado} onChange={() => toggleServicoSelecao(srv.id)}
-                                className="w-4 h-4 rounded text-pink-600 focus:ring-pink-500" />
-                              <span className="text-sm font-medium text-gray-900">{srv.nome}</span>
-                            </div>
-                            <span className="text-xs font-semibold text-gray-600">
-                              {Number(srv.preco || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                            </span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {servicosSelecionadosIds.length > 0 && (
-              <button onClick={abrirPreviewWp}
-                className="sticky bottom-4 w-full py-3.5 rounded-2xl text-white font-bold flex items-center justify-center gap-2 shadow-lg transition-all"
-                style={{ backgroundColor: '#25D366' }}>
-                <Share2 size={18} /> Pré-visualizar e Enviar ({servicosSelecionadosIds.length} selecionados)
-              </button>
-            )}
-          </div>
-        )}
-
         {/* EXCLUÍDAS */}
         {aba === 'excluidas' && (
           notificacoesExcluidas.length === 0 ? (
@@ -731,56 +540,6 @@ export default function NotificacoesDonoPage() {
           ))
         )}
       </div>
-
-      {/* MODAL DE PREVIEW */}
-      {modalPreviewOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <MessageCircle size={22} className="text-green-600" />
-                <h3 className="font-bold text-gray-900 text-lg">Preview da Mensagem</h3>
-              </div>
-              <button onClick={() => setModalPreviewOpen(false)}><X size={20} className="text-gray-400" /></button>
-            </div>
-
-            <p className="text-xs text-gray-500">Você pode editar livremente o texto abaixo, adicionar emojis ou alterar a estrutura. Use <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600 font-bold">{`{itens}`}</code> onde deseja que os itens do catálogo apareçam.</p>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">Telefone do Cliente (Opcional - com DDD)</label>
-              <input type="text" placeholder="Ex: 11999999999" value={telefoneDestinoWp}
-                onChange={e => setTelefoneDestinoWp(e.target.value)} className="input-field text-sm" />
-              <p className="text-[10px] text-gray-400 mt-0.5">Se deixar vazio, o WhatsApp abrirá para você escolher o contato livremente.</p>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-600 mb-1 block">Editor do Texto Base (Pré-molde)</label>
-              <textarea rows={6} value={templateMensagem}
-                onChange={e => setTemplateMensagem(e.target.value)}
-                className="input-field text-xs font-mono leading-relaxed" />
-            </div>
-
-            <div className="bg-green-50 border border-green-200 rounded-2xl p-3 flex flex-col gap-1">
-              <span className="text-[10px] font-bold text-green-700 uppercase tracking-wider">Como será enviado no WhatsApp:</span>
-              <pre className="text-xs text-gray-800 whitespace-pre-wrap font-sans bg-white p-3 rounded-xl border border-green-100 shadow-inner">
-                {gerarTextoPreview()}
-              </pre>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <button onClick={salvarTemplatePadrao}
-                className="py-3 px-4 rounded-2xl border border-gray-200 text-gray-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-gray-50">
-                <Bookmark size={14} /> Salvar como meu Pré-molde
-              </button>
-              <button onClick={dispararWhatsAppFinal}
-                className="flex-1 py-3.5 rounded-2xl text-white text-sm font-bold flex items-center justify-center gap-2 shadow-md"
-                style={{ backgroundColor: '#25D366' }}>
-                <MessageCircle size={16} /> Enviar no WhatsApp Agora
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal sugerir horários */}
       {modalSugestao && (
@@ -813,7 +572,7 @@ export default function NotificacoesDonoPage() {
         </div>
       )}
 
-      {/* Modal confirmar atendimento */}
+      {/* Modal confirmar atendimento com visualização correta de pacotes e sessões restantes */}
       {modalConfirmar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
@@ -841,7 +600,7 @@ export default function NotificacoesDonoPage() {
                       <option value="">Não usar pacote / Sem pacote</option>
                       {cob.pacotesDisponiveis.map(op => (
                         <option key={op.clientePacoteId} value={op.clientePacoteId}>
-                          {op.nome} ({op.sessoesRestantes} restantes)
+                          {op.nome} — {op.sessoesRestantes} sessões restantes
                         </option>
                       ))}
                     </select>
@@ -849,7 +608,7 @@ export default function NotificacoesDonoPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-red-500">Este cliente não possui pacotes ativos cadastrados.</p>
+              <p className="text-xs text-red-500">Este cliente não possui pacotes ativos com sessões disponíveis.</p>
             )}
 
             <div>
