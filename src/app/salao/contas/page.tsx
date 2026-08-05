@@ -39,19 +39,19 @@ export default function ContasPage() {
 
   useEffect(() => {
     if (loading) return
+    
     if (!profile) {
       router.push('/login')
       return
     }
     
-    // Aceita variações comuns do tipo de usuário dono/funcionário para evitar redirecionamento incorreto
-    const ehDonoOuFuncionario = 
-      profile.tipo === 'dono_salao' || 
-      profile.tipo === 'dono' || 
-      profile.tipo === 'admin' || 
-      profile.tipo === 'funcionario'
+    // Validação robusta: permite se tiver salao_id ou se o tipo corresponder a dono/funcionário
+    const tipo = profile.tipo ? String(profile.tipo).toLowerCase().trim() : ''
+    const ehAutorizado = 
+      profile.salao_id || 
+      ['dono_salao', 'dono', 'admin', 'funcionario', 'gerente'].includes(tipo)
 
-    if (!ehDonoOuFuncionario) { 
+    if (!ehAutorizado) { 
       router.push('/login') 
       return 
     }
@@ -62,16 +62,18 @@ export default function ContasPage() {
   }, [loading, profile, router])
 
   async function carregarDados() {
-    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
+    if (!profile?.salao_id) return
+
+    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile.salao_id).single()
     setSalao(sal)
 
     const { data: clis } = await supabase.from('clientes').select('id, nome')
-      .eq('salao_id', profile!.salao_id!).order('nome')
+      .eq('salao_id', profile.salao_id).order('nome')
     setClientes(clis || [])
 
     const { data: cnts } = await supabase.from('contas_clientes')
       .select('*, clientes(nome)')
-      .eq('salao_id', profile!.salao_id!)
+      .eq('salao_id', profile.salao_id)
       .order('created_at', { ascending: false })
     setContas(cnts || [])
 
@@ -162,6 +164,18 @@ export default function ContasPage() {
   async function excluir(id: string) {
     await supabase.from('contas_clientes').delete().eq('id', id)
     carregarDados()
+  }
+
+  // Se estiver carregando os dados do usuário, exibe um loader para evitar o piscar e redirecionamento falso
+  if (loading || !profile) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-500 text-sm font-medium">Carregando...</p>
+        </div>
+      </div>
+    )
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
