@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, DollarSign, Check, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown } from 'lucide-react'
+import { ArrowLeft, Plus, DollarSign, Check, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Edit2, Trash2, AlertCircle } from 'lucide-react'
 
 const meioPagamentoLabel: Record<string, string> = {
   pix: 'Pix', dinheiro: 'Dinheiro',
@@ -27,14 +27,20 @@ export default function ContasPage() {
   const [filtro, setFiltro] = useState<'abertas' | 'pagas' | 'todas'>('abertas')
   const [modal, setModal] = useState(false)
   const [modalPagamento, setModalPagamento] = useState<any>(null)
+  const [modalEdicaoPagamento, setModalEdicaoPagamento] = useState<any>(null)
   const [expandido, setExpandido] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
   const [erroPagamento, setErroPagamento] = useState('')
+  const [erroEdicao, setErroEdicao] = useState('')
+  
   const [form, setForm] = useState({ cliente_id: '', descricao: '', valor: '', tipo: 'debito' })
   const [formPagamento, setFormPagamento] = useState({
     valor: '', meio_pagamento: 'pix', descricao: '',
     data_pagamento: new Date().toISOString().split('T')[0]
+  })
+  const [formEdicaoPagamento, setFormEdicaoPagamento] = useState({
+    valor: '', meio_pagamento: 'pix', descricao: '', data_pagamento: ''
   })
 
   useEffect(() => {
@@ -45,7 +51,6 @@ export default function ContasPage() {
       return
     }
     
-    // Validação robusta: permite se tiver salao_id ou se o tipo corresponder a dono/funcionário
     const tipo = profile.tipo ? String(profile.tipo).toLowerCase().trim() : ''
     const ehAutorizado = 
       profile.salao_id || 
@@ -161,12 +166,112 @@ export default function ContasPage() {
     carregarDados()
   }
 
+  function abrirModalEdicaoPagamento(pag: any, conta: any) {
+    setModalEdicaoPagamento({ ...pag, conta })
+    setErroEdicao('')
+    setFormEdicaoPagamento({
+      valor: String(pag.valor),
+      meio_pagamento: pag.meio_pagamento || 'pix',
+      descricao: pag.descricao || '',
+      data_pagamento: pag.data_pagamento || new Date().toISOString().split('T')[0]
+    })
+  }
+
+  async function atualizarPagamentoHistorico() {
+    if (!modalEdicaoPagamento) return
+    setErroEdicao('')
+    const novoValor = parseFloat(formEdicaoPagamento.valor)
+    if (!novoValor || novoValor <= 0) { setErroEdicao('Informe um valor válido.'); return }
+    
+    setSalvando(true)
+    const contaId = modalEdicaoPagamento.conta_id
+    const conta = modalEdicaoPagamento.conta
+
+    // Recalcular o total pago da conta considerando a alteração deste lançamento específico
+    const historicoAtual = pagamentos[contaId] || []
+    const valorAntigo = Number(modalEdicaoPagamento.valor)
+    const outrosPagamentosSoma = historicoAtual
+      .filter((p: any) => p.id !== modalEdicaoPagamento.id)
+      .reduce((acc: number, p: any) => acc + Number(p.valor), 0)
+    
+    const novoTotalPago = outrosPagamentosSoma + novoValor
+    const valorTotalConta = Number(conta.valor)
+    const quitado = novoTotalPago >= valorTotalConta
+
+    // Atualiza o registro no histórico (pagamentos_conta)
+    const { error: errUpHist } = await supabase.from('pagamentos_conta').update({
+      valor: novoValor,
+      meio_pagamento: formEdicaoPagamento.meio_pagamento,
+      descricao: formEdicaoPagamento.descricao || null,
+      data_pagamento: formEdicaoPagamento.data_pagamento
+    }).eq('id', modalEdicaoPagamento.id)
+
+    if (errUpHist) {
+      setErroEdicao('Erro ao atualizar histórico: ' + errUpHist.message)
+      setSalvando(false)
+      return
+    }
+
+    // Atualiza o resumo na tabela principal da conta
+    const { error: errUpConta } = await supabase.from('contas_clientes').update({
+      valor_pago: novoTotalPago,
+      status: quitado ? 'pago' : 'pendente',
+      ultimo_pagamento: new Date().toISOString()
+    }).eq('id', contaId)
+
+    if (errUpConta) {
+      setErroEdicao('Erro ao atualizar conta: ' + errUpConta.message)
+      setSalvando(false)
+      carregarDados()
+      return
+    }
+
+    setModalEdicaoPagamento(null)
+    setSalvando(false)
+    carregarDados()
+  }
+
+  async function excluirPagamentoHistorico(pag: any, conta: any) {
+    if (!confirm('Deseja realmente excluir este registro de pagamento/devolução?')) return
+    setSalvando(true)
+
+    const contaId = conta.id
+    const historicoAtual = pagamentos[contaId] || []
+    const outrosPagamentosSoma = historicoAtual
+      .filter((p: any) => p.id !== pag.id)
+      .reduce((acc: number, p: any) => acc + Number(p.valor), 0)
+    
+    const valorTotalConta = Number(conta.valor)
+    const quitado = outrosPagamentosSoma >= valorTotalConta
+
+    // Deleta o registro do histórico
+    const { error: errDel } = await supabase.from('pagamentos_conta').delete().eq('id', pag.id)
+    if (errDel) {
+      alert('Erro ao excluir registro: ' + errDel.message)
+      setSalvando(false)
+      return
+    }
+
+    // Atualiza a conta principal subtraindo o valor excluído
+    const { error: errUpConta } = await supabase.from('contas_clientes').update({
+      valor_pago: outrosPagamentosSoma,
+      status: quitado ? 'pago' : 'pendente'
+    }).eq('id', contaId)
+
+    if (errUpConta) {
+      alert('Registro excluído, mas houve erro ao atualizar o status da conta: ' + errUpConta.message)
+    }
+
+    setSalvando(false)
+    carregarDados()
+  }
+
   async function excluir(id: string) {
+    if (!confirm('Deseja realmente excluir esta conta inteira?')) return
     await supabase.from('contas_clientes').delete().eq('id', id)
     carregarDados()
   }
 
-  // Se estiver carregando os dados do usuário, exibe um loader para evitar o piscar e redirecionamento falso
   if (loading || !profile) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
@@ -295,20 +400,32 @@ export default function ContasPage() {
                       <span className="text-gray-400">
                         {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
-                      <span className="font-medium text-gray-700">Lançamento: {fmt(Number(c.valor))}</span>
+                      <span className="font-medium text-gray-700">Lançamento inicial: {fmt(Number(c.valor))}</span>
                     </div>
 
                     {historico.map((p: any) => (
-                      <div key={p.id} className="flex items-center justify-between text-xs">
-                        <span className="text-gray-400">
-                          {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
-                        </span>
-                        <div className="text-right">
-                          <span className="font-medium text-green-600">
+                      <div key={p.id} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded-lg">
+                        <div>
+                          <span className="text-gray-400 block">
+                            {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                          <span className="font-medium text-green-600 block mt-0.5">
                             {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
                             {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
                           </span>
                           {p.descricao && <p className="text-xs text-gray-400 mt-0.5">{p.descricao}</p>}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => abrirModalEdicaoPagamento(p, c)}
+                            className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                            title="Editar pagamento">
+                            <Edit2 size={13} />
+                          </button>
+                          <button onClick={() => excluirPagamentoHistorico(p, c)}
+                            className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                            title="Excluir pagamento">
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -324,7 +441,7 @@ export default function ContasPage() {
                     )}
                     <button onClick={() => excluir(c.id)}
                       className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
-                      <X size={14} />Excluir
+                      <X size={14} />Excluir conta
                     </button>
                   </div>
                 </div>
@@ -464,6 +581,67 @@ export default function ContasPage() {
                 className="flex-1 py-3 rounded-2xl text-white font-medium"
                 style={{ backgroundColor: cor }}>
                 {salvando ? 'Salvando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar registro de pagamento / devolução */}
+      {modalEdicaoPagamento && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-gray-900 text-lg">Editar registro de pagamento</h3>
+            <p className="text-sm text-gray-500">
+              {modalEdicaoPagamento.conta?.clientes?.nome}
+            </p>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor</label>
+              <input className="input-field" type="number" step="0.01" min="0.01"
+                value={formEdicaoPagamento.valor}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, valor: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Meio de pagamento</label>
+              <select className="input-field" value={formEdicaoPagamento.meio_pagamento}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, meio_pagamento: e.target.value }))}>
+                <option value="pix">Pix</option>
+                <option value="dinheiro">Dinheiro</option>
+                <option value="cartao_credito">Cartão de crédito</option>
+                <option value="cartao_debito">Cartão de débito</option>
+                <option value="transferencia">Transferência</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição (opcional)</label>
+              <textarea className="input-field resize-none" rows={2}
+                value={formEdicaoPagamento.descricao}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, descricao: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Data</label>
+              <input className="input-field" type="date" value={formEdicaoPagamento.data_pagamento}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, data_pagamento: e.target.value }))}
+                style={{ colorScheme: 'light' }} />
+            </div>
+
+            {erroEdicao && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm">{erroEdicao}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalEdicaoPagamento(null)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+              <button onClick={atualizarPagamentoHistorico} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
+                style={{ backgroundColor: cor }}>
+                {salvando ? 'Salvando...' : 'Salvar alterações'}
               </button>
             </div>
           </div>
