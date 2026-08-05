@@ -1,667 +1,729 @@
 // @ts-nocheck
 'use client'
-
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText, Share2, Check, Filter } from 'lucide-react'
+import { ArrowLeft, Plus, DollarSign, Check, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Edit2, Trash2, MessageSquare, AlertCircle } from 'lucide-react'
 
-export default function ServicosPage() {
+const meioPagamentoLabel: Record<string, string> = {
+  pix: 'Pix', dinheiro: 'Dinheiro',
+  cartao_credito: 'Cartão de crédito',
+  cartao_debito: 'Cartão de débito',
+  transferencia: 'Transferência'
+}
+
+function fmt(v: number) {
+  return `R$ ${Number(v).toFixed(2).replace('.', ',')}`
+}
+
+export default function ContasPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [servicos, setServicos] = useState<any[]>([])
-  const [fotos, setFotos] = useState<any[]>([])
-  const [categorias, setCategorias] = useState<any[]>([])
-  const [orcamentos, setOrcamentos] = useState<any[]>([])
-  const [categoriaFiltro, setCategoriaFiltro] = useState('Todos')
+  const [contas, setContas] = useState<any[]>([])
+  const [clientes, setClientes] = useState<any[]>([])
+  const [pagamentos, setPagamentos] = useState<Record<string, any[]>>({})
+  const [filtro, setFiltro] = useState<'abertas' | 'pagas' | 'todas'>('abertas')
   const [modal, setModal] = useState(false)
-  const [modalCategorias, setModalCategorias] = useState(false)
-  const [modalCompartilhar, setModalCompartilhar] = useState(false)
-  const [categoriaCompartilhar, setCategoriaCompartilhar] = useState('Todos')
-  const [modalOrcamento, setModalOrcamento] = useState<any>(null)
-  const [editando, setEditando] = useState<any>(null)
+  const [modalPagamento, setModalPagamento] = useState<any>(null)
+  const [modalEdicaoPagamento, setModalEdicaoPagamento] = useState<any>(null)
+  const [modalWhatsapp, setModalWhatsapp] = useState<any>(null)
+  
   const [expandido, setExpandido] = useState<string | null>(null)
-  const [novaCategoria, setNovaCategoria] = useState('')
-  const [editandoCategoria, setEditandoCategoria] = useState<any>(null)
-  const [copiado, setCopiado] = useState(false)
-
-  const [form, setForm] = useState({
-    nome: '', descricao: '', categoria: '', duracao_minutos: 60,
-    sessoes: 1, preco: '', preco_minimo: '', custo_material: '',
-    comissao_percentual: '', tipo_preco: 'fixo' as 'fixo' | 'variavel',
-    regras_foto_orcamento: '',
-  })
-  const [respostaOrcamento, setRespostaOrcamento] = useState({ texto: '', valor: '' })
   const [salvando, setSalvando] = useState(false)
-  const [uploadando, setUploadando] = useState(false)
-  const [salvandoOrcamento, setSalvandoOrcamento] = useState(false)
-  const [erroSalvar, setErroSalvar] = useState('')
-  const [carregando, setCarregando] = useState(true)
+  const [erro, setErro] = useState('')
+  const [erroPagamento, setErroPagamento] = useState('')
+  const [erroEdicao, setErroEdicao] = useState('')
+  
+  const [form, setForm] = useState({ cliente_id: '', descricao: '', valor: '', tipo: 'debito' })
+  const [formPagamento, setFormPagamento] = useState({
+    valor: '', meio_pagamento: 'pix', descricao: '',
+    data_pagamento: new Date().toISOString().split('T')[0]
+  })
+  const [formEdicaoPagamento, setFormEdicaoPagamento] = useState({
+    valor: '', meio_pagamento: 'pix', descricao: '', data_pagamento: ''
+  })
 
-  const p = profile || {}
-  const salaoId = p.salao_id
+  // Estados para simulação e seleção de envio de mensagem de WhatsApp / Recorrência
+  const [whatsappTexto, setWhatsappTexto] = useState('')
+  const [itensSelecionadosWp, setItensSelecionadosWp] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (loading) return
-    if (!profile) { router.push('/login'); return }
     
-    const tipoUser = p.tipo || p.cargo || p.role || ''
+    if (!profile) {
+      router.push('/login')
+      return
+    }
     
-    const temPermissao = 
-      ['dono_salao', 'socio', 'admin'].includes(tipoUser) || 
-      p.acesso_total === true ||
-      (tipoUser === 'funcionario' && (
-        p.acesso_total === true ||
-        p.permissoes?.servicos === true ||
-        p.permissoes?.agenda === true
-      ))
+    const tipo = profile.tipo ? String(profile.tipo).toLowerCase().trim() : ''
+    const ehAutorizado = 
+      profile.salao_id || 
+      ['dono_salao', 'dono', 'admin', 'funcionario', 'gerente'].includes(tipo)
 
-    if (!temPermissao) { 
-      alert('Você não tem permissão para acessar esta página.')
-      router.push('/salao/dashboard')
+    if (!ehAutorizado) { 
+      router.push('/login') 
       return 
     }
-    if (salaoId) carregarDados(salaoId)
-  }, [loading, profile])
 
-  async function carregarDados(idSalao: string) {
-    setCarregando(true)
-    const [salRes, srvsRes, ftsRes, catsRes, orcsRes] = await Promise.all([
-      supabase.from('saloes').select('*').eq('id', idSalao).single(),
-      supabase.from('servicos').select('*').eq('salao_id', idSalao).eq('ativo', true).order('categoria'),
-      supabase.from('fotos_servicos').select('*').eq('salao_id', idSalao),
-      supabase.from('categorias_servicos').select('*').eq('salao_id', idSalao).order('nome'),
-      supabase.from('solicitacoes_orcamento')
-        .select('*, servicos(nome), clientes(nome)')
-        .eq('salao_id', idSalao)
-        .eq('status', 'pendente')
-        .order('created_at', { ascending: false }),
-    ])
-    setSalao(salRes.data)
-    setServicos(srvsRes.data || [])
-    setFotos(ftsRes.data || [])
-    setCategorias(catsRes.data || [])
-    setOrcamentos(orcsRes.data || [])
-    setCarregando(false)
+    if (profile.salao_id) {
+      carregarDados()
+    }
+  }, [loading, profile, router])
+
+  async function carregarDados() {
+    if (!profile?.salao_id) return
+
+    const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile.salao_id).single()
+    setSalao(sal)
+
+    const { data: clis } = await supabase.from('clientes').select('id, nome, telefone, fim_recorrencia')
+      .eq('salao_id', profile.salao_id).order('nome')
+    setClientes(clis || [])
+
+    const { data: cnts } = await supabase.from('contas_clientes')
+      .select('*, clientes(nome, telefone, fim_recorrencia)')
+      .eq('salao_id', profile.salao_id)
+      .order('created_at', { ascending: false })
+    setContas(cnts || [])
+
+    if (cnts && cnts.length > 0) {
+      const ids = cnts.map((c: any) => c.id)
+      const { data: pags } = await supabase.from('pagamentos_conta')
+        .select('*').in('conta_id', ids).order('data_pagamento', { ascending: true })
+      const agrupado: Record<string, any[]> = {}
+      ;(pags || []).forEach((p: any) => {
+        if (!agrupado[p.conta_id]) agrupado[p.conta_id] = []
+        agrupado[p.conta_id].push(p)
+      })
+      setPagamentos(agrupado)
+    } else {
+      setPagamentos({})
+    }
   }
 
-  // Funções de Compartilhamento Personalizadas
-  function compartilharTextoWhatsApp() {
-    const servicosParaCompartilhar = categoriaCompartilhar === 'Todos'
-      ? servicos
-      : servicos.filter(s => s.categoria === categoriaCompartilhar)
+  async function salvar() {
+    setErro('')
+    if (!form.cliente_id || !form.valor || !form.descricao) { setErro('Preencha todos os campos.'); return }
+    setSalvando(true)
+    const { error } = await supabase.from('contas_clientes').insert({
+      salao_id: profile!.salao_id,
+      cliente_id: form.cliente_id,
+      descricao: form.descricao,
+      valor: parseFloat(form.valor),
+      valor_pago: 0,
+      status: 'pendente',
+      tipo: form.tipo
+    })
+    if (error) { setErro('Erro ao salvar: ' + error.message); setSalvando(false); return }
+    setModal(false); setSalvando(false)
+    setForm({ cliente_id: '', descricao: '', valor: '', tipo: 'debito' })
+    carregarDados()
+  }
 
-    let texto = `✨ *Catálogo de Serviços - ${salao?.nome || 'Nosso Salão'}* ✨\n\n`
-    
-    if (categoriaCompartilhar !== 'Todos') {
-      texto += `📌 *Categoria: ${categoriaCompartilhar}*\n\n`
-    }
+  function abrirModalPagamento(conta: any) {
+    const restante = Number(conta.valor) - Number(conta.valor_pago || 0)
+    setModalPagamento(conta)
+    setErroPagamento('')
+    setFormPagamento({
+      valor: restante.toFixed(2), meio_pagamento: 'pix', descricao: '',
+      data_pagamento: new Date().toISOString().split('T')[0]
+    })
+  }
 
-    servicosParaCompartilhar.forEach(servico => {
-      const preco = servico.tipo_preco === 'variavel' 
-        ? `A partir de R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}` 
-        : `R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}`
-      
-      texto += `🔹 *${servico.nome}*\n`
-      texto += `💰 ${preco} | ⏱️ ${formatarDuracao(servico.duracao_minutos)}\n`
-      if (servico.descricao) {
-        texto += `📝 _${servico.descricao}_\n`
-      }
-      texto += `\n`
+  async function registrarPagamento(conta: any) {
+    setErroPagamento('')
+    const valorPagoAgora = parseFloat(formPagamento.valor)
+    if (!valorPagoAgora || valorPagoAgora <= 0) { setErroPagamento('Informe um valor válido.'); return }
+    setSalvando(true)
+    const jaPago = Number(conta.valor_pago || 0)
+    const novoValorPago = jaPago + valorPagoAgora
+    const quitado = novoValorPago >= Number(conta.valor)
+
+    const { error } = await supabase.from('contas_clientes').update({
+      valor_pago: novoValorPago,
+      status: quitado ? 'pago' : 'pendente',
+      meio_pagamento: formPagamento.meio_pagamento,
+      data_pagamento: formPagamento.data_pagamento,
+      ultimo_pagamento: new Date().toISOString()
+    }).eq('id', conta.id)
+
+    if (error) { setErroPagamento('Erro ao registrar: ' + error.message); setSalvando(false); return }
+
+    const { error: errHist } = await supabase.from('pagamentos_conta').insert({
+      conta_id: conta.id,
+      valor: valorPagoAgora,
+      meio_pagamento: formPagamento.meio_pagamento,
+      descricao: formPagamento.descricao || null,
+      data_pagamento: formPagamento.data_pagamento,
+      criado_por: profile!.id
     })
 
-    texto += `📲 Agende seu horário conosco!`
+    if (errHist) {
+      setErroPagamento('Pagamento registrado, mas erro no histórico: ' + errHist.message)
+      setSalvando(false)
+      carregarDados()
+      return
+    }
 
-    const urlWhatsApp = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`
-    window.open(urlWhatsApp, '_blank')
-    setModalCompartilhar(false)
+    setModalPagamento(null)
+    setSalvando(false)
+    carregarDados()
   }
 
-  function gerarPdfFiltrado() {
-    const urlPdf = categoriaCompartilhar === 'Todos'
-      ? `/salao/catalogo`
-      : `/salao/catalogo?categoria=${encodeURIComponent(categoriaCompartilhar)}`
+  function abrirModalEdicaoPagamento(pag: any, conta: any) {
+    setModalEdicaoPagamento({ ...pag, conta })
+    setErroEdicao('')
+    setFormEdicaoPagamento({
+      valor: String(pag.valor),
+      meio_pagamento: pag.meio_pagamento || 'pix',
+      descricao: pag.descricao || '',
+      data_pagamento: pag.data_pagamento || new Date().toISOString().split('T')[0]
+    })
+  }
+
+  async function atualizarPagamentoHistorico() {
+    if (!modalEdicaoPagamento) return
+    setErroEdicao('')
+    const novoValor = parseFloat(formEdicaoPagamento.valor)
+    if (!novoValor || novoValor <= 0) { setErroEdicao('Informe um valor válido.'); return }
     
-    window.open(urlPdf, '_blank')
-    setModalCompartilhar(false)
-  }
-
-  function abrirModal(s?: any) {
-    setErroSalvar('')
-    if (s) {
-      setEditando(s)
-      setForm({
-        nome: s.nome, descricao: s.descricao || '', categoria: s.categoria,
-        duracao_minutos: s.duracao_minutos, sessoes: s.sessoes || 1,
-        preco: s.preco.toString(),
-        preco_minimo: s.preco_minimo?.toString() || '',
-        custo_material: s.custo_material?.toString() || '',
-        comissao_percentual: s.comissao_percentual?.toString() || '',
-        tipo_preco: s.tipo_preco || 'fixo',
-        regras_foto_orcamento: s.regras_foto_orcamento || '',
-      })
-    } else {
-      setEditando(null)
-      setForm({
-        nome: '', descricao: '', categoria: categorias[0]?.nome || '',
-        duracao_minutos: 60, sessoes: 1, preco: '', preco_minimo: '',
-        custo_material: '', comissao_percentual: '',
-        tipo_preco: 'fixo', regras_foto_orcamento: '',
-      })
-    }
-    setModal(true)
-  }
-
-  async function handleSalvar() {
-    setErroSalvar('')
-    if (!form.nome) { setErroSalvar('Preencha o nome do serviço.'); return }
-    if (!form.preco) { setErroSalvar('Preencha o preço.'); return }
-    if (!form.categoria) { setErroSalvar('Selecione uma categoria.'); return }
-
     setSalvando(true)
-    const dados = {
-      salao_id: salaoId,
-      nome: form.nome, descricao: form.descricao || null,
-      categoria: form.categoria,
-      duracao_minutos: form.duracao_minutos, sessoes: form.sessoes,
-      preco: parseFloat(form.preco),
-      preco_minimo: form.tipo_preco === 'variavel' && form.preco_minimo ? parseFloat(form.preco_minimo) : null,
-      custo_material: parseFloat(form.custo_material || '0'),
-      comissao_percentual: parseFloat(form.comissao_percentual || '0'),
-      tipo_preco: form.tipo_preco,
-      regras_foto_orcamento: form.tipo_preco === 'variavel' ? (form.regras_foto_orcamento || null) : null,
-      criado_por: p.id,
+    const contaId = modalEdicaoPagamento.conta_id
+    const conta = modalEdicaoPagamento.conta
+
+    const historicoAtual = pagamentos[contaId] || []
+    const outrosPagamentosSoma = historicoAtual
+      .filter((p: any) => p.id !== modalEdicaoPagamento.id)
+      .reduce((acc: number, p: any) => acc + Number(p.valor), 0)
+    
+    const novoTotalPago = outrosPagamentosSoma + novoValor
+    const valorTotalConta = Number(conta.valor)
+    const quitado = novoTotalPago >= valorTotalConta
+
+    const { error: errUpHist } = await supabase.from('pagamentos_conta').update({
+      valor: novoValor,
+      meio_pagamento: formEdicaoPagamento.meio_pagamento,
+      descricao: formEdicaoPagamento.descricao || null,
+      data_pagamento: formEdicaoPagamento.data_pagamento
+    }).eq('id', modalEdicaoPagamento.id)
+
+    if (errUpHist) {
+      setErroEdicao('Erro ao atualizar histórico: ' + errUpHist.message)
+      setSalvando(false)
+      return
     }
 
-    let resultado
-    if (editando) {
-      resultado = await supabase.from('servicos').update(dados).eq('id', editando.id).select()
-    } else {
-      resultado = await supabase.from('servicos').insert(dados).select()
+    const { error: errUpConta } = await supabase.from('contas_clientes').update({
+      valor_pago: novoTotalPago,
+      status: quitado ? 'pago' : 'pendente',
+      ultimo_pagamento: new Date().toISOString()
+    }).eq('id', contaId)
+
+    if (errUpConta) {
+      setErroEdicao('Erro ao atualizar conta: ' + errUpConta.message)
+      setSalvando(false)
+      carregarDados()
+      return
     }
 
-    if (resultado.error) { setErroSalvar('Erro: ' + resultado.error.message); setSalvando(false); return }
-    setModal(false); setSalvando(false); carregarDados(salaoId)
+    setModalEdicaoPagamento(null)
+    setSalvando(false)
+    carregarDados()
+  }
+
+  async function excluirPagamentoHistorico(pag: any, conta: any) {
+    if (!confirm('Deseja realmente excluir este registro de pagamento/devolução?')) return
+    setSalvando(true)
+
+    const contaId = conta.id
+    const historicoAtual = pagamentos[contaId] || []
+    const outrosPagamentosSoma = historicoAtual
+      .filter((p: any) => p.id !== pag.id)
+      .reduce((acc: number, p: any) => acc + Number(p.valor), 0)
+    
+    const valorTotalConta = Number(conta.valor)
+    const quitado = outrosPagamentosSoma >= valorTotalConta
+
+    const { error: errDel } = await supabase.from('pagamentos_conta').delete().eq('id', pag.id)
+    if (errDel) {
+      alert('Erro ao excluir registro: ' + errDel.message)
+      setSalvando(false)
+      return
+    }
+
+    const { error: errUpConta } = await supabase.from('contas_clientes').update({
+      valor_pago: outrosPagamentosSoma,
+      status: quitado ? 'pago' : 'pendente'
+    }).eq('id', contaId)
+
+    if (errUpConta) {
+      alert('Registro excluído, mas houve erro ao atualizar o status da conta: ' + errUpConta.message)
+    }
+
+    setSalvando(false)
+    carregarDados()
   }
 
   async function excluir(id: string) {
-    await supabase.from('servicos').update({ ativo: false }).eq('id', id)
-    carregarDados(salaoId)
+    if (!confirm('Deseja realmente excluir esta conta inteira?')) return
+    await supabase.from('contas_clientes').delete().eq('id', id)
+    carregarDados()
   }
 
-  async function uploadFoto(servicoId: string, file: File) {
-    setUploadando(true)
-    const ext = file.name.split('.').pop()
-    const path = `${salaoId}/${servicoId}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('fotos-servicos').upload(path, file)
-    if (!error) {
-      const { data: urlData } = supabase.storage.from('fotos-servicos').getPublicUrl(path)
-      await supabase.from('fotos_servicos').insert({
-        salao_id: salaoId, servico_id: servicoId,
-        url: urlData.publicUrl, adicionado_por: p.id
-      })
-      carregarDados(salaoId)
-    }
-    setUploadando(false)
+  // Abre o preview de mensagem do whatsapp com itens customizáveis
+  function abrirModalWhatsapp(conta: any) {
+    const nomeCliente = conta.clientes?.nome || 'Cliente'
+    const textoPadrao = `Olá ${nomeCliente}, passando para lembrar da sua conta no(a) ${salao?.nome || 'salão'}. Descrição: ${conta.descricao}. Valor: ${fmt(Number(conta.valor) - Number(conta.valor_pago || 0))}.`
+    setWhatsappTexto(textoPadrao)
+    setModalWhatsapp(conta)
   }
 
-  async function removerFoto(fotoId: string) {
-    await supabase.from('fotos_servicos').delete().eq('id', fotoId)
-    carregarDados(salaoId)
+  function dispararWhatsapp(conta: any) {
+    const telefone = conta.clientes?.telefone || ''
+    const foneLimpo = telefone.replace(/\D/g, '')
+    const url = `https://api.whatsapp.com/send?phone=55${foneLimpo}&text=${encodeURIComponent(whatsappTexto)}`
+    window.open(url, '_blank')
+    setModalWhatsapp(null)
   }
 
-  async function adicionarCategoria() {
-    if (!novaCategoria) return
-    await supabase.from('categorias_servicos').insert({ salao_id: salaoId, nome: novaCategoria })
-    setNovaCategoria(''); carregarDados(salaoId)
-  }
-
-  async function editarCategoria(cat: any, novoNome: string) {
-    if (!novoNome) return
-    await supabase.from('categorias_servicos').update({ nome: novoNome }).eq('id', cat.id)
-    await supabase.from('servicos').update({ categoria: novoNome }).eq('categoria', cat.nome).eq('salao_id', salaoId)
-    setEditandoCategoria(null); carregarDados(salaoId)
-  }
-
-  async function excluirCategoria(cat: any) {
-    const emUso = servicos.some(s => s.categoria === cat.nome)
-    if (emUso) { alert('Esta categoria tem serviços. Mude a categoria deles antes de excluir.'); return }
-    await supabase.from('categorias_servicos').delete().eq('id', cat.id)
-    carregarDados(salaoId)
-  }
-
-  async function responderOrcamento() {
-    if (!modalOrcamento) return
-    setSalvandoOrcamento(true)
-    await supabase.from('solicitacoes_orcamento').update({
-      status: 'respondido',
-      resposta: respostaOrcamento.texto,
-      valor_resposta: respostaOrcamento.valor ? parseFloat(respostaOrcamento.valor) : null,
-    }).eq('id', modalOrcamento.id)
-    
-    setSalvandoOrcamento(false)
-    setModalOrcamento(null)
-    setRespostaOrcamento({ texto: '', valor: '' })
-    carregarDados(salaoId)
-  }
-
-  function formatarDuracao(minutos: number) {
-    if (minutos < 60) return `${minutos} min`
-    const h = Math.floor(minutos / 60), m = minutos % 60
-    if (m === 0) return h === 1 ? '1 hora' : `${h} horas`
-    return `${h} hora${h > 1 ? 's' : ''} e ${m} minutos`
+  if (loading || !profile) {
+    return (
+      <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-500 text-sm font-medium">Carregando...</p>
+        </div>
+      </div>
+    )
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const nomesCategorias = ['Todos', ...categorias.map(c => c.nome)]
-  const filtrados = servicos.filter(s => categoriaFiltro === 'Todos' || s.categoria === categoriaFiltro)
 
-  if (loading || carregando) return (
-    <div className="min-h-screen pb-8 bg-[#f8f9fa]">
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Catálogo de Serviços</h1>
-      </div>
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="bg-white rounded-2xl p-4 animate-pulse flex flex-col gap-3">
-            <div className="h-4 bg-gray-100 rounded w-2/3 mb-2" />
-            <div className="h-3 bg-gray-100 rounded w-1/3" />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+  const filtradas = contas.filter(c => {
+    if (filtro === 'abertas') return c.status === 'pendente'
+    if (filtro === 'pagas') return c.status === 'pago'
+    return true
+  })
+
+  const totalDebitoAberto = contas
+    .filter(c => c.status === 'pendente' && c.tipo !== 'credito')
+    .reduce((acc, c) => acc + (Number(c.valor) - Number(c.valor_pago || 0)), 0)
+
+  const totalCreditoAberto = contas
+    .filter(c => c.status === 'pendente' && c.tipo === 'credito')
+    .reduce((acc, c) => acc + (Number(c.valor) - Number(c.valor_pago || 0)), 0)
 
   return (
-    <div className="min-h-screen pb-8 bg-[#f8f9fa]">
-      <div className="bg-white px-4 py-4 flex items-center gap-2 shadow-sm">
+    <div className="min-h-screen bg-[#f8f9fa] pb-8">
+      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">Catálogo de Serviços</h1>
-        
-        {/* Botão de Compartilhar (Abre o modal de escolha) */}
-        <button onClick={() => setModalCompartilhar(true)}
-          title="Compartilhar Catálogo / Preços"
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center transition-colors">
-          <Share2 size={16} className="text-gray-600" />
-        </button>
-
-        <button onClick={() => router.push('/salao/catalogo')}
-          title="Gerar Catálogo PDF"
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
-          <FileText size={16} className="text-gray-600" />
-        </button>
-
-        {orcamentos.length > 0 && (
-          <button onClick={() => setModalOrcamento(orcamentos[0])}
-            className="relative flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-white text-xs font-medium"
-            style={{ backgroundColor: cor }}>
-            <MessageSquare size={13} />
-            {orcamentos.length}
-          </button>
-        )}
-        <button onClick={() => setModalCategorias(true)}
-          title="Categorias"
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
-          <Tag size={16} className="text-gray-600" />
-        </button>
-        <button onClick={() => abrirModal()}
-          title="Novo serviço"
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Contas de Clientes</h1>
+        <button onClick={() => setModal(true)}
           className="w-9 h-9 rounded-full flex items-center justify-center text-white"
           style={{ backgroundColor: cor }}>
           <Plus size={18} />
         </button>
       </div>
 
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {categorias.length === 0 && (
-          <div className="card bg-yellow-50 border border-yellow-200 p-3 rounded-2xl">
-            <p className="text-sm text-yellow-700">Crie uma categoria antes de adicionar serviços. Toque no ícone de etiqueta no topo.</p>
-          </div>
-        )}
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {nomesCategorias.map(c => (
-            <button key={c} onClick={() => setCategoriaFiltro(c)}
-              className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all"
-              style={categoriaFiltro === c ? { backgroundColor: cor, color: 'white' } : { backgroundColor: 'white', color: '#6b7280' }}>
-              {c}
-            </button>
-          ))}
+      {(totalDebitoAberto > 0 || totalCreditoAberto > 0) && (
+        <div className="px-4 mt-4 grid grid-cols-2 gap-3">
+          {totalDebitoAberto > 0 && (
+            <div className="card flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <TrendingDown size={14} className="text-red-400" />
+                <p className="text-xs text-gray-500">Clientes devem</p>
+              </div>
+              <p className="font-bold text-lg text-red-500">{fmt(totalDebitoAberto)}</p>
+            </div>
+          )}
+          {totalCreditoAberto > 0 && (
+            <div className="card flex flex-col gap-1">
+              <div className="flex items-center gap-1.5">
+                <TrendingUp size={14} className="text-green-500" />
+                <p className="text-xs text-gray-500">Salão deve</p>
+              </div>
+              <p className="font-bold text-lg text-green-600">{fmt(totalCreditoAberto)}</p>
+            </div>
+          )}
         </div>
+      )}
 
-        {filtrados.length === 0 && categorias.length > 0 ? (
-          <div className="card text-center py-10 bg-white rounded-2xl">
-            <p className="text-gray-400">Nenhum serviço nesta categoria</p>
-            <button onClick={() => abrirModal()} className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white" style={{ backgroundColor: cor }}>
-              + Adicionar serviço
-            </button>
+      <div className="px-4 mt-4 flex gap-2">
+        {(['abertas', 'pagas', 'todas'] as const).map(f => (
+          <button key={f} onClick={() => setFiltro(f)}
+            className="px-4 py-2 rounded-full text-sm font-medium transition-all"
+            style={filtro === f ? { backgroundColor: cor, color: 'white' } : { backgroundColor: 'white', color: '#6b7280' }}>
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      <div className="px-4 py-4 flex flex-col gap-3">
+        {filtradas.length === 0 ? (
+          <div className="card text-center py-10">
+            <DollarSign size={36} className="text-gray-300 mx-auto mb-2" />
+            <p className="text-gray-400">Nenhuma conta encontrada</p>
           </div>
-        ) : filtrados.map(s => {
-          const fotosServico = fotos.filter(f => f.servico_id === s.id)
-          const aberto = expandido === s.id
-          const variavel = s.tipo_preco === 'variavel'
+        ) : filtradas.map(c => {
+          const isCredito = c.tipo === 'credito'
+          const valorPago = Number(c.valor_pago || 0)
+          const restante = Number(c.valor) - valorPago
+          const historico = pagamentos[c.id] || []
+
+          // Verificação de fim de recorrência para clientes fixos
+          const fimRecorrencia = c.clientes?.fim_recorrencia ? new Date(c.clientes.fim_recorrencia) : null
+          const hoje = new Date()
+          const recorrenciaExpirada = fimRecorrencia && fimRecorrencia < hoje
 
           return (
-            <div key={s.id} className="card bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-3">
-              {fotosServico.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
-                  {fotosServico.map(f => (
-                    <div key={f.id} className="relative shrink-0">
-                      <img src={f.url} alt={s.nome} className="w-28 h-28 rounded-2xl object-cover" />
-                      <button onClick={() => removerFoto(f.id)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center">
-                        <X size={12} className="text-white" />
-                      </button>
-                    </div>
-                  ))}
+            <div key={c.id}
+              className={'card flex flex-col gap-2 border-l-4 ' + (isCredito ? 'border-green-400' : 'border-red-300')}>
+              
+              {/* Alerta de fim de recorrência marcada */}
+              {recorrenciaExpirada && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-2.5 flex items-center gap-2">
+                  <AlertCircle size={16} className="text-amber-500 shrink-0" />
+                  <p className="text-xs text-amber-700 font-medium">
+                    A recorrência fixa desta cliente acabou em {fimRecorrencia.toLocaleDateString('pt-BR')}. Renove os agendamentos!
+                  </p>
                 </div>
               )}
 
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-bold text-gray-900">{s.nome}</p>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{s.categoria}</span>
-                    {variavel && (
-                      <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: cor }}>
-                        Preço variável
-                      </span>
-                    )}
+                    <p className="font-bold text-gray-900">{c.clientes?.nome}</p>
+                    <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
+                      (isCredito ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-500')}>
+                      {isCredito ? '↑ Salão deve' : '↓ Cliente deve'}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-3 mt-2 flex-wrap">
-                    <div className="flex items-center gap-1">
-                      <DollarSign size={14} style={{ color: cor }} />
-                      <span className="text-sm font-bold" style={{ color: cor }}>
-                        {variavel ? `A partir de R$ ${Number(s.preco).toFixed(2).replace('.', ',')}` : `R$ ${Number(s.preco).toFixed(2).replace('.', ',')}`}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-gray-400">
-                      <Clock size={13} /><span className="text-xs">{formatarDuracao(s.duracao_minutos)}</span>
-                    </div>
-                    {s.sessoes > 1 && (
-                      <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: cor }}>{s.sessoes} sessões</span>
-                    )}
-                  </div>
+                  <p className="text-sm text-gray-500 mt-0.5">{c.descricao}</p>
                 </div>
-
-                <div className="flex gap-1.5 ml-2">
-                  <label className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center cursor-pointer">
-                    <Image size={14} className="text-gray-500" />
-                    <input type="file" accept="image/*" className="hidden"
-                      onChange={e => { if (e.target.files?.[0]) uploadFoto(s.id, e.target.files[0]) }} />
-                  </label>
-                  <button onClick={() => abrirModal(s)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                    <Edit2 size={14} className="text-gray-500" />
-                  </button>
-                  <button onClick={() => excluir(s.id)} className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
-                    <Trash2 size={14} className="text-red-400" />
+                <div className="flex items-center gap-1">
+                  {c.clientes?.telefone && (
+                    <button onClick={() => abrirModalWhatsapp(c)}
+                      className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                      title="Enviar WhatsApp / Preview">
+                      <MessageSquare size={16} />
+                    </button>
+                  )}
+                  <button onClick={() => setExpandido(expandido === c.id ? null : c.id)}>
+                    {expandido === c.id
+                      ? <ChevronUp size={16} className="text-gray-400" />
+                      : <ChevronDown size={16} className="text-gray-400" />}
                   </button>
                 </div>
               </div>
 
-              {s.descricao && (
-                <div>
-                  <button onClick={() => setExpandido(aberto ? null : s.id)} className="text-sm font-medium" style={{ color: cor }}>
-                    {aberto ? 'Ocultar descrição' : 'Ver descrição'}
-                  </button>
-                  {aberto && <p className="text-sm text-gray-500 mt-2 leading-relaxed">{s.descricao}</p>}
-                </div>
+              <div className="flex items-center justify-between">
+                <p className={'font-bold text-lg ' + (isCredito ? 'text-green-600' : 'text-red-500')}>
+                  {isCredito ? '+' : '-'} {fmt(Number(c.valor))}
+                </p>
+                <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
+                  (c.status === 'pago' ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600')}>
+                  {c.status === 'pago' ? 'Quitada' : 'Em aberto'}
+                </span>
+              </div>
+
+              {c.status === 'pendente' && valorPago > 0 && (
+                <p className="text-xs text-gray-500">
+                  Pago: {fmt(valorPago)} · Restante: {fmt(restante)}
+                </p>
               )}
 
-              {variavel && s.regras_foto_orcamento && (
-                <div className="bg-blue-50 rounded-xl px-3 py-2">
-                  <p className="text-xs text-blue-600 flex items-start gap-1">
-                    <Camera size={12} className="mt-0.5 shrink-0" />
-                    <span><span className="font-semibold">Regras da foto:</span> {s.regras_foto_orcamento}</span>
-                  </p>
+              {expandido === c.id && (
+                <div className="flex flex-col gap-2 pt-2 border-t border-gray-100">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-gray-400">
+                        {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </span>
+                      <span className="font-medium text-gray-700">Lançamento inicial: {fmt(Number(c.valor))}</span>
+                    </div>
+
+                    {historico.map((p: any) => (
+                      <div key={p.id} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded-lg">
+                        <div>
+                          <span className="text-gray-400 block">
+                            {new Date(p.data_pagamento + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                          </span>
+                          <span className="font-medium text-green-600 block mt-0.5">
+                            {isCredito ? 'Devolvido' : 'Pago'}: {fmt(p.valor)}
+                            {p.meio_pagamento && ` · ${meioPagamentoLabel[p.meio_pagamento] || p.meio_pagamento}`}
+                          </span>
+                          {p.descricao && <p className="text-xs text-gray-400 mt-0.5">{p.descricao}</p>}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => abrirModalEdicaoPagamento(p, c)}
+                            className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                            title="Editar pagamento">
+                            <Edit2 size={13} />
+                          </button>
+                          <button onClick={() => excluirPagamentoHistorico(p, c)}
+                            className="p-1.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 transition-colors"
+                            title="Excluir pagamento">
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2 pt-1 border-t border-gray-100 mt-1">
+                    {c.status === 'pendente' && (
+                      <button onClick={() => abrirModalPagamento(c)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
+                        style={{ backgroundColor: cor }}>
+                        <Check size={14} />{isCredito ? 'Registrar devolução' : 'Registrar pagamento'}
+                      </button>
+                    )}
+                    <button onClick={() => excluir(c.id)}
+                      className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
+                      <X size={14} />Excluir conta
+                    </button>
+                  </div>
                 </div>
               )}
-
-              {s.comissao_percentual > 0 && <p className="text-xs text-gray-400">Comissão: {s.comissao_percentual}%</p>}
-              {uploadando && <p className="text-xs text-center" style={{ color: cor }}>Enviando foto...</p>}
             </div>
           )
         })}
       </div>
 
-      {/* Modal de Compartilhamento (Texto WhatsApp ou PDF filtrado por categoria) */}
-      {modalCompartilhar && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b pb-3">
-              <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <Share2 size={20} style={{ color: cor }} /> Compartilhar Catálogo
-              </h3>
-              <button onClick={() => setModalCompartilhar(false)}><X size={20} className="text-gray-400" /></button>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
-                <Filter size={14} /> Filtrar Categoria para Envio
-              </label>
-              <select 
-                value={categoriaCompartilhar}
-                onChange={e => setCategoriaCompartilhar(e.target.value)}
-                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none bg-gray-50"
-              >
-                <option value="Todos">Todas as categorias</option>
-                {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-2.5 pt-2">
-              <button 
-                onClick={compartilharTextoWhatsApp}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
-              >
-                <MessageSquare size={18} /> Compartilhar Escrito (WhatsApp)
-              </button>
-
-              <button 
-                onClick={gerarPdfFiltrado}
-                className="w-full text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
-                style={{ backgroundColor: cor }}
-              >
-                <FileText size={18} /> Gerar / Visualizar PDF
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modalOrcamento && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">Responder orçamento</h3>
-              <button onClick={() => setModalOrcamento(null)}><X size={20} className="text-gray-400" /></button>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-sm font-semibold text-gray-800">{modalOrcamento.clientes?.nome}</p>
-              <p className="text-xs text-gray-500">{modalOrcamento.servicos?.nome}</p>
-              {modalOrcamento.foto_url && (
-                <img src={modalOrcamento.foto_url} alt="Foto" className="w-full h-48 object-cover rounded-xl mt-2" />
-              )}
-              {modalOrcamento.observacoes && (
-                <p className="text-xs text-gray-500 mt-2 italic">"{modalOrcamento.observacoes}"</p>
-              )}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor do orçamento (R$)</label>
-              <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 250,00"
-                value={respostaOrcamento.valor}
-                onChange={e => setRespostaOrcamento(p => ({ ...p, valor: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Mensagem para a cliente</label>
-              <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
-                placeholder="Ex: Com base na foto, ficará R$ 250. Posso atender na quinta às 14h."
-                value={respostaOrcamento.texto}
-                onChange={e => setRespostaOrcamento(p => ({ ...p, texto: e.target.value }))} />
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setModalOrcamento(null)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={responderOrcamento} disabled={salvandoOrcamento}
-                className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>
-                {salvandoOrcamento ? 'Enviando...' : 'Enviar resposta'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {modalCategorias && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">Categorias</h3>
-              <button onClick={() => setModalCategorias(false)}><X size={20} className="text-gray-400" /></button>
-            </div>
-            <div className="flex gap-2">
-              <input className="flex-1 border border-gray-200 rounded-xl px-3.5 py-2 text-sm outline-none" placeholder="Nova categoria" value={novaCategoria} onChange={e => setNovaCategoria(e.target.value)} />
-              <button onClick={adicionarCategoria} className="px-4 rounded-xl text-white font-medium" style={{ backgroundColor: cor }}><Plus size={18} /></button>
-            </div>
-            <div className="flex flex-col gap-2">
-              {categorias.map(cat => (
-                <div key={cat.id} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
-                  {editandoCategoria?.id === cat.id ? (
-                    <input className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none"
-                      defaultValue={cat.nome} autoFocus
-                      onKeyDown={e => { if (e.key === 'Enter') editarCategoria(cat, (e.target as HTMLInputElement).value) }}
-                      onBlur={e => editarCategoria(cat, e.target.value)} />
-                  ) : (
-                    <p className="flex-1 text-sm text-gray-700">{cat.nome}</p>
-                  )}
-                  <button onClick={() => setEditandoCategoria(cat)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"><Edit2 size={12} className="text-gray-500" /></button>
-                  <button onClick={() => excluirCategoria(cat)} className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center"><Trash2 size={12} className="text-red-400" /></button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* Modal nova conta */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-            <h3 className="font-bold text-gray-900 text-lg">{editando ? 'Editar Serviço' : 'Novo Serviço'}</h3>
-
-            {erroSalvar && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                <p className="text-red-600 text-sm">{erroSalvar}</p>
-              </div>
-            )}
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+            <h3 className="font-bold text-gray-900 text-lg">Nova conta</h3>
+            {erro && <p className="text-red-500 text-sm bg-red-50 rounded-xl px-3 py-2">{erro}</p>}
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do serviço *</label>
-              <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" placeholder="Ex: Corte Feminino"
-                value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
+              <label className="text-sm font-medium text-gray-700 mb-2 block">Tipo de lançamento</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setForm(p => ({ ...p, tipo: 'debito' }))}
+                  className="py-3 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1"
+                  style={form.tipo === 'debito'
+                    ? { borderColor: '#ef4444', backgroundColor: '#fef2f2', color: '#ef4444' }
+                    : { borderColor: '#e5e7eb', color: '#9ca3af' }}>
+                  <TrendingDown size={18} />
+                  <span>Débito</span>
+                  <span className="text-xs font-normal opacity-70">Cliente deve ao salão</span>
+                </button>
+                <button onClick={() => setForm(p => ({ ...p, tipo: 'credito' }))}
+                  className="py-3 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1"
+                  style={form.tipo === 'credito'
+                    ? { borderColor: '#22c55e', backgroundColor: '#f0fdf4', color: '#22c55e' }
+                    : { borderColor: '#e5e7eb', color: '#9ca3af' }}>
+                  <TrendingUp size={18} />
+                  <span>Crédito</span>
+                  <span className="text-xs font-normal opacity-70">Salão deve à cliente</span>
+                </button>
+              </div>
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Categoria</label>
-              {categorias.length === 0 ? (
-                <p className="text-xs text-red-500">Crie uma categoria primeiro.</p>
-              ) : (
-                <select className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none bg-white" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}>
-                  {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-                </select>
-              )}
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Cliente</label>
+              <select className="input-field" value={form.cliente_id}
+                onChange={e => setForm(p => ({ ...p, cliente_id: e.target.value }))}>
+                <option value="">Selecione a cliente...</option>
+                {clientes.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select>
             </div>
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição</label>
-              <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
-                placeholder="Descreva o serviço, cuidados, contraindicações..."
+              <input className="input-field"
+                placeholder={form.tipo === 'credito' ? 'Ex: Troco de R$50, adiantamento' : 'Ex: Serviços de julho'}
                 value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Tipo de preço</label>
-              <div className="flex gap-2">
-                <button onClick={() => setForm(p => ({ ...p, tipo_preco: 'fixo' }))}
-                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border-2 transition-all"
-                  style={form.tipo_preco === 'fixo'
-                    ? { backgroundColor: cor, color: 'white', borderColor: cor }
-                    : { borderColor: '#e5e7eb', color: '#6b7280' }}>
-                  💰 Preço fixo
-                </button>
-                <button onClick={() => setForm(p => ({ ...p, tipo_preco: 'variavel' }))}
-                  className="flex-1 py-3 rounded-2xl text-sm font-semibold border-2 transition-all"
-                  style={form.tipo_preco === 'variavel'
-                    ? { backgroundColor: cor, color: 'white', borderColor: cor }
-                    : { borderColor: '#e5e7eb', color: '#6b7280' }}>
-                  📊 Preço variável
-                </button>
-              </div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor (R$)</label>
+              <input className="input-field" type="number" placeholder="0,00"
+                value={form.valor} onChange={e => setForm(p => ({ ...p, valor: e.target.value }))} />
             </div>
 
-            {form.tipo_preco === 'fixo' ? (
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Preço (R$) *</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0,00"
-                  value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} />
+            <div className="flex gap-3">
+              <button onClick={() => { setModal(false); setErro('') }}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+              <button onClick={salvar} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
+                style={{ backgroundColor: cor }}>
+                {salvando ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal registrar pagamento */}
+      {modalPagamento && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-gray-900 text-lg">
+              {modalPagamento.tipo === 'credito' ? 'Registrar devolução' : 'Registrar pagamento'}
+            </h3>
+            <p className="text-sm text-gray-500">
+              {modalPagamento.clientes?.nome} — total {fmt(Number(modalPagamento.valor))}
+              {Number(modalPagamento.valor_pago || 0) > 0 && <> · já pago {fmt(Number(modalPagamento.valor_pago))}</>}
+            </p>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                {modalPagamento.tipo === 'credito' ? 'Valor devolvido agora' : 'Valor pago agora'}
+              </label>
+              <input className="input-field" type="number" step="0.01" min="0.01"
+                value={formPagamento.valor}
+                onChange={e => setFormPagamento(p => ({ ...p, valor: e.target.value }))} />
+              <p className="text-xs text-gray-400 mt-1">Pode editar para registrar pagamento parcial.</p>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                {modalPagamento.tipo === 'credito' ? 'Como devolveu' : 'Meio de pagamento'}
+              </label>
+              <select className="input-field" value={formPagamento.meio_pagamento}
+                onChange={e => setFormPagamento(p => ({ ...p, meio_pagamento: e.target.value }))}>
+                <option value="pix">Pix</option>
+                <option value="dinheiro">Dinheiro</option>
+                <option value="cartao_credito">Cartão de crédito</option>
+                <option value="cartao_debito">Cartão de débito</option>
+                <option value="transferencia">Transferência</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição (opcional)</label>
+              <textarea className="input-field resize-none" rows={2}
+                placeholder="Ex: Pagamento referente ao pacote de maio"
+                value={formPagamento.descricao}
+                onChange={e => setFormPagamento(p => ({ ...p, descricao: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Data</label>
+              <input className="input-field" type="date" value={formPagamento.data_pagamento}
+                onChange={e => setFormPagamento(p => ({ ...p, data_pagamento: e.target.value }))}
+                style={{ colorScheme: 'light' }} />
+            </div>
+
+            {erroPagamento && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm">{erroPagamento}</p>
               </div>
-            ) : (
-              <>
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">A partir de (R$) *</label>
-                    <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 150,00"
-                      value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} />
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Até (R$) opcional</label>
-                    <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 400,00"
-                      value={form.preco_minimo} onChange={e => setForm(p => ({ ...p, preco_minimo: e.target.value }))} />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700 mb-1 block flex items-center gap-1">
-                    <Camera size={14} /> Regras da foto para orçamento
-                  </label>
-                  <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
-                    placeholder="Ex: Tire uma foto com boa iluminação, de costas, com o cabelo solto e para frente."
-                    value={form.regras_foto_orcamento}
-                    onChange={e => setForm(p => ({ ...p, regras_foto_orcamento: e.target.value }))} />
-                  <p className="text-xs text-gray-400 mt-1">Este texto aparece para a cliente ao solicitar orçamento.</p>
-                </div>
-              </>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Duração (min)</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number"
-                  value={form.duracao_minutos} onChange={e => setForm(p => ({ ...p, duracao_minutos: parseInt(e.target.value) }))} />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Sessões</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" min="1"
-                  value={form.sessoes} onChange={e => setForm(p => ({ ...p, sessoes: parseInt(e.target.value) }))} />
-              </div>
+            <div className="flex gap-3">
+              <button onClick={() => setModalPagamento(null)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+              <button onClick={() => registrarPagamento(modalPagamento)} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
+                style={{ backgroundColor: cor }}>
+                {salvando ? 'Salvando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar registro de pagamento / devolução */}
+      {modalEdicaoPagamento && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="font-bold text-gray-900 text-lg">Editar registro de pagamento</h3>
+            <p className="text-sm text-gray-500">
+              {modalEdicaoPagamento.conta?.clientes?.nome}
+            </p>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor</label>
+              <input className="input-field" type="number" step="0.01" min="0.01"
+                value={formEdicaoPagamento.valor}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, valor: e.target.value }))} />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Comissão %</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0"
-                  value={form.comissao_percentual} onChange={e => setForm(p => ({ ...p, comissao_percentual: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Custo material (R$)</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0,00"
-                  value={form.custo_material} onChange={e => setForm(p => ({ ...p, custo_material: e.target.value }))} />
-              </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Meio de pagamento</label>
+              <select className="input-field" value={formEdicaoPagamento.meio_pagamento}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, meio_pagamento: e.target.value }))}>
+                <option value="pix">Pix</option>
+                <option value="dinheiro">Dinheiro</option>
+                <option value="cartao_credito">Cartão de crédito</option>
+                <option value="cartao_debito">Cartão de débito</option>
+                <option value="transferencia">Transferência</option>
+              </select>
             </div>
 
-            <div className="flex gap-3 pt-2">
-              <button onClick={() => setModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={handleSalvar} disabled={salvando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>
-                {salvando ? 'Salvando...' : 'Salvar'}
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição (opcional)</label>
+              <textarea className="input-field resize-none" rows={2}
+                value={formEdicaoPagamento.descricao}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, descricao: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Data</label>
+              <input className="input-field" type="date" value={formEdicaoPagamento.data_pagamento}
+                onChange={e => setFormEdicaoPagamento(p => ({ ...p, data_pagamento: e.target.value }))}
+                style={{ colorScheme: 'light' }} />
+            </div>
+
+            {erroEdicao && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                <p className="text-red-600 text-sm">{erroEdicao}</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalEdicaoPagamento(null)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+              <button onClick={atualizarPagamentoHistorico} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
+                style={{ backgroundColor: cor }}>
+                {salvando ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Preview e Edição de Mensagem WhatsApp */}
+      {modalWhatsapp && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                <MessageSquare size={20} className="text-emerald-600" />
+                Pré-visualizar Mensagem WhatsApp
+              </h3>
+              <button onClick={() => setModalWhatsapp(null)}><X size={20} className="text-gray-400" /></button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Personalize ou edite o modelo da mensagem abaixo antes de enviar para {modalWhatsapp.clientes?.nome}.
+            </p>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Modelo da Mensagem</label>
+              <textarea className="input-field resize-none" rows={4}
+                value={whatsappTexto}
+                onChange={e => setWhatsappTexto(e.target.value)} />
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-3">
+              <p className="text-xs font-semibold text-emerald-800 mb-1">Dica de Envio Seletivo:</p>
+              <p className="text-xs text-emerald-700">
+                Você pode editar o texto acima para incluir apenas os serviços específicos ou itens desejados caso não queira mandar o extrato completo.
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalWhatsapp(null)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
+              <button onClick={() => dispararWhatsapp(modalWhatsapp)}
+                className="flex-1 py-3 rounded-2xl text-white font-medium bg-emerald-600 hover:bg-emerald-700 flex items-center justify-center gap-2">
+                <MessageSquare size={16} /> Enviar no WhatsApp
               </button>
             </div>
           </div>
