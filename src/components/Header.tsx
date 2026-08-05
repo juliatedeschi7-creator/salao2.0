@@ -39,7 +39,7 @@ const MAPA_ROTAS_SISTEMA: Record<string, { label: string; href: string; grupo: s
   'financeiro': { label: 'Financeiro', href: '/salao/financeiro', grupo: 'Gestão', icon: BarChart2 },
   'relatorios': { label: 'Relatórios', href: '/salao/relatorios', grupo: 'Gestão', icon: DollarSign },
   'caixa': { label: 'Caixa do Dia', href: '/salao/caixa', grupo: 'Gestão', icon: Clock },
-  'contas': { label: 'Contas de Clientes', href: '/salao/contas', grupo: 'Gestão', icon: DollarSign },
+  'contas': { label: 'Contras de Clientes', href: '/salao/contas', grupo: 'Gestão', icon: DollarSign },
   'avisos': { label: 'Notificações', href: '/salao/notificacoes', grupo: 'Outros', icon: Bell },
   'ia': { label: 'Sugestões IA', href: '/salao/ia', grupo: 'Outros', icon: Sparkles },
   'quem_somos': { label: 'Quem Somos', href: '/salao/quem-somos', grupo: 'Outros', icon: Heart },
@@ -269,13 +269,22 @@ export default function Header({ profile, salaoNome, corPrimaria = '#E91E8C', co
                     <p className="px-5 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider">{grupo}</p>
                   )}
                   {menuItems.filter(i => i.grupo === grupo).map(({ icon: Icon, label, href }) => {
-                    const ativo = pathname === href || pathname.startsWith(href + '/')
+                    // Correção aplicada aqui: comparação estrita ou validação segura para rotas filhas
+                    const ativo = href === '/salao' 
+                      ? pathname === '/salao' 
+                      : pathname === href || pathname.startsWith(href + '/')
+
+                    // Tratamento específico para evitar que /salao/pacotes fique ativo quando estiver em /salao/pacotes/clientes
+                    const ativoFinal = href === '/salao/pacotes' 
+                      ? pathname === '/salao/pacotes' 
+                      : ativo
+
                     return (
                       <button key={href}
                         onClick={() => { setMenuAberto(false); router.push(href) }}
                         className={'w-full flex items-center gap-3 px-5 py-3 text-left transition-all ' +
-                          (ativo ? 'font-semibold' : 'text-gray-600 hover:bg-gray-50')}
-                        style={ativo ? { backgroundColor: corSecundaria, color: corPrimaria } : {}}>
+                          (ativoFinal ? 'font-semibold' : 'text-gray-600 hover:bg-gray-50')}
+                        style={ativoFinal ? { backgroundColor: corSecundaria, color: corPrimaria } : {}}>
                         <Icon size={18} />
                         <span className="text-sm">{label}</span>
                       </button>
