@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
-import { CreditCard, Users, Search, Plus, Trash2, AlertCircle, X, ChevronRight, Calendar } from 'lucide-react'
+import { CreditCard, Users, Search, Plus, Trash2, AlertCircle, X, ChevronRight, Calendar, UserPlus } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
 
@@ -28,6 +28,7 @@ export default function PacotesClientesPage() {
   const [modalVenderAberto, setModalVenderAberto] = useState(false)
   const [modalAntigoAberto, setModalAntigoAberto] = useState(false)
   const [modalSessaoAberto, setModalSessaoAberto] = useState(false)
+  const [modalNovoClienteAberto, setModalNovoClienteAberto] = useState(false)
   const [pacoteAlvoSessao, setPacoteAlvoSessao] = useState<any>(null)
 
   // Inputs formulários
@@ -35,6 +36,10 @@ export default function PacotesClientesPage() {
   const [nomePacoteAntigo, setNomePacoteAntigo] = useState('')
   const [sessoesTotalAntigo, setSessoesTotalAntigo] = useState('')
   
+  // Inputs Novo Cliente Rápido
+  const [nomeNovoCliente, setNomeNovoCliente] = useState('')
+  const [telefoneNovoCliente, setTelefoneNovoCliente] = useState('')
+
   // Inputs para dar baixa na sessão com detalhes
   const [servicoSessao, setServicoSessao] = useState('')
   const [dataSessao, setDataSessao] = useState(new Date().toISOString().split('T')[0])
@@ -65,13 +70,7 @@ export default function PacotesClientesPage() {
         const { data: sal } = await supabase.from('saloes').select('*').eq('id', salaoId).single()
         setSalao(sal)
 
-        const { data: listaClientes } = await supabase
-          .from('clientes')
-          .select('*')
-          .eq('salao_id', salaoId)
-          .order('nome', { ascending: true })
-
-        setClientes(listaClientes || [])
+        await carregarClientes(salaoId)
 
         const { data: listaPacotes } = await supabase
           .from('pacotes')
@@ -88,6 +87,52 @@ export default function PacotesClientesPage() {
     }
     carregar()
   }, [])
+
+  async function carregarClientes(salaoId: string) {
+    const { data: listaClientes } = await supabase
+      .from('clientes')
+      .select('*')
+      .eq('salao_id', salaoId)
+      .order('nome', { ascending: true })
+
+    setClientes(listaClientes || [])
+  }
+
+  async function cadastrarNovoClienteRapido(e: React.FormEvent) {
+    e.preventDefault()
+    if (!nomeNovoCliente || !salao) return
+    setSalvando(true)
+
+    try {
+      const { data: novoC, error } = await supabase
+        .from('clientes')
+        .insert({
+          salao_id: salao.id,
+          nome: nomeNovoCliente,
+          telefone: telefoneNovoCliente || null
+        })
+        .select()
+        .single()
+
+      if (error) {
+        alert('Erro ao cadastrar cliente: ' + error.message)
+        return
+      }
+
+      await carregarClientes(salao.id)
+      setModalNovoClienteAberto(false)
+      setNomeNovoCliente('')
+      setTelefoneNovoCliente('')
+
+      if (novoC) {
+        abrirDetalhesCliente(novoC)
+      }
+    } catch (err: any) {
+      alert('Erro inesperado: ' + err.message)
+    } finally {
+      setSalvando(false)
+    }
+  }
 
   async function abrirDetalhesCliente(cliente: any) {
     setClienteSelecionado(cliente)
@@ -414,9 +459,16 @@ export default function PacotesClientesPage() {
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
-              <div>
-                <h1 className="text-lg font-bold text-gray-900">Pacotes por Cliente</h1>
-                <p className="text-xs text-gray-500">Selecione uma cliente para gerenciar os pacotes</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-lg font-bold text-gray-900">Pacotes por Cliente</h1>
+                  <p className="text-xs text-gray-500">Selecione uma cliente para gerenciar os pacotes</p>
+                </div>
+                <button onClick={() => setModalNovoClienteAberto(true)}
+                  className="text-white px-3.5 py-2.5 rounded-2xl text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+                  style={{ backgroundColor: cor }}>
+                  <UserPlus size={16} /> Novo Cliente
+                </button>
               </div>
               <div className="relative">
                 <Search size={16} className="absolute left-3.5 top-3.5 text-gray-400" />
@@ -454,6 +506,36 @@ export default function PacotesClientesPage() {
           </div>
         )}
       </div>
+
+      {/* Modal Novo Cliente (Igual da Agenda) */}
+      {modalNovoClienteAberto && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">Novo Cliente</h3>
+              <button onClick={() => setModalNovoClienteAberto(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={cadastrarNovoClienteRapido} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Nome completo</label>
+                <input type="text" placeholder="Nome da cliente" value={nomeNovoCliente} onChange={e => setNomeNovoCliente(e.target.value)} required
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-gray-900">Telefone / WhatsApp (Opcional)</label>
+                <input type="text" placeholder="(00) 00000-0000" value={telefoneNovoCliente} onChange={e => setTelefoneNovoCliente(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="button" onClick={() => setModalNovoClienteAberto(false)} className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold">Cancelar</button>
+                <button type="submit" disabled={salvando} className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold" style={{ backgroundColor: cor }}>
+                  {salvando ? 'Salvando...' : 'Cadastrar'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal Vender Pacote */}
       {modalVenderAberto && clienteSelecionado && (
