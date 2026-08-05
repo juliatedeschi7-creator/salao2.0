@@ -26,7 +26,6 @@ export default function NotificacoesDonoPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  // Aba 'catalogo' removida das opções principais
   const [aba, setAba] = useState<'pedidos' | 'confirmacoes' | 'avisos' | 'excluidas'>('pedidos')
   
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
@@ -133,16 +132,20 @@ export default function NotificacoesDonoPage() {
       .select('id, nome, sessoes_equivalentes')
       .eq('salao_id', profile!.salao_id!)
 
-    // Consulta robusta na view 'pacotes_clientes_resumo', mapeando com segurança as colunas e IDs possíveis
-    const { data: resumoPacotes } = await supabase.from('pacotes_clientes_resumo')
+    // Consulta direta à view 'pacotes_clientes_resumo' garantindo filtro correto pelo cliente_id
+    const { data: resumoPacotes, error: erroView } = await supabase.from('pacotes_clientes_resumo')
       .select('*')
       .eq('cliente_id', agendamento.cliente_id)
       .gt('sessoes_restantes', 0)
 
+    if (erroView) {
+      console.error("Erro ao consultar pacotes_clientes_resumo:", erroView)
+    }
+
     const opcoesGerais: PacoteOpcao[] = (resumoPacotes || []).map((cp: any) => ({
-      clientePacoteId: cp.cliente_pacote_id || cp.id,
+      clientePacoteId: cp.id || cp.cliente_pacote_id,
       nome: cp.pacote_nome || cp.nome || 'Pacote Ativo',
-      sessoesRestantes: Number(cp.sessoes_restantes || 0),
+      sessoesRestantes: Number(cp.sessoes_restantes ?? 0),
     }))
 
     if (idsServicos.length === 0) {
@@ -572,7 +575,7 @@ export default function NotificacoesDonoPage() {
         </div>
       )}
 
-      {/* Modal confirmar atendimento com visualização correta de pacotes e sessões restantes */}
+      {/* Modal confirmar atendimento com exibição correta das sessões restantes */}
       {modalConfirmar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
