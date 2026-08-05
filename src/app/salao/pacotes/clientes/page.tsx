@@ -195,7 +195,7 @@ export default function PacotesClientesPage() {
       const novoStatus = novasRestantes === 0 ? 'concluido' : 'ativo'
       
       const novaSessaoObj = {
-        id: Math.random().toString(36.substring(2, 9)),
+        id: Math.random().toString(36).substring(2, 9),
         servico: servicoSessao,
         data: dataSessao
       }
