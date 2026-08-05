@@ -77,7 +77,7 @@ export default function NotificacoesDonoPage() {
     setSalao(sal)
 
     const { data: sols } = await supabase.from('solicitacoes_agendamento')
-      .select('*, clientes(nome, email, telefone), servicos(nome, duracao_minutos)')
+      .select('*, clientes(id, nome, email, telefone), servicos(nome, duracao_minutos)')
       .eq('salao_id', profile!.salao_id!)
       .in('status', ['pendente', 'horario_sugerido'])
       .order('created_at', { ascending: false })
@@ -85,7 +85,7 @@ export default function NotificacoesDonoPage() {
 
     const ontem = new Date(); ontem.setDate(ontem.getDate() - 1)
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome, telefone, id), servicos(nome, id), confirmacoes_atendimento(*)')
+      .select('*, clientes(id, nome, telefone), servicos(nome, id), confirmacoes_atendimento(*)')
       .eq('salao_id', profile!.salao_id!)
       .eq('status', 'confirmado')
       .gte('data_hora', ontem.toISOString())
@@ -132,7 +132,6 @@ export default function NotificacoesDonoPage() {
       .select('id, nome, sessoes_equivalentes')
       .eq('salao_id', profile!.salao_id!)
 
-    // Consulta direta à view 'pacotes_clientes_resumo' garantindo filtro correto pelo cliente_id
     const { data: resumoPacotes, error: erroView } = await supabase.from('pacotes_clientes_resumo')
       .select('*')
       .eq('cliente_id', agendamento.cliente_id)
