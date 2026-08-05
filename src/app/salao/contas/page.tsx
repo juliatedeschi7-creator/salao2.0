@@ -262,7 +262,18 @@ export default function ContasPage() {
   }
 
   async function excluir(id: string) {
-    await supabase.from('contas_clientes').delete().eq('id', id)
+    if (!confirm('Deseja realmente excluir esta conta e seu histórico?')) return
+    setSalvando(true)
+
+    // Deleta primeiro os pagamentos vinculados para evitar erro de chave estrangeira
+    await supabase.from('pagamentos_conta').delete().eq('conta_id', id)
+
+    const { error } = await supabase.from('contas_clientes').delete().eq('id', id)
+    if (error) {
+      alert('Erro ao excluir conta: ' + error.message)
+    }
+
+    setSalvando(false)
     carregarDados()
   }
 
