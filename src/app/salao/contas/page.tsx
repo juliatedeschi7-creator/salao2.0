@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, DollarSign, Check, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Edit2, Trash2, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Plus, DollarSign, Check, X, ChevronDown, ChevronUp, TrendingUp, TrendingDown, Edit2, Trash2 } from 'lucide-react'
 
 const meioPagamentoLabel: Record<string, string> = {
   pix: 'Pix', dinheiro: 'Dinheiro',
@@ -28,6 +28,7 @@ export default function ContasPage() {
   const [modal, setModal] = useState(false)
   const [modalPagamento, setModalPagamento] = useState<any>(null)
   const [modalEdicaoPagamento, setModalEdicaoPagamento] = useState<any>(null)
+  
   const [expandido, setExpandido] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -187,9 +188,7 @@ export default function ContasPage() {
     const contaId = modalEdicaoPagamento.conta_id
     const conta = modalEdicaoPagamento.conta
 
-    // Recalcular o total pago da conta considerando a alteração deste lançamento específico
     const historicoAtual = pagamentos[contaId] || []
-    const valorAntigo = Number(modalEdicaoPagamento.valor)
     const outrosPagamentosSoma = historicoAtual
       .filter((p: any) => p.id !== modalEdicaoPagamento.id)
       .reduce((acc: number, p: any) => acc + Number(p.valor), 0)
@@ -198,7 +197,6 @@ export default function ContasPage() {
     const valorTotalConta = Number(conta.valor)
     const quitado = novoTotalPago >= valorTotalConta
 
-    // Atualiza o registro no histórico (pagamentos_conta)
     const { error: errUpHist } = await supabase.from('pagamentos_conta').update({
       valor: novoValor,
       meio_pagamento: formEdicaoPagamento.meio_pagamento,
@@ -212,7 +210,6 @@ export default function ContasPage() {
       return
     }
 
-    // Atualiza o resumo na tabela principal da conta
     const { error: errUpConta } = await supabase.from('contas_clientes').update({
       valor_pago: novoTotalPago,
       status: quitado ? 'pago' : 'pendente',
@@ -244,7 +241,6 @@ export default function ContasPage() {
     const valorTotalConta = Number(conta.valor)
     const quitado = outrosPagamentosSoma >= valorTotalConta
 
-    // Deleta o registro do histórico
     const { error: errDel } = await supabase.from('pagamentos_conta').delete().eq('id', pag.id)
     if (errDel) {
       alert('Erro ao excluir registro: ' + errDel.message)
@@ -252,7 +248,6 @@ export default function ContasPage() {
       return
     }
 
-    // Atualiza a conta principal subtraindo o valor excluído
     const { error: errUpConta } = await supabase.from('contas_clientes').update({
       valor_pago: outrosPagamentosSoma,
       status: quitado ? 'pago' : 'pendente'
@@ -267,7 +262,6 @@ export default function ContasPage() {
   }
 
   async function excluir(id: string) {
-    if (!confirm('Deseja realmente excluir esta conta inteira?')) return
     await supabase.from('contas_clientes').delete().eq('id', id)
     carregarDados()
   }
@@ -400,7 +394,7 @@ export default function ContasPage() {
                       <span className="text-gray-400">
                         {new Date(c.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}
                       </span>
-                      <span className="font-medium text-gray-700">Lançamento inicial: {fmt(Number(c.valor))}</span>
+                      <span className="font-medium text-gray-700">Lançamento: {fmt(Number(c.valor))}</span>
                     </div>
 
                     {historico.map((p: any) => (
@@ -441,7 +435,7 @@ export default function ContasPage() {
                     )}
                     <button onClick={() => excluir(c.id)}
                       className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
-                      <X size={14} />Excluir conta
+                      <X size={14} />Excluir
                     </button>
                   </div>
                 </div>
@@ -587,7 +581,7 @@ export default function ContasPage() {
         </div>
       )}
 
-      {/* Modal editar registro de pagamento / devolução */}
+      {/* Modal editar registro de pagamento */}
       {modalEdicaoPagamento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
