@@ -198,7 +198,6 @@ export default function NotificacoesDonoPage() {
     setModalPreviewOpen(true)
   }
 
-  // Lógica Flexível de Envio pelo WhatsApp sem número fixo obrigatório
   function dispararWhatsAppFinal() {
     const textoFinal = encodeURIComponent(gerarTextoPreview())
     const telLimpo = telefoneDestinoWp ? telefoneDestinoWp.replace(/\D/g, '') : ''
@@ -206,7 +205,6 @@ export default function NotificacoesDonoPage() {
     if (telLimpo) {
       window.open(`https://api.whatsapp.com/send?phone=55${telLimpo}&text=${textoFinal}`, '_blank')
     } else {
-      // Abre o WhatsApp de forma genérica (sem número específico predefinido) para escolher o contato livremente
       window.open(`https://api.whatsapp.com/send?text=${textoFinal}`, '_blank')
     }
     setModalPreviewOpen(false)
@@ -225,40 +223,44 @@ export default function NotificacoesDonoPage() {
       ? agendamento.servicos_ids
       : agendamento.servico_id ? [agendamento.servico_id] : []
 
-    if (idsServicos.length === 0) return []
+    if (idsServicos.length === 0 && agendamento.servicos?.id) {
+      idsServicos.push(agendamento.servicos.id)
+    }
 
     const { data: servicosInfo } = await supabase.from('servicos')
-      .select('id, nome, sessoes_equivalentes').in('id', idsServicos)
+      .select('id, nome, sessoes_equivalentes')
+      .eq('salao_id', profile!.salao_id!)
 
-    const { data: clientePacotes } = await supabase.from('cliente_pacotes')
-      .select('*, pacotes(nome, pacote_itens(servico_id))')
+    // Consulta direta à view 'pacotes_clientes_resumo' utilizando a coluna sessoes_restantes
+    const { data: resumoPacotes } = await supabase.from('pacotes_clientes_resumo')
+      .select('*')
       .eq('cliente_id', agendamento.cliente_id)
-      .eq('status', 'ativo')
+      .gt('sessoes_restantes', 0)
 
-    const pacotesAtivos = (clientePacotes || []).filter(
-      (cp: any) => cp.sessoes_usadas < cp.sessoes_total
-    )
+    const opcoesGerais: PacoteOpcao[] = (resumoPacotes || []).map((cp: any) => ({
+      clientePacoteId: cp.id || cp.cliente_pacote_id,
+      nome: cp.pacote_nome || cp.nome || 'Pacote Ativo',
+      sessoesRestantes: cp.sessoes_restantes,
+    }))
+
+    if (idsServicos.length === 0) {
+      return [{
+        servicoId: agendamento.servico_id || 'geral',
+        servicoNome: agendamento.servicos?.nome || 'Atendimento',
+        sessoesEquivalentes: 1,
+        clientePacoteIdSelecionado: opcoesGerais.length > 0 ? opcoesGerais[0].clientePacoteId : null,
+        pacotesDisponiveis: opcoesGerais,
+      }]
+    }
 
     return idsServicos.map(id => {
       const srv = (servicosInfo || []).find((s: any) => s.id === id)
-      const pacotesCobrem = pacotesAtivos.filter((cp: any) => {
-        const itens: any[] = cp.pacotes?.pacote_itens || []
-        if (itens.length > 0) return itens.some((i: any) => i.servico_id === id)
-        return true
-      })
-
-      const opcoes: PacoteOpcao[] = pacotesCobrem.map((cp: any) => ({
-        clientePacoteId: cp.id,
-        nome: cp.pacotes?.nome || 'Pacote',
-        sessoesRestantes: cp.sessoes_total - cp.sessoes_usadas,
-      }))
-
       return {
         servicoId: id,
         servicoNome: srv?.nome || 'Serviço',
         sessoesEquivalentes: srv?.sessoes_equivalentes || 1,
-        clientePacoteIdSelecionado: opcoes.length > 0 ? opcoes[0].clientePacoteId : null,
-        pacotesDisponiveis: opcoes,
+        clientePacoteIdSelecionado: opcoesGerais.length > 0 ? opcoesGerais[0].clientePacoteId : null,
+        pacotesDisponiveis: opcoesGerais,
       }
     })
   }
@@ -615,7 +617,7 @@ export default function NotificacoesDonoPage() {
           ))
         )}
 
-        {/* ─── ABA ENVIAR CATÁLOGO COM SELEÇÃO GRANULAR ─── */}
+        {/* CATÁLOGO */}
         {aba === 'catalogo' && (
           <div className="flex flex-col gap-4">
             <div className="card bg-white p-4 flex flex-col gap-2">
@@ -730,7 +732,7 @@ export default function NotificacoesDonoPage() {
         )}
       </div>
 
-      {/* ─── MODAL DE PREVIEW E EDIÇÃO DO WHATSAPP ─── */}
+      {/* MODAL DE PREVIEW */}
       {modalPreviewOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
