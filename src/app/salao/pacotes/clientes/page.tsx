@@ -23,6 +23,7 @@ export default function PacotesClientesPage() {
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
   const [pacotesCliente, setPacotesCliente] = useState<any[]>([])
   const [pacotesDisponiveis, setPacotesDisponiveis] = useState<any[]>([])
+  const [historicoSessoes, setHistoricoSessoes] = useState<Record<string, any[]>>({})
   
   // Modais
   const [modalVenderAberto, setModalVenderAberto] = useState(false)
@@ -95,7 +96,7 @@ export default function PacotesClientesPage() {
   }
 
   async function carregarPacotesDoCliente(clienteNome: string) {
-    const { data, error } = await supabase
+    const { data: pacotes, error } = await supabase
       .from('pacotes_clientes_resumo')
       .select('*')
       .eq('cliente_nome', clienteNome)
@@ -106,7 +107,26 @@ export default function PacotesClientesPage() {
       return
     }
 
-    setPacotesCliente(data || [])
+    setPacotesCliente(pacotes || [])
+
+    // Buscar histórico de sessões para cada pacote
+    if (pacotes && pacotes.length > 0) {
+      const ids = pacotes.map(p => p.id)
+      const { data: sessoes } = await supabase
+        .from('pacotes_sessoes_historico')
+        .select('*')
+        .in('pacote_cliente_id', ids)
+        .order('data_sessao', { ascending: false })
+
+      const mapa: Record<string, any[]> = {}
+      sessoes?.forEach(s => {
+        if (!mapa[s.pacote_cliente_id]) mapa[s.pacote_cliente_id] = []
+        mapa[s.pacote_cliente_id].push(s)
+      })
+      setHistoricoSessoes(mapa)
+    } else {
+      setHistoricoSessoes({})
+    }
   }
 
   async function venderPacote(e: React.FormEvent) {
@@ -126,7 +146,6 @@ export default function PacotesClientesPage() {
           servico: nomeServico,
           sessoes_total: totalSessoes,
           sessoes_restantes: totalSessoes,
-          data_sessao: new Date().toISOString().split('T')[0],
           status: 'ativo'
         })
 
@@ -159,7 +178,6 @@ export default function PacotesClientesPage() {
           servico: nomePacoteAntigo,
           sessoes_total: totalNum,
           sessoes_restantes: totalNum,
-          data_sessao: new Date().toISOString().split('T')[0],
           status: 'ativo'
         })
 
@@ -191,19 +209,30 @@ export default function PacotesClientesPage() {
     setSalvando(true)
 
     try {
+      // 1. Inserir no histórico separado
+      const { error: errHist } = await supabase
+        .from('pacotes_sessoes_historico')
+        .insert({
+          pacote_cliente_id: pacoteAlvoSessao.id,
+          servico: servicoSessao,
+          data_sessao: dataSessao
+        })
+
+      if (errHist) throw errHist
+
+      // 2. Atualizar contadores do pacote
       const novasRestantes = pacoteAlvoSessao.sessoes_restantes - 1
       const novoStatus = novasRestantes === 0 ? 'concluido' : 'ativo'
 
-      const { error } = await supabase
+      const { error: errUp } = await supabase
         .from('pacotes_clientes_resumo')
         .update({ 
           sessoes_restantes: novasRestantes,
-          status: novoStatus,
-          servico: `${pacoteAlvoSessao.servico} (Realizado: ${servicoSessao} em ${dataSessao.split('-').reverse().join('/')})`
+          status: novoStatus
         })
         .eq('id', pacoteAlvoSessao.id)
 
-      if (error) throw error
+      if (errUp) throw errUp
 
       setModalSessaoAberto(false)
       setServicoSessao('')
@@ -217,8 +246,39 @@ export default function PacotesClientesPage() {
     }
   }
 
+  async function excluirSessaoHistorico(sessaoId: string, pacoteId: string) {
+    if (!confirm('Deseja excluir esta sessão e devolver 1 crédito ao pacote?')) return
+
+    const pacoteObj = pacotesCliente.find(p => p.id === pacoteId)
+    if (!pacoteObj) return
+
+    const novasRestantes = pacoteObj.sessoes_restantes + 1
+    const novoStatus = 'ativo'
+
+    // Deletar sessão do histórico
+    const { error: errDel } = await supabase
+      .from('pacotes_sessoes_historico')
+      .delete()
+      .eq('id', sessaoId)
+
+    if (errDel) {
+      alert('Erro ao excluir sessão: ' + errDel.message)
+      return
+    }
+
+    // Devolver sessão ao pacote
+    await supabase
+      .from('pacotes_clientes_resumo')
+      .update({ sessoes_restantes: novasRestantes, status: novoStatus })
+      .eq('id', pacoteId)
+
+    if (clienteSelecionado) {
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
+    }
+  }
+
   async function excluirPacoteCliente(pacoteId: string) {
-    if (!confirm('Deseja realmente remover este pacote?')) return
+    if (!confirm('Deseja realmente remover este pacote e todo o seu histórico?')) return
 
     const { error } = await supabase
       .from('pacotes_clientes_resumo')
@@ -284,7 +344,7 @@ export default function PacotesClientesPage() {
               </div>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pacotes da cliente</h2>
               
               {pacotesCliente.length === 0 ? (
@@ -300,6 +360,7 @@ export default function PacotesClientesPage() {
                   const usadas = Math.max(0, total - restantes)
                   const progressoPct = Math.min(100, (usadas / total) * 100)
                   const status = pc.status || 'ativo'
+                  const sessoesDoPacote = historicoSessoes[pc.id] || []
 
                   return (
                     <div key={pc.id} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-3">
@@ -311,9 +372,6 @@ export default function PacotesClientesPage() {
                               {status}
                             </span>
                           </div>
-                          <span className="inline-block mt-1 text-[10px] font-medium bg-gray-100 text-gray-600 px-2 py-0.5 rounded-lg">
-                            Total: {total} sessões
-                          </span>
                         </div>
                         <button onClick={() => excluirPacoteCliente(pc.id)}
                           className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition" title="Remover pacote">
@@ -323,7 +381,7 @@ export default function PacotesClientesPage() {
 
                       <div className="flex flex-col gap-1.5">
                         <div className="flex justify-between text-xs text-gray-500 font-medium">
-                          <span>{usadas} realizadas</span>
+                          <span>{usadas} usadas</span>
                           <span>{restantes} restantes</span>
                         </div>
                         <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
@@ -331,16 +389,44 @@ export default function PacotesClientesPage() {
                         </div>
                       </div>
 
+                      {/* Histórico de sessões individuais */}
+                      <div className="flex flex-col gap-2 pt-2 border-t border-gray-50">
+                        <span className="text-xs font-bold text-gray-400">Histórico de sessões</span>
+                        {sessoesDoPacote.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic">Nenhuma sessão realizada ainda.</p>
+                        ) : (
+                          <div className="flex flex-col gap-1.5">
+                            {sessoesDoPacote.map(sessao => {
+                              const dataFormatada = sessao.data_sessao ? sessao.data_sessao.split('-').reverse().join('/') : ''
+                              return (
+                                <div key={sessao.id} className="flex items-center justify-between text-xs bg-gray-50 px-3 py-2 rounded-xl">
+                                  <div className="flex items-center gap-2 text-gray-700 font-medium">
+                                    <span className="text-gray-400">{dataFormatada}</span>
+                                    <span>•</span>
+                                    <span>{sessao.servico}</span>
+                                  </div>
+                                  <button onClick={() => excluirSessaoHistorico(sessao.id, pc.id)}
+                                    className="text-gray-300 hover:text-red-500 p-1 transition" title="Excluir sessão">
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+
                       {status === 'ativo' && restantes > 0 && (
                         <button onClick={() => { setPacoteAlvoSessao(pc); setModalSessaoAberto(true); }}
                           className="w-full border py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 mt-1"
                           style={{ borderColor: cor, color: cor }}>
-                          <Plus size={16} /> Adicionar Sessão Realizada
+                          <Plus size={16} /> Adicionar sessão realizada
                         </button>
                       )}
 
-                      <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50">
-                        Criado em: <span className="font-medium text-gray-600">{new Date(pc.created_at).toLocaleDateString('pt-BR')}</span>
+                      <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50 flex justify-between">
+                        <span>Vendido por: <span className="font-medium text-gray-600">{profile?.nome || 'Sistema'}</span></span>
+                        <span>Criado em: <span className="font-medium text-gray-600">{new Date(pc.created_at).toLocaleDateString('pt-BR')}</span></span>
                       </div>
                     </div>
                   )
