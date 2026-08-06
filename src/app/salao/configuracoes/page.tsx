@@ -250,31 +250,31 @@ export default function ConfiguracoesPage() {
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Nome do salão</label>
-                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.nome}
+                <input className="input-field" value={formInfo.nome}
                   onChange={e => setFormInfo(p => ({ ...p, nome: e.target.value }))}
                   placeholder="Ex: Espaço de Beleza" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Telefone / WhatsApp</label>
-                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.telefone}
+                <input className="input-field" value={formInfo.telefone}
                   onChange={e => setFormInfo(p => ({ ...p, telefone: e.target.value }))}
                   placeholder="Ex: 11999999999" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Instagram</label>
-                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.instagram}
+                <input className="input-field" value={formInfo.instagram}
                   onChange={e => setFormInfo(p => ({ ...p, instagram: e.target.value }))}
                   placeholder="Ex: @salao" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Cidade</label>
-                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.cidade}
+                <input className="input-field" value={formInfo.cidade}
                   onChange={e => setFormInfo(p => ({ ...p, cidade: e.target.value }))}
                   placeholder="Ex: São Paulo - SP" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Descrição curta</label>
-                <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none" rows={2} value={formInfo.descricao}
+                <textarea className="input-field resize-none" rows={2} value={formInfo.descricao}
                   onChange={e => setFormInfo(p => ({ ...p, descricao: e.target.value }))} />
               </div>
               {erroInfo && <p className="text-red-600 text-xs">{erroInfo}</p>}
@@ -307,7 +307,7 @@ export default function ConfiguracoesPage() {
                 type="text" 
                 value={corSelecionada} 
                 onChange={e => setCorSelecionada(e.target.value)}
-                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono uppercase"
+                className="input-field uppercase font-mono"
                 maxLength={7}
               />
             </div>
@@ -371,7 +371,7 @@ export default function ConfiguracoesPage() {
         {/* 5. Aviso em Serviços */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><FileText size={18} />Aviso na Página de Serviços</p>
-          <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none" rows={4}
+          <textarea className="input-field resize-none" rows={4}
             placeholder="Ex: Os tempos exibidos são estimativas..."
             value={avisoServicos} onChange={e => setAvisoServicos(e.target.value)} />
           <button onClick={salvarAviso} disabled={salvandoAviso}
