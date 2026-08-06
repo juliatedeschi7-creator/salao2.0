@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { 
   ArrowLeft, Bell, Link, Copy, Check, LogOut, Palette, 
   Smartphone, ChevronRight, UserCheck, Edit3, Save, 
-  X, FileText
+  X, FileText, MessageSquare
 } from 'lucide-react'
 import { registrarPush, verificarPushAtivo } from '@/lib/push-client'
 
@@ -52,6 +52,13 @@ export default function ConfiguracoesPage() {
   const [avisoServicos, setAvisoServicos] = useState('')
   const [salvandoAviso, setSalvandoAviso] = useState(false)
 
+  // Mensagens do WhatsApp
+  const [mensagemConfirmacao, setMensagemConfirmacao] = useState('')
+  const [mensagemSugestao, setMensagemSugestao] = useState('')
+  const [mensagemIndisponivel, setMensagemIndisponivel] = useState('')
+  const [salvandoMensagens, setSalvandoMensagens] = useState(false)
+  const [mensagensSalvas, setMensagensSalvas] = useState(false)
+
   // Push Notifications
   const [pushAtivo, setPushAtivo] = useState(false)
   const [ativandoPush, setAtivandoPush] = useState(false)
@@ -69,6 +76,10 @@ export default function ConfiguracoesPage() {
     const corAtual = sal?.cor_primaria || '#E91E8C'
     setCorSelecionada(corAtual)
     setAprovacaoAutomatica(sal?.aprovacao_automatica_clientes === true)
+
+    setMensagemConfirmacao(sal?.mensagem_confirmacao || '')
+    setMensagemSugestao(sal?.mensagem_sugestao || '')
+    setMensagemIndisponivel(sal?.mensagem_indisponivel || '')
     
     if (sal?.modulos_cliente) setModulos(prev => ({ ...prev, ...sal.modulos_cliente }))
     
@@ -117,6 +128,18 @@ export default function ConfiguracoesPage() {
     setSalvandoAviso(true)
     await supabase.from('saloes').update({ aviso_servicos: avisoServicos }).eq('id', profile!.salao_id!)
     setSalvandoAviso(false)
+  }
+
+  async function salvarMensagens() {
+    setSalvandoMensagens(true)
+    await supabase.from('saloes').update({ 
+      mensagem_confirmacao: mensagemConfirmacao,
+      mensagem_sugestao: mensagemSugestao,
+      mensagem_indisponivel: mensagemIndisponivel
+    }).eq('id', profile!.salao_id!)
+    setSalvandoMensagens(false)
+    setMensagensSalvas(true)
+    setTimeout(() => setMensagensSalvas(false), 2500)
   }
 
   async function salvarModulos() {
@@ -250,31 +273,31 @@ export default function ConfiguracoesPage() {
             <div className="flex flex-col gap-3">
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Nome do salão</label>
-                <input className="input-field" value={formInfo.nome}
+                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.nome}
                   onChange={e => setFormInfo(p => ({ ...p, nome: e.target.value }))}
                   placeholder="Ex: Espaço de Beleza" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Telefone / WhatsApp</label>
-                <input className="input-field" value={formInfo.telefone}
+                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.telefone}
                   onChange={e => setFormInfo(p => ({ ...p, telefone: e.target.value }))}
                   placeholder="Ex: 11999999999" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Instagram</label>
-                <input className="input-field" value={formInfo.instagram}
+                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.instagram}
                   onChange={e => setFormInfo(p => ({ ...p, instagram: e.target.value }))}
                   placeholder="Ex: @salao" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Cidade</label>
-                <input className="input-field" value={formInfo.cidade}
+                <input className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm" value={formInfo.cidade}
                   onChange={e => setFormInfo(p => ({ ...p, cidade: e.target.value }))}
                   placeholder="Ex: São Paulo - SP" />
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-500 block mb-1">Descrição curta</label>
-                <textarea className="input-field resize-none" rows={2} value={formInfo.descricao}
+                <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none" rows={2} value={formInfo.descricao}
                   onChange={e => setFormInfo(p => ({ ...p, descricao: e.target.value }))} />
               </div>
               {erroInfo && <p className="text-red-600 text-xs">{erroInfo}</p>}
@@ -307,7 +330,7 @@ export default function ConfiguracoesPage() {
                 type="text" 
                 value={corSelecionada} 
                 onChange={e => setCorSelecionada(e.target.value)}
-                className="input-field uppercase font-mono"
+                className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono uppercase"
                 maxLength={7}
               />
             </div>
@@ -322,7 +345,41 @@ export default function ConfiguracoesPage() {
           )}
         </div>
 
-        {/* 3. Aparência do App do Cliente */}
+        {/* 3. Modelos de Mensagens para WhatsApp */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
+          <p className="font-bold text-gray-900 flex items-center gap-2"><MessageSquare size={18} />Modelos de Mensagens (WhatsApp)</p>
+          <p className="text-xs text-gray-400">Personalize os textos que serão enviados para os clientes. Você pode usar tags como <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">&#123;cliente&#125;</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">&#123;servico&#125;</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">&#123;data&#125;</code> e <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">&#123;hora&#125;</code>.</p>
+          
+          <div className="flex flex-col gap-3 mt-1">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1">Confirmação de Agendamento</label>
+              <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none" rows={3}
+                placeholder="Olá &#123;cliente&#125;, passando para confirmar o seu agendamento..."
+                value={mensagemConfirmacao} onChange={e => setMensagemConfirmacao(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1">Sugestão de Horários</label>
+              <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none" rows={3}
+                placeholder="Olá &#123;cliente&#125;, esse horário não está disponível, mas temos..."
+                value={mensagemSugestao} onChange={e => setMensagemSugestao(e.target.value)} />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1">Horário Indisponível / Aviso de Indisponibilidade</label>
+              <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none" rows={3}
+                placeholder="Olá &#123;cliente&#125;, infelizmente esse horário não está mais disponível..."
+                value={mensagemIndisponivel} onChange={e => setMensagemIndisponivel(e.target.value)} />
+            </div>
+          </div>
+
+          <button onClick={salvarMensagens} disabled={salvandoMensagens}
+            className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-1" style={{ backgroundColor: cor }}>
+            {mensagensSalvas ? '✓ Mensagens Salvas!' : salvandoMensagens ? 'Salvando...' : 'Salvar Modelos de Mensagens'}
+          </button>
+        </div>
+
+        {/* 4. Aparência do App do Cliente */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
           <div>
             <p className="font-bold text-gray-900 flex items-center gap-2"><Smartphone size={18} />Módulos Visíveis no App do Cliente</p>
@@ -347,7 +404,7 @@ export default function ConfiguracoesPage() {
           </button>
         </div>
 
-        {/* 4. Aprovação de Clientes */}
+        {/* 5. Aprovação de Clientes */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <div className="flex items-center gap-2">
             <UserCheck size={18} className="text-gray-700" />
@@ -368,10 +425,10 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        {/* 5. Aviso em Serviços */}
+        {/* 6. Aviso em Serviços */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><FileText size={18} />Aviso na Página de Serviços</p>
-          <textarea className="input-field resize-none" rows={4}
+          <textarea className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none" rows={4}
             placeholder="Ex: Os tempos exibidos são estimativas..."
             value={avisoServicos} onChange={e => setAvisoServicos(e.target.value)} />
           <button onClick={salvarAviso} disabled={salvandoAviso}
@@ -380,7 +437,7 @@ export default function ConfiguracoesPage() {
           </button>
         </div>
 
-        {/* 6. Links de Clientes */}
+        {/* 7. Links de Clientes */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Link size={18} />Links de Acesso para Clientes</p>
           <div className="flex flex-col gap-3">
@@ -403,7 +460,7 @@ export default function ConfiguracoesPage() {
           </div>
         </div>
 
-        {/* 7. Notificações Push */}
+        {/* 8. Notificações Push */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
           <p className="font-bold text-gray-900 flex items-center gap-2"><Bell size={18} />Notificações Push</p>
 
