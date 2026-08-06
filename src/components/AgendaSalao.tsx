@@ -152,10 +152,11 @@ export default function AgendaPage() {
     const servicosDetalhados = getServicosDetalhados(ag)
     const nomeServico = servicosDetalhados.map(s => s.nome).join(', ') || ag.servicos?.nome || 'Serviço'
 
-    const modeloPadrao = salao?.mensagem_confirmacao || 
-      `Olá *{cliente}*, passando para confirmar o seu agendamento de *{servico}* para o dia *{data}* às *{hora}*. Podemos confirmar?`
+    // Pega a mensagem de confirmação cadastrada no salão ou usa um padrão se estiver vazia
+    const modeloModelo = salao?.mensagem_confirmacao || 
+      'Olá *{cliente}*, passando para confirmar o seu agendamento de *{servico}* para o dia *{data}* às *{hora}*. Podemos confirmar?'
 
-    const mensagemPronta = modeloPadrao
+    const mensagemPronta = modeloModelo
       .replace(/{cliente}/g, nomeCliente)
       .replace(/{servico}/g, nomeServico)
       .replace(/{data}/g, dataFormatada)
@@ -196,7 +197,6 @@ export default function AgendaPage() {
           <div className="flex-1 min-w-0">
             <p className="font-bold text-gray-900 leading-tight">{ag.clientes?.nome}</p>
 
-            {/* Serviços — lista se múltiplos */}
             {temMultiplos ? (
               <div className="mt-1 flex flex-col gap-0.5">
                 {servicosDetalhados.map((s, i) => (
@@ -276,7 +276,6 @@ export default function AgendaPage() {
         </button>
       </div>
 
-      {/* Toggle semana/mês */}
       <div className="px-4 py-3 bg-white border-b border-gray-100">
         <div className="flex bg-gray-100 rounded-2xl p-1">
           {(['semana', 'mes'] as const).map(v => (
@@ -289,7 +288,6 @@ export default function AgendaPage() {
         </div>
       </div>
 
-      {/* Navegação de semana */}
       {view === 'semana' && (
         <>
           <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
@@ -331,7 +329,6 @@ export default function AgendaPage() {
         </>
       )}
 
-      {/* Navegação de mês */}
       {view === 'mes' && (
         <>
           <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
@@ -380,10 +377,7 @@ export default function AgendaPage() {
         </>
       )}
 
-      {/* Lista de agendamentos */}
       <div className="px-4 py-4 flex flex-col gap-3">
-
-        {/* Botão liberar horário */}
         <button onClick={() => router.push('/salao/horarios-vagos')}
           className="w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold"
           style={{ borderColor: cor, color: cor }}>
@@ -437,7 +431,6 @@ export default function AgendaPage() {
         })()}
       </div>
 
-      {/* Modal editar */}
       {modalEditar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
