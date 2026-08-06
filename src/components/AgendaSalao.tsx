@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Clock, X, Check, Calendar } from 'lucide-react'
+import { ArrowLeft, Plus, ChevronLeft, ChevronRight, Edit2, Trash2, Clock, X, Check, Calendar, MessageCircle } from 'lucide-react'
 
 type Agendamento = {
   id: string
@@ -17,7 +17,7 @@ type Agendamento = {
   status: string
   observacoes?: string
   valor?: number
-  clientes?: { nome: string }
+  clientes?: { nome: string; telefone?: string }
   servicos?: { nome: string; preco: number }
   profiles?: { nome: string }
   servicos_detalhes?: { id: string; nome: string; preco: number; duracao_minutos: number }[]
@@ -74,7 +74,7 @@ export default function AgendaPage() {
     const fim = new Date(inicio); fim.setDate(fim.getDate() + 60)
 
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome), servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
+      .select('*, clientes(nome, telefone), servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
       .eq('salao_id', profile!.salao_id!)
       .gte('data_hora', inicio.toISOString())
       .lte('data_hora', fim.toISOString())
@@ -139,6 +139,31 @@ export default function AgendaPage() {
       valor: formEditar.valor ? parseFloat(formEditar.valor) : null
     }).eq('id', modalEditar.id)
     setModalEditar(null); setSalvando(false); carregarAgendamentos()
+  }
+
+  function enviarWhatsAppConfirmacao(ag: Agendamento) {
+    const telefoneCliente = ag.clientes?.telefone || ''
+    const telefoneLimpo = telefoneCliente.replace(/\D/g, '')
+
+    const nomeCliente = ag.clientes?.nome || 'Cliente'
+    const inicio = new Date(ag.data_hora)
+    const dataFormatada = inicio.toLocaleDateString('pt-BR')
+    const horaFormatada = inicio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    const servicosDetalhados = getServicosDetalhados(ag)
+    const nomeServico = servicosDetalhados.map(s => s.nome).join(', ') || ag.servicos?.nome || 'Serviço'
+
+    const modeloPadrao = salao?.mensagem_confirmacao || 
+      `Olá *{cliente}*, passando para confirmar o seu agendamento de *{servico}* para o dia *{data}* às *{hora}*. Podemos confirmar?`
+
+    const mensagemPronta = modeloPadrao
+      .replace(/{cliente}/g, nomeCliente)
+      .replace(/{servico}/g, nomeServico)
+      .replace(/{data}/g, dataFormatada)
+      .replace(/{hora}/g, horaFormatada)
+      .replace(/{salao}/g, salao?.nome || 'Salão')
+
+    const url = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(mensagemPronta)}`
+    window.open(url, '_blank')
   }
 
   const statusConfig: Record<string, { label: string; cor: string; bg: string }> = {
@@ -208,6 +233,10 @@ export default function AgendaPage() {
               {st.label.toUpperCase()}
             </span>
             <div className="flex gap-1.5">
+              <button onClick={() => enviarWhatsAppConfirmacao(ag)}
+                className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center" title="Enviar confirmação pelo WhatsApp">
+                <MessageCircle size={13} className="text-green-600" />
+              </button>
               <button onClick={() => {
                 setModalEditar(ag)
                 setFormEditar({ status: ag.status, observacoes: ag.observacoes || '', valor: ag.valor?.toString() || '' })
@@ -461,7 +490,7 @@ export default function AgendaPage() {
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
                 Cancelar
               </button>
-              <button onClick={salvarEdicao} disabled={salvando}
+              <button onClick={salvarEdicao} destination={salvando}
                 className="flex-1 py-3 rounded-2xl text-white font-medium"
                 style={{ backgroundColor: cor }}>
                 {salvando ? 'Salvando...' : 'Salvar'}
