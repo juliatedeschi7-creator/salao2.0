@@ -490,8 +490,8 @@ export default function AgendaPage() {
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
                 Cancelar
               </button>
-              <button onClick={salvarEdicao} destination={salvando}
-                className="flex-1 py-3 rounded-2xl text-white font-medium"
+              <button onClick={salvarEdicao} disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-50"
                 style={{ backgroundColor: cor }}>
                 {salvando ? 'Salvando...' : 'Salvar'}
               </button>
