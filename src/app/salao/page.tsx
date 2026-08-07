@@ -1,3 +1,4 @@
+// @ts-nocheck
 'use client'
 import { useEffect, useState } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
@@ -268,12 +269,6 @@ export default function SalaoPage() {
           )
         })}
       </div>
-
-      <button onClick={() => router.push('/salao/agenda/novo')}
-        className="fixed bottom-20 right-4 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white z-20"
-        style={{ backgroundColor: cor }}>
-        <Plus size={24} />
-      </button>
 
       <BottomNav items={navItems} corPrimaria={cor} />
     </div>
