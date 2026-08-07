@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Edit3 } from 'lucide-react'
 
 interface Balao {
@@ -20,6 +20,7 @@ interface Balao {
 function QuemSomosContent() {
   const { profile, loading } = useAuth()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const isPreview = searchParams.get('preview') === 'true'
 
   const [salao, setSalao] = useState<any>(null)
@@ -67,19 +68,23 @@ function QuemSomosContent() {
 
   return (
     <div className="min-h-screen pb-12" style={{ backgroundColor: '#f4f4f8' }}>
-      <div className="px-4 pt-12 pb-5 flex items-center gap-3 text-white shadow-sm"
+      <div className="px-4 pt-12 pb-5 flex items-center justify-between text-white shadow-sm"
         style={{ background: `linear-gradient(135deg, ${cor} 0%, ${cor}cc 100%)` }}>
-        <button onClick={() => window.history.back()}
-          className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
-          <ArrowLeft size={18} />
-        </button>
-        <div className="flex-1">
-          <h1 className="font-bold text-xl">{dados?.titulo || 'Nossa História'}</h1>
-          <p className="text-white/80 text-xs mt-0.5">{salao?.nome || 'Salão de Beleza'}</p>
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()}
+            className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <h1 className="font-bold text-xl">{dados?.titulo || 'Nossa História'}</h1>
+            <p className="text-white/80 text-xs mt-0.5">{salao?.nome || 'Salão de Beleza'}</p>
+          </div>
         </div>
+
+        {/* Botão de Editar visível apenas para o dono do salão e fora do modo preview */}
         {profile?.tipo === 'dono_salao' && !isPreview && (
-          <button onClick={() => window.location.href = '/cliente/quem-somos/edicao'}
-            className="px-3 py-2 rounded-xl bg-white text-xs font-bold flex items-center gap-1.5 shadow"
+          <button onClick={() => router.push('/cliente/quem-somos/edicao')}
+            className="px-3.5 py-2 rounded-xl bg-white text-xs font-bold flex items-center gap-1.5 shadow active:scale-95 transition-transform"
             style={{ color: cor }}>
             <Edit3 size={14} /> Editar
           </button>
