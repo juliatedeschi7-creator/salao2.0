@@ -7,7 +7,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Edit3 } from 'lucide-react'
+import { ArrowLeft, Edit3, Save, X } from 'lucide-react'
 
 interface Balao {
   id: string
@@ -27,8 +27,16 @@ function QuemSomosContent() {
   const [dados, setDados] = useState<any>(null)
   const [carregando, setCarregando] = useState(true)
 
+  // Estados para o modal de edição direto na página
+  const [editando, setEditando] = useState(false)
+  const [tituloEdit, setTituloEdit] = useState('')
+  const [historiaEdit, setHistoriaEdit] = useState('')
+  const [salvando, setSalvando] = useState(false)
+
   useEffect(() => {
-    carregarConteudo()
+    if (!loading) {
+      carregarConteudo()
+    }
   }, [profile, loading])
 
   async function carregarConteudo() {
@@ -51,14 +59,38 @@ function QuemSomosContent() {
 
       const { data: qs } = await supabase.from('quem_somos').select('*').eq('salao_id', salaoId).maybeSingle()
       setDados(qs)
+      if (qs) {
+        setTituloEdit(qs.titulo || '')
+        setHistoriaEdit(qs.historia || '')
+      }
     }
 
     setCarregando(false)
   }
 
-  const cor = salao?.cor_primaria || '#E91E8C'
+  async function salvarAlteracoes() {
+    if (!salao) return
+    setSalvando(true)
 
-  // Verifica se é o dono do salão (por tipo ou por ID do dono correspondente)
+    const payload = {
+      salao_id: salao.id,
+      titulo: tituloEdit,
+      historia: historiaEdit,
+    }
+
+    if (dados?.id) {
+      await supabase.from('quem_somos').update(payload).eq('id', dados.id)
+    } else {
+      const { data: novo } = await supabase.from('quem_somos').insert(payload).select().single()
+      if (novo) setDados(novo)
+    }
+
+    setDados((prev: any) => ({ ...prev, titulo: tituloEdit, historia: historiaEdit }))
+    setSalvando(false)
+    setEditando(false)
+  }
+
+  const cor = salao?.cor_primaria || '#E91E8C'
   const ehDono = profile?.tipo === 'dono_salao' || (salao && salao.dono_id === profile?.id)
 
   if (loading || carregando) {
@@ -70,7 +102,7 @@ function QuemSomosContent() {
   }
 
   return (
-    <div className="min-h-screen pb-12" style={{ backgroundColor: '#f4f4f8' }}>
+    <div className="min-h-screen pb-12 bg-gray-50">
       <div className="px-4 pt-12 pb-5 flex items-center justify-between text-white shadow-sm"
         style={{ background: `linear-gradient(135deg, ${cor} 0%, ${cor}cc 100%)` }}>
         <div className="flex items-center gap-3">
@@ -84,9 +116,9 @@ function QuemSomosContent() {
           </div>
         </div>
 
-        {/* Botão de Editar visível para o dono do salão e fora do modo preview */}
+        {/* Botão de Editar visível para o dono do salão */}
         {ehDono && !isPreview && (
-          <button onClick={() => router.push('/cliente/quem-somos/edicao')}
+          <button onClick={() => setEditando(true)}
             className="px-3.5 py-2 rounded-xl bg-white text-xs font-bold flex items-center gap-1.5 shadow active:scale-95 transition-transform shrink-0"
             style={{ color: cor }}>
             <Edit3 size={14} /> Editar
@@ -104,7 +136,7 @@ function QuemSomosContent() {
           </div>
         )}
 
-        <div className="bg-white rounded-3xl p-6 shadow-sm">
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
           <h2 className="text-lg font-bold text-gray-900 mb-3">{dados?.titulo || 'Nossa História'}</h2>
           <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">
             {dados?.historia || 'A história do salão ainda não foi preenchida.'}
@@ -119,6 +151,59 @@ function QuemSomosContent() {
           </div>
         )}
       </div>
+
+      {/* MODAL DE EDIÇÃO PARA O DONO */}
+      {editando && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto shadow-2xl animate-in fade-in slide-in-from-bottom-5">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-gray-900 text-lg">Editar Quem Somos</h3>
+              <button onClick={() => setEditando(false)}><X size={22} className="text-gray-400" /></button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Título da Página</label>
+                <input
+                  type="text"
+                  value={tituloEdit}
+                  onChange={e => setTituloEdit(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none"
+                  style={{ borderColor: `${cor}66` }}
+                  placeholder="Ex: Nossa História"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Texto da História</label>
+                <textarea
+                  rows={6}
+                  value={historiaEdit}
+                  onChange={e => setHistoriaEdit(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none resize-none"
+                  style={{ borderColor: `${cor}66` }}
+                  placeholder="Conte a história do seu salão..."
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={salvarAlteracoes}
+              disabled={salvando}
+              className="w-full py-4 rounded-2xl text-white font-bold flex items-center justify-center gap-2 mt-2 disabled:opacity-50 shadow-md"
+              style={{ backgroundColor: cor }}
+            >
+              {salvando ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Save size={18} /> Salvar Alterações
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -126,7 +211,7 @@ function QuemSomosContent() {
 function RenderBalao({ balao }: { balao: Balao }) {
   if (balao.estilo === 'citacao') {
     return (
-      <div className="px-5 py-4 rounded-2xl border-l-4 bg-white shadow-sm"
+      <div className="px-5 py-4 rounded-2xl border-l-4 bg-white shadow-sm border border-gray-100"
         style={{ borderColor: balao.cor }}>
         {balao.emoji && <span className="text-lg mr-2">{balao.emoji}</span>}
         <span className="text-sm font-medium italic" style={{ color: balao.cor }}>{balao.texto}</span>
