@@ -58,6 +58,9 @@ function QuemSomosContent() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
 
+  // Verifica se é o dono do salão (por tipo ou por ID do dono correspondente)
+  const ehDono = profile?.tipo === 'dono_salao' || (salao && salao.dono_id === profile?.id)
+
   if (loading || carregando) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -81,10 +84,10 @@ function QuemSomosContent() {
           </div>
         </div>
 
-        {/* Botão de Editar visível apenas para o dono do salão e fora do modo preview */}
-        {profile?.tipo === 'dono_salao' && !isPreview && (
+        {/* Botão de Editar visível para o dono do salão e fora do modo preview */}
+        {ehDono && !isPreview && (
           <button onClick={() => router.push('/cliente/quem-somos/edicao')}
-            className="px-3.5 py-2 rounded-xl bg-white text-xs font-bold flex items-center gap-1.5 shadow active:scale-95 transition-transform"
+            className="px-3.5 py-2 rounded-xl bg-white text-xs font-bold flex items-center gap-1.5 shadow active:scale-95 transition-transform shrink-0"
             style={{ color: cor }}>
             <Edit3 size={14} /> Editar
           </button>
