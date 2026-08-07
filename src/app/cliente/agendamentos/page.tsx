@@ -20,10 +20,59 @@ export default function ClienteAgendamentosPage() {
   async function carregarDados() {
     const { data: cli } = await supabase.from('clientes').select('*, saloes(*)').eq('profile_id', profile!.id).single()
     setSalao(cli?.saloes)
+
+    // 1. Busca os agendamentos do cliente
     const { data: ags } = await supabase.from('agendamentos')
-      .select('*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
-      .eq('cliente_id', cli?.id).order('data_hora', { ascending: false })
-    setAgendamentos(ags || [])
+      .select('*, profiles!agendamentos_profissional_id_fkey(nome)')
+      .eq('cliente_id', cli?.id)
+      .order('data_hora', { ascending: false })
+
+    if (!ags) {
+      setAgendamentos([])
+      return
+    }
+
+    // 2. Extrai todos os IDs de serviços únicos de todos os agendamentos
+    const todosServicosIds = Array.from(
+      new Set(
+        ags.flatMap(ag => {
+          if (!ag.servicos_ids) return []
+          // Se estiver salvo como array ou string, trata adequadamente
+          return Array.isArray(ag.servicos_ids) ? ag.servicos_ids : [ag.servicos_ids]
+        })
+      )
+    )
+
+    // 3. Busca os detalhes de todos esses serviços de uma só vez
+    let servicosMap = {}
+    if (todosServicosIds.length > 0) {
+      const { data: servicosData } = await supabase
+        .from('servicos')
+        .select('id, nome, preco')
+        .in('id', todosServicosIds)
+
+      if (servicosData) {
+        servicosMap = Object.fromEntries(servicosData.map(s => [s.id, s]))
+      }
+    }
+
+    // 4. Associa os serviços correspondentes a cada agendamento
+    const agsComServicos = ags.map(ag => {
+      const ids = Array.isArray(ag.servicos_ids) ? ag.servicos_ids : (ag.servicos_ids ? [ag.servicos_ids] : [])
+      const listaServicos = ids.map(id => servicosMap[id]).filter(Boolean)
+      
+      // Fallback caso use a coluna antiga 'servico_id' em algum registro isolado
+      if (listaServicos.length === 0 && ag.servico_id && servicosMap[ag.servico_id]) {
+        listaServicos.push(servicosMap[ag.servico_id])
+      }
+
+      return {
+        ...ag,
+        servicosLista: listaServicos
+      }
+    })
+
+    setAgendamentos(agsComServicos)
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
@@ -73,20 +122,30 @@ export default function ClienteAgendamentosPage() {
           <div key={ag.id} className="card flex flex-col gap-2">
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-bold text-gray-900">{ag.servicos?.nome}</p>
+                {/* Exibe todos os serviços do agendamento */}
+                <div className="flex flex-col gap-0.5">
+                  {ag.servicosLista?.length > 0 ? (
+                    ag.servicosLista.map((s: any, index: number) => (
+                      <p key={index} className="font-bold text-gray-900">• {s.nome}</p>
+                    ))
+                  ) : (
+                    <p className="font-bold text-gray-900">Serviço não especificado</p>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-2 mt-1">
                   <Clock size={13} className="text-gray-400" />
                   <p className="text-sm text-gray-500">
                     {new Date(ag.data_hora).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short' })} às {new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">Prof: {ag.profiles?.nome}</p>
+                {ag.profiles?.nome && <p className="text-xs text-gray-400 mt-0.5">Prof: {ag.profiles?.nome}</p>}
               </div>
               <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' + (statusCor[ag.status] || statusCor.pendente)}>
                 {ag.status?.toUpperCase()}
               </span>
             </div>
-            {ag.valor && <p className="text-sm font-bold" style={{ color: cor }}>R$ {ag.valor.toFixed(2).replace('.', ',')}</p>}
+            {ag.valor && <p className="text-sm font-bold mt-1" style={{ color: cor }}>R$ {ag.valor.toFixed(2).replace('.', ',')}</p>}
           </div>
         ))}
       </div>
