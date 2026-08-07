@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Calendar, Clock } from 'lucide-react'
+import { ArrowLeft, Calendar, Clock, Plus } from 'lucide-react'
 
 export default function ClienteAgendamentosPage() {
   const { profile, loading } = useAuth()
@@ -37,7 +37,6 @@ export default function ClienteAgendamentosPage() {
       new Set(
         ags.flatMap(ag => {
           if (!ag.servicos_ids) return []
-          // Se estiver salvo como array ou string, trata adequadamente
           return Array.isArray(ag.servicos_ids) ? ag.servicos_ids : [ag.servicos_ids]
         })
       )
@@ -61,7 +60,6 @@ export default function ClienteAgendamentosPage() {
       const ids = Array.isArray(ag.servicos_ids) ? ag.servicos_ids : (ag.servicos_ids ? [ag.servicos_ids] : [])
       const listaServicos = ids.map(id => servicosMap[id]).filter(Boolean)
       
-      // Fallback caso use a coluna antiga 'servico_id' em algum registro isolado
       if (listaServicos.length === 0 && ag.servico_id && servicosMap[ag.servico_id]) {
         listaServicos.push(servicosMap[ag.servico_id])
       }
@@ -96,13 +94,15 @@ export default function ClienteAgendamentosPage() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-8">
-      <div className="px-4 pt-12 pb-6 flex items-center gap-3" style={{ backgroundColor: cor }}>
-        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-white" /></button>
-        <h1 className="font-bold text-white text-lg">Meus Agendamentos</h1>
+    <div className="min-h-screen bg-gray-50 pb-24 relative">
+      <div className="px-4 pt-12 pb-6 flex items-center justify-between" style={{ backgroundColor: cor }}>
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()}><ArrowLeft size={22} className="text-white" /></button>
+          <h1 className="font-bold text-white text-lg">Meus Agendamentos</h1>
+        </div>
       </div>
 
-      <div className="flex bg-white border-b border-gray-100">
+      <div className="flex bg-white border-b border-gray-100 sticky top-0 z-10 shadow-sm">
         {(['proximos', 'historico'] as const).map(f => (
           <button key={f} onClick={() => setFiltro(f)}
             className={'flex-1 py-3 text-sm font-medium transition-all ' + (filtro === f ? 'border-b-2' : 'text-gray-400')}
@@ -116,13 +116,20 @@ export default function ClienteAgendamentosPage() {
         {lista.length === 0 ? (
           <div className="card text-center py-10">
             <Calendar size={36} className="text-gray-300 mx-auto mb-2" />
-            <p className="text-gray-400">{filtro === 'proximos' ? 'Nenhum agendamento futuro' : 'Nenhum histórico'}</p>
+            <p className="text-gray-400 mb-4">{filtro === 'proximos' ? 'Nenhum agendamento futuro' : 'Nenhum histórico'}</p>
+            {filtro === 'proximos' && (
+              <button 
+                onClick={() => router.push('/cliente/novo-agendamento')} 
+                className="px-4 py-2.5 rounded-xl text-white text-xs font-semibold inline-flex items-center gap-2 shadow-sm"
+                style={{ backgroundColor: cor }}>
+                <Plus size={14} /> Agendar agora
+              </button>
+            )}
           </div>
         ) : lista.map(ag => (
           <div key={ag.id} className="card flex flex-col gap-2">
             <div className="flex items-start justify-between">
               <div>
-                {/* Exibe todos os serviços do agendamento */}
                 <div className="flex flex-col gap-0.5">
                   {ag.servicosLista?.length > 0 ? (
                     ag.servicosLista.map((s: any, index: number) => (
@@ -148,6 +155,16 @@ export default function ClienteAgendamentosPage() {
             {ag.valor && <p className="text-sm font-bold mt-1" style={{ color: cor }}>R$ {ag.valor.toFixed(2).replace('.', ',')}</p>}
           </div>
         ))}
+      </div>
+
+      {/* Botão flutuante para novo agendamento */}
+      <div className="fixed bottom-6 right-6 z-20">
+        <button
+          onClick={() => router.push('/cliente/novo-agendamento')}
+          className="flex items-center gap-2 px-5 py-3.5 rounded-full text-white font-bold text-sm shadow-xl transition-transform active:scale-95"
+          style={{ backgroundColor: cor }}>
+          <Plus size={18} /> Novo Agendamento
+        </button>
       </div>
     </div>
   )
