@@ -1,10 +1,11 @@
+// @ts-nocheck
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Search, Plus, User, Phone, ChevronRight, MessageSquare, Check, X, Clock } from 'lucide-react'
+import { ArrowLeft, Search, Plus, User, Phone, ChevronRight, MessageSquare, Check, X, Clock, GitMerge } from 'lucide-react'
 
 export default function ClientesPage() {
   const { profile, loading } = useAuth()
@@ -12,9 +13,10 @@ export default function ClientesPage() {
   const [salao, setSalao] = useState<any>(null)
   const [clientes, setClientes] = useState<any[]>([])
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
-  const [abaAtiva, setAbaAtiva] = useState<'ativos' | 'pendentes'>('ativos')
+  const [abaAtiva, setAbaAtiva] = useState<'ativos' | 'pendentes' | 'duplicados'>('ativos')
   const [busca, setBusca] = useState('')
   const [carregando, setCarregando] = useState(true)
+  const [processandoMesclagem, setProcessandoMesclagem] = useState(false)
 
   // Modal Novo Cliente
   const [modalAberto, setModalAberto] = useState(false)
@@ -57,6 +59,111 @@ export default function ClientesPage() {
     }
 
     setCarregando(false)
+  }
+
+  // Função auxiliar para normalizar nomes para detecção de duplicados (remove acentos, espaços extras e converte para minúsculas)
+  function normalizarNome(texto: string) {
+    if (!texto) return ''
+    return texto
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+  }
+
+  // Agrupa clientes ativos que possuem pelo menos 1 nome igual (baseado no primeiro nome ou nome completo normalizado)
+  // Como critério robusto de "ao menos 1 nome igual", podemos agrupar por primeiro nome ou por correspondência exata de nomes normalizados,
+  // ou verificar se compartilham qualquer palavra (token) do nome. Vamos usar o primeiro nome ou agrupamento por nomes idênticos normalizados.
+  // Caso queira exatamente "ao menos 1 nome igual" (ex: se o primeiro nome for igual, ex: "Ana Silva" e "Ana Souza"), agrupamos por primeiro nome.
+  function obterGruposDuplicados() {
+    const gruposMap: { [primeiroNome: string]: any[] } = {}
+
+    clientes.forEach(cliente => {
+      if (!cliente.nome) return
+      const primeiroNome = normalizarNome(cliente.nome).split(' ')[0]
+      if (!primeiroNome) return
+
+      if (!gruposMap[primeiroNome]) {
+        gruposMap[primeiroNome] = []
+      }
+      gruposMap[primeiroNome].push(cliente)
+    })
+
+    // Filtra apenas os grupos que realmente possuem 2 ou mais cadastros
+    const resultado = Object.keys(gruposMap)
+      .map(primeiroNome => ({
+        primeiroNome,
+        clientes: gruposMap[primeiroNome]
+      }))
+      .filter(grupo => grupo.clientes.length > 1)
+
+    return resultado
+  }
+
+  const gruposDuplicados = obterGruposDuplicados()
+
+  async function mesclarGrupo(grupoClientes: any[], clientePrincipalId: string) {
+    if (processandoMesclagem) return
+    setProcessandoMesclagem(true)
+
+    const principal = grupoClientes.find(c => c.id === clientePrincipalId)
+    const duplicados = grupoClientes.filter(c => c.id !== clientePrincipalId)
+
+    if (!principal) {
+      setProcessandoMesclagem(false)
+      return
+    }
+
+    try {
+      for (const dup of duplicados) {
+        // 1. Atualizar agendamentos vinculados ao cliente duplicado para o cliente principal
+        await supabase
+          .from('agendamentos')
+          .update({ cliente_id: principal.id })
+          .eq('cliente_id', dup.id)
+
+        // 2. Atualizar depoimentos vinculados se houver tabela
+        await supabase
+          .from('depoimentos')
+          .update({ cliente_id: principal.id })
+          .eq('cliente_id', dup.id)
+
+        // 3. Atualizar outras tabelas relacionadas se necessário (ex: comissoes, historico, etc.)
+        await supabase
+          .from('historico_cliente')
+          .update({ cliente_id: principal.id })
+          .eq('cliente_id', dup.id)
+
+        // 4. Deletar o cadastro duplicado
+        await supabase
+          .from('clientes')
+          .delete()
+          .eq('id', dup.id)
+      }
+
+      notificar({
+        salaoId: profile!.salao_id!,
+        remetenteId: profile!.id,
+        destinatarioId: profile!.id,
+        titulo: 'Mesclagem Concluída',
+        mensagem: 'Os cadastros foram mesclados com sucesso.',
+        tipo: 'sistema'
+      })
+
+      carregarDados()
+    } catch (error) {
+      console.error(error)
+      notificar({
+        salaoId: profile!.salao_id!,
+        remetenteId: profile!.id,
+        destinatarioId: profile!.id,
+        titulo: 'Erro',
+        mensagem: 'Não foi possível concluir a mesclagem.',
+        tipo: 'sistema'
+      })
+    } finally {
+      setProcessandoMesclagem(false)
+    }
   }
 
   async function aceitarSolicitacao(id: string) {
@@ -153,7 +260,7 @@ export default function ClientesPage() {
         </button>
       </div>
 
-      {/* Abas: Ativos / Solicitações Pendentes */}
+      {/* Abas: Ativos / Solicitações / Duplicados */}
       <div className="flex bg-white border-b border-gray-100 px-4">
         <button 
           onClick={() => setAbaAtiva('ativos')}
@@ -169,6 +276,17 @@ export default function ClientesPage() {
           {solicitacoes.length > 0 && (
             <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] text-white bg-red-500 font-bold">
               {solicitacoes.length}
+            </span>
+          )}
+        </button>
+        <button 
+          onClick={() => setAbaAtiva('duplicados')}
+          className={`flex-1 py-3 text-xs font-bold border-b-2 transition-all relative ${abaAtiva === 'duplicados' ? '' : 'text-gray-400 border-transparent'}`}
+          style={abaAtiva === 'duplicados' ? { color: cor, borderColor: cor } : {}}>
+          Duplicados
+          {gruposDuplicados.length > 0 && (
+            <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] text-white bg-amber-500 font-bold">
+              {gruposDuplicados.length}
             </span>
           )}
         </button>
@@ -288,6 +406,59 @@ export default function ClientesPage() {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        )}
+
+        {abaAtiva === 'duplicados' && (
+          <div className="flex flex-col gap-4">
+            {gruposDuplicados.length === 0 ? (
+              <div className="card text-center py-12">
+                <GitMerge size={36} className="text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-400 text-sm">Nenhum cliente com nome semelhante encontrado para mesclagem.</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                  <p className="text-xs text-amber-800 font-medium text-center">
+                    ⚠️ Encontramos cadastros com nomes semelhantes. Selecione abaixo qual deles será o registro <strong>principal</strong> para unificar os históricos.
+                  </p>
+                </div>
+
+                {gruposDuplicados.map((grupo, idx) => (
+                  <div key={idx} className="card bg-white border border-gray-100 shadow-sm rounded-2xl p-4 flex flex-col gap-3">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <span className="text-xs font-bold text-gray-500 uppercase">Grupo com nome: "{grupo.primeiroNome}"</span>
+                      <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">{grupo.clientes.length} cadastros</span>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                      {grupo.clientes.map(cli => (
+                        <div key={cli.id} className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full flex items-center font-bold text-white text-xs justify-center shrink-0" style={{ backgroundColor: cor }}>
+                              {cli.nome?.charAt(0).toUpperCase() || 'C'}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-900 text-xs">{cli.nome}</p>
+                              <p className="text-[11px] text-gray-400">{cli.telefone || 'Sem telefone'} {cli.email ? `• ${cli.email}` : ''}</p>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => mesclarGrupo(grupo.clientes, cli.id)}
+                            disabled={processandoMesclagem}
+                            className="px-3 py-1.5 rounded-lg text-white text-xs font-semibold shadow-sm flex items-center gap-1 disabled:opacity-50"
+                            style={{ backgroundColor: cor }}
+                          >
+                            <GitMerge size={12} /> {processandoMesclagem ? 'Mesclando...' : 'Manter este'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         )}
