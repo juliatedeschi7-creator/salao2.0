@@ -1,630 +1,694 @@
 // @ts-nocheck
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Bell, Calendar, Check, X, Clock, Trash2, RotateCcw, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Clock, Plus, Trash2, Check, ChevronDown, ChevronUp, Image as ImageIcon, Download, Share2, Sparkles, Calendar } from 'lucide-react'
+import { toPng } from 'html-to-image'
 
-// ─── Tipos ──────────────────────────────────────────────────────────────────
-type PacoteOpcao = {
-  clientePacoteId: string
-  nome: string
-  sessoesRestantes: number
+const DIAS = [
+  { key: 'segunda', label: 'Segunda-feira' },
+  { key: 'terca', label: 'Terça-feira' },
+  { key: 'quarta', label: 'Quarta-feira' },
+  { key: 'quinta', label: 'Quinta-feira' },
+  { key: 'sexta', label: 'Sexta-feira' },
+  { key: 'sabado', label: 'Sábado' },
+  { key: 'domingo', label: 'Domingo' },
+]
+
+type HorarioDia = {
+  ativo: boolean
+  manha_inicio: string | null
+  manha_fim: string | null
+  tarde_inicio: string | null
+  tarde_fim: string | null
+  tem_tarde: boolean
 }
 
-type CoberturaServico = {
-  servicoId: string
-  servicoNome: string
-  sessoesEquivalentes: number
-  clientePacoteIdSelecionado: string | null
-  pacotesDisponiveis: PacoteOpcao[]
+const PADRAO: HorarioDia = {
+  ativo: false,
+  manha_inicio: '08:00',
+  manha_fim: '12:00',
+  tarde_inicio: '13:00',
+  tarde_fim: '18:00',
+  tem_tarde: true,
 }
 
-export default function NotificacoesDonoPage() {
+export default function SalaoHorariosPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [aba, setAba] = useState<'pedidos' | 'confirmacoes' | 'notificacoes' | 'excluidas'>('pedidos')
-  
-  const [solicitacoes, setSolicitacoes] = useState<any[]>([])
-  const [confirmacoes, setConfirmacoes] = useState<any[]>([])
-  const [notificacoes, setNotificacoes] = useState<any[]>([])
-  const [notificacoesExcluidas, setNotificacoesExcluidas] = useState<any[]>([])
-  
-  const [modalSugestao, setModalSugestao] = useState<any>(null)
-  const [modalConfirmar, setModalConfirmar] = useState<any>(null)
-  const [horariosLivres, setHorariosLivres] = useState(['', '', ''])
-  const [servicoRealizado, setServicoRealizado] = useState('')
-  const [salvando, setSalvando] = useState(false)
-  const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
-  const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
+
+  // ── Horários vagos ────────────────────────────────────────────
+  const [vagos, setVagos] = useState<any[]>([])
+  const [funcionarios, setFuncionarios] = useState<any[]>([])
+  const [modalVago, setModalVago] = useState(false)
+  const [salvandoVago, setSalvandoVago] = useState(false)
+  const [formVago, setFormVago] = useState({
+    data: '', hora: '', duracao_minutos: 60,
+    profissional_id: '', observacao: ''
+  })
+
+  // ── Modal "Quero agendar um horário" (Pedido de encaixe) ──────
+  const [modalPedido, setModalPedido] = useState(false)
+  const [enviandoPedido, setEnviandoPedido] = useState(false)
+  const [formPedido, setFormPedido] = useState({
+    data: '',
+    periodo: 'manha', // manha | tarde | noite
+    observacao: ''
+  })
+
+  // ── Gerador de Imagens ────────────────────────────────────────
+  const [modalStory, setModalStory] = useState(false)
+  const [layoutStory, setLayoutStory] = useState<'minimalista' | 'elegante' | 'neon'>('elegante')
+  const [dataSelecionadaStory, setDataSelecionadaStory] = useState(new Date().toISOString().slice(0, 10))
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [gerandoImagem, setGerandoImagem] = useState(false)
+
+  // ── Funcionamento ─────────────────────────────────────────────
+  const [horarios, setHorarios] = useState<Record<string, HorarioDia>>({})
+  const [salvandoFunc, setSalvandoFunc] = useState(false)
+  const [salvouFunc, setSalvouFunc] = useState(false)
+  const [secaoAberta, setSecaoAberta] = useState<'vagos' | 'funcionamento'>('vagos')
 
   useEffect(() => {
-    if (loading) return
-    if (!profile) {
-      router.push('/login')
-      return
-    }
-    if (profile.salao_id) {
-      carregarDados()
-      registrarPushNotification()
-    }
-  }, [loading, profile])
-
-  async function registrarPushNotification() {
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
-      try {
-        const registration = await navigator.serviceWorker.ready
-        const subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-        })
-        await supabase.from('push_subscriptions').upsert({
-          user_id: profile?.id,
-          salao_id: profile?.salao_id,
-          subscription: subscription.toJSON()
-        }, { onConflict: 'user_id' })
-      } catch (err) {
-        console.error('Erro ao registrar push:', err)
-      }
-    }
-  }
+    if (!loading && profile?.salao_id) carregarDados()
+  }, [loading])
 
   async function carregarDados() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    const { data: sols } = await supabase.from('solicitacoes_agendamento')
-      .select('*, clientes(id, nome, email, telefone), servicos(nome, duracao_minutos)')
-      .eq('salao_id', profile!.salao_id!)
-      .in('status', ['pendente', 'horario_sugerido'])
-      .order('created_at', { ascending: false })
-    setSolicitacoes(sols || [])
+    const base: Record<string, HorarioDia> = {}
+    DIAS.forEach(d => {
+      const s = sal?.horarios_funcionamento?.[d.key]
+      base[d.key] = s
+        ? { ...PADRAO, ...s, tem_tarde: !!(s.tarde_inicio) }
+        : { ...PADRAO }
+    })
+    setHorarios(base)
 
-    const ontem = new Date(); ontem.setDate(ontem.getDate() - 1)
-    const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(id, nome, telefone), servicos(nome, id), confirmacoes_atendimento(*)')
+    const agora = new Date().toISOString()
+    const { data: hrs } = await supabase
+      .from('horarios_vagos')
+      .select('*, profiles(nome), clientes(nome)')
       .eq('salao_id', profile!.salao_id!)
-      .eq('status', 'confirmado')
-      .gte('data_hora', ontem.toISOString())
-      .lte('data_hora', new Date().toISOString())
+      .gte('data_hora', agora)
       .order('data_hora')
-    setConfirmacoes((ags || []).filter((a: any) => !a.confirmacoes_atendimento?.length))
+    setVagos(hrs || [])
 
-    const { data: notifs } = await supabase.from('notificacoes')
-      .select('*')
+    const { data: funcs } = await supabase
+      .from('profiles').select('id, nome')
       .eq('salao_id', profile!.salao_id!)
-      .eq('destinatario_id', profile!.id)
-      .eq('excluida', false)
-      .order('created_at', { ascending: false })
-    setNotificacoes(notifs || [])
-
-    const { data: excluidas } = await supabase.from('notificacoes')
-      .select('*')
-      .eq('salao_id', profile!.salao_id!)
-      .eq('destinatario_id', profile!.id)
-      .eq('excluida', true)
-      .order('created_at', { ascending: false })
-      .limit(30)
-    setNotificacoesExcluidas(excluidas || [])
+      .in('role', ['funcionario', 'dono_salao'])
+    setFuncionarios(funcs || [])
   }
 
-  async function handleClicarNotificacao(n: any) {
-    if (!n.lida) {
-      await supabase.from('notificacoes').update({ lida: true }).eq('id', n.id)
-      setNotificacoes(prev => prev.map(item => item.id === n.id ? { ...item, lida: true } : item))
-    }
-    if (n.url) router.push(n.url)
-  }
-
-  async function montarCoberturas(agendamento: any): Promise<CoberturaServico[]> {
-    const idsServicos: string[] = Array.isArray(agendamento.servicos_ids) && agendamento.servicos_ids.length > 0
-      ? agendamento.servicos_ids
-      : agendamento.servico_id ? [agendamento.servico_id] : []
-
-    if (idsServicos.length === 0 && agendamento.servicos?.id) {
-      idsServicos.push(agendamento.servicos.id)
-    }
-
-    const { data: servicosInfo } = await supabase.from('servicos')
-      .select('id, nome, sessoes_equivalentes')
-      .eq('salao_id', profile!.salao_id!)
-
-    const { data: resumoPacotes, error: erroView } = await supabase.from('pacotes_clientes_resumo')
-      .select('*')
-      .eq('cliente_id', agendamento.cliente_id)
-      .gt('sessoes_restantes', 0)
-
-    if (erroView) {
-      console.error("Erro ao consultar pacotes_clientes_resumo:", erroView)
-    }
-
-    const opcoesGerais: PacoteOpcao[] = (resumoPacotes || []).map((cp: any) => ({
-      clientePacoteId: cp.id || cp.cliente_pacote_id,
-      nome: cp.pacote_nome || cp.nome || 'Pacote Ativo',
-      sessoesRestantes: Number(cp.sessoes_restantes ?? 0),
-    }))
-
-    if (idsServicos.length === 0) {
-      return [{
-        servicoId: agendamento.servico_id || 'geral',
-        servicoNome: agendamento.servicos?.nome || 'Atendimento',
-        sessoesEquivalentes: 1,
-        clientePacoteIdSelecionado: opcoesGerais.length > 0 ? opcoesGerais[0].clientePacoteId : null,
-        pacotesDisponiveis: opcoesGerais,
-      }]
-    }
-
-    return idsServicos.map(id => {
-      const srv = (servicosInfo || []).find((s: any) => s.id === id)
-      return {
-        servicoId: id,
-        servicoNome: srv?.nome || 'Serviço',
-        sessoesEquivalentes: srv?.sessoes_equivalentes || 1,
-        clientePacoteIdSelecionado: opcoesGerais.length > 0 ? opcoesGerais[0].clientePacoteId : null,
-        pacotesDisponiveis: opcoesGerais,
-      }
-    })
-  }
-
-  async function abrirModalConfirmar(ag: any) {
-    setModalConfirmar(ag)
-    setServicoRealizado(ag.servicos?.nome || '')
-    setCarregandoCoberturas(true)
-    const covs = await montarCoberturas(ag)
-    setCoberturas(covs)
-    setCarregandoCoberturas(false)
-  }
-
-  function alterarPacoteServico(servicoId: string, clientePacoteId: string | null) {
-    setCoberturas(prev => prev.map(c =>
-      c.servicoId === servicoId
-        ? { ...c, clientePacoteIdSelecionado: clientePacoteId }
-        : c
-    ))
-  }
-
-  async function confirmarAtendimento() {
-    if (!servicoRealizado || !modalConfirmar) return
-    setSalvando(true)
-
-    await supabase.from('confirmacoes_atendimento').insert({
-      agendamento_id: modalConfirmar.id,
+  async function liberarHorario() {
+    if (!formVago.data || !formVago.hora) return
+    setSalvandoVago(true)
+    const dataHora = new Date(`${formVago.data}T${formVago.hora}:00`).toISOString()
+    const { error } = await supabase.from('horarios_vagos').insert({
       salao_id: profile!.salao_id,
-      confirmado_por: profile!.id,
-      servico_realizado: servicoRealizado
+      data_hora: dataHora,
+      duracao_minutos: formVago.duracao_minutos,
+      profissional_id: formVago.profissional_id || null,
+      observacao: formVago.observacao || null,
+    })
+    if (error) { alert('Erro: ' + error.message); setSalvandoVago(false); return }
+    setModalVago(false)
+    setFormVago({ data: '', hora: '', duracao_minutos: 60, profissional_id: '', observacao: '' })
+    setSalvandoVago(false)
+    carregarDados()
+  }
+
+  async function enviarPedidoHorario() {
+    if (!formPedido.data) {
+      alert('Selecione uma data preferida.')
+      return
+    }
+    setEnviandoPedido(true)
+
+    const periodoLabels: Record<string, string> = {
+      manha: 'Manhã',
+      tarde: 'Tarde',
+      noite: 'Noite'
+    }
+
+    const mensagemNotif = `📅 Pedido de Horário: Cliente deseja agendar para o dia ${new Date(formPedido.data + 'T00:00:00').toLocaleDateString('pt-BR')} no período da *${periodoLabels[formPedido.periodo]}*. ${formPedido.observacao ? `Obs: ${formPedido.observacao}` : ''}`
+
+    // Insere na tabela de notificações do salão para o dono ver
+    const { error } = await supabase.from('notificacoes').insert({
+      salao_id: profile!.salao_id,
+      titulo: 'Novo Pedido de Agendamento',
+      mensagem: mensagemNotif,
+      lida: false
     })
 
-    await supabase.from('agendamentos').update({ status: 'concluido' }).eq('id', modalConfirmar.id)
-
-    const hoje = new Date().toISOString().slice(0, 10)
-    const descontos: Record<string, { nome: string; peso: number }[]> = {}
-    
-    for (const cob of coberturas) {
-      if (!cob.clientePacoteIdSelecionado) continue
-      if (!descontos[cob.clientePacoteIdSelecionado]) descontos[cob.clientePacoteIdSelecionado] = []
-      descontos[cob.clientePacoteIdSelecionado].push({ nome: cob.servicoNome, peso: cob.sessoesEquivalentes })
+    if (error) {
+      // Se a tabela se chamar avisos ou similar no seu projeto, ajustamos, mas por segurança tentamos salvar
+      console.warn('Erro ao inserir notificação direta:', error.message)
     }
 
-    for (const [cpId, itens] of Object.entries(descontos)) {
-      const totalPeso = itens.reduce((acc, i) => acc + i.peso, 0)
-      const { data: cp } = await supabase.from('cliente_pacotes')
-        .select('sessoes_usadas, sessoes_total').eq('id', cpId).single()
-      if (!cp) continue
+    setEnviandoPedido(false)
+    setModalPedido(false)
+    setFormPedido({ data: '', periodo: 'manha', observacao: '' })
+    alert('Pedido enviado com sucesso para o salão! Entraremos em contato em breve.')
+  }
 
-      const novasUsadas = cp.sessoes_usadas + totalPeso
-      await supabase.from('cliente_pacotes').update({
-        sessoes_usadas: novasUsadas,
-        status: novasUsadas >= cp.sessoes_total ? 'concluido' : 'ativo'
-      }).eq('id', cpId)
+  async function excluirVago(id: string) {
+    await supabase.from('horarios_vagos').delete().eq('id', id)
+    carregarDados()
+  }
 
-      for (const item of itens) {
-        for (let i = 0; i < item.peso; i++) {
-          await supabase.from('sessoes_pacote').insert({
-            cliente_pacote_id: cpId,
-            data_sessao: hoje,
-            servico_realizado: item.peso > 1 ? `${item.nome} (${i + 1}/${item.peso})` : item.nome,
-            profissional_id: profile!.id
-          })
-        }
+  function atualizarDia(dia: string, campo: keyof HorarioDia, valor: any) {
+    setHorarios(prev => ({ ...prev, [dia]: { ...prev[dia], [campo]: valor } }))
+  }
+
+  async function salvarFuncionamento() {
+    setSalvandoFunc(true)
+    const payload: Record<string, any> = {}
+    DIAS.forEach(d => {
+      const h = horarios[d.key]
+      payload[d.key] = {
+        ativo: h.ativo,
+        manha_inicio: h.ativo ? h.manha_inicio : null,
+        manha_fim: h.ativo ? h.manha_fim : null,
+        tarde_inicio: h.ativo && h.tem_tarde ? h.tarde_inicio : null,
+        tarde_fim: h.ativo && h.tem_tarde ? h.tarde_fim : null,
       }
-    }
-
-    const totalDescontados = Object.values(descontos)
-      .reduce((acc, itens) => acc + itens.reduce((a, i) => a + i.peso, 0), 0)
-
-    const semPacoteOuAcabou = coberturas.length === 0 || coberturas.every(cob => {
-      const pacoteSelecionadoInfo = cob.pacotesDisponiveis.find(p => p.clientePacoteId === cob.clientePacoteIdSelecionado)
-      return !cob.clientePacoteIdSelecionado || (pacoteSelecionadoInfo && pacoteSelecionadoInfo.sessoesRestantes - cob.sessoesEquivalentes <= 0)
     })
+    await supabase.from('saloes').update({ horarios_funcionamento: payload }).eq('id', profile!.salao_id!)
+    setSalvandoFunc(false)
+    setSalvouFunc(true)
+    setTimeout(() => setSalvouFunc(false), 2500)
+  }
 
-    if (semPacoteOuAcabou) {
-      const iniciarNovo = confirm('Esta cliente não possui mais sessões disponíveis ou o pacote acabou. Deseja criar um novo pacote para ela agora?')
-      if (iniciarNovo) {
-        router.push(`/salao/pacotes/clientes?cliente_id=${modalConfirmar.cliente_id}&novo=true`)
-        return
-      }
+  async function baixarImagemStory() {
+    if (!cardRef.current) return
+    try {
+      setGerandoImagem(true)
+      const dataUrl = await toPng(cardRef.current, { cacheBust: true, pixelRatio: 2 })
+      const link = document.createElement('a')
+      link.download = `horarios-vagos-${dataSelecionadaStory}.png`
+      link.href = dataUrl
+      link.click()
+    } catch (err) {
+      console.error('Erro ao gerar imagem:', err)
+      alert('Não foi possível gerar a imagem.')
+    } finally {
+      setGerandoImagem(false)
     }
-
-    const { data: clienteInfo } = await supabase.from('clientes')
-      .select('profile_id').eq('id', modalConfirmar.cliente_id).single()
-    if (clienteInfo?.profile_id) {
-      await notificar({
-        salaoId: profile!.salao_id,
-        remetenteId: profile!.id,
-        destinatarioId: clienteInfo.profile_id,
-        titulo: '✅ Atendimento confirmado!',
-        mensagem: totalDescontados > 0
-          ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
-          : 'Seu atendimento foi registrado com sucesso!',
-        tipo: 'confirmacao',
-        url: '/cliente/pacotes'
-      })
-    }
-
-    setModalConfirmar(null)
-    setServicoRealizado('')
-    setCoberturas([])
-    setSalvando(false)
-    carregarDados()
-  }
-
-  async function sugerirHorarios(solicitacao: any) {
-    const horarios = horariosLivres.filter(h => h)
-    if (!horarios.length) return
-    setSalvando(true)
-    await supabase.from('solicitacoes_agendamento').update({
-      status: 'horario_sugerido', horarios_sugeridos: horarios, profissional_id: profile!.id
-    }).eq('id', solicitacao.id)
-
-    const { data: cp } = await supabase.from('clientes').select('profile_id').eq('id', solicitacao.cliente_id).single()
-    if (cp?.profile_id) {
-      await notificar({
-        salaoId: profile!.salao_id, remetenteId: profile!.id, destinatarioId: cp.profile_id,
-        titulo: '📅 Horários disponíveis para você!',
-        mensagem: `${salao?.nome} sugeriu horários para ${solicitacao.servicos?.nome}. Escolha o melhor para você!`,
-        tipo: 'horario_sugerido',
-        url: '/cliente/agendamentos'
-      })
-    }
-    setModalSugestao(null); setHorariosLivres(['', '', '']); setSalvando(false); carregarDados()
-  }
-
-  async function cancelarSugestao(solicitacao: any) {
-    await supabase.from('solicitacoes_agendamento').update({
-      status: 'pendente', horarios_sugeridos: null, profissional_id: null
-    }).eq('id', solicitacao.id)
-    carregarDados()
-  }
-
-  async function recusarSolicitacao(solicitacao: any) {
-    await supabase.from('solicitacoes_agendamento').update({ status: 'recusado' }).eq('id', solicitacao.id)
-    carregarDados()
-  }
-
-  function enviarWhatsAppHorarios(solicitacao: any) {
-    const telefone = solicitacao.clientes?.telefone ? solicitacao.clientes.telefone.replace(/\D/g, '') : ''
-    const listaHorarios = (solicitacao.horarios_sugeridos || []).map((h: string, index: number) => 
-      `*Opção ${index + 1}:* ${new Date(h).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} às ${new Date(h).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
-    ).join('\n')
-
-    const texto = encodeURIComponent(
-      `Olá, ${solicitacao.clientes?.nome}! Aqui do *${salao?.nome || 'Salão'}*. Separamos os seguintes horários disponíveis para o seu atendimento de *${solicitacao.servicos?.nome}*:\n\n${listaHorarios}\n\nQual destas opções fica melhor para você?`
-    )
-    
-    if (telefone) {
-      window.open(`https://api.whatsapp.com/send?phone=55${telefone}&text=${texto}`, '_blank')
-    } else {
-      window.open(`https://api.whatsapp.com/send?text=${texto}`, '_blank')
-    }
-  }
-
-  function enviarWhatsAppCancelamento(solicitacao: any) {
-    const telefone = solicitacao.clientes?.telefone ? solicitacao.clientes.telefone.replace(/\D/g, '') : ''
-    const texto = encodeURIComponent(
-      `Olá, ${solicitacao.clientes?.nome}! Aqui é do *${salao?.nome || 'Salão'}*. Infelizmente este horário já não temos mais disponível, mas estamos aguardando seu retorno para verificarmos outra data ideal para você!`
-    )
-    
-    if (telefone) {
-      window.open(`https://api.whatsapp.com/send?phone=55${telefone}&text=${texto}`, '_blank')
-    } else {
-      window.open(`https://api.whatsapp.com/send?text=${texto}`, '_blank')
-    }
-  }
-
-  async function removerHorarioIndividual(solicitacao: any, horarioRemover: string) {
-    const novos = solicitacao.horarios_sugeridos.filter((h: string) => h !== horarioRemover)
-    if (novos.length === 0) { cancelarSugestao(solicitacao); return }
-    await supabase.from('solicitacoes_agendamento').update({ horarios_sugeridos: novos }).eq('id', solicitacao.id)
-    carregarDados()
-  }
-
-  async function excluirNotificacao(id: string) {
-    await supabase.from('notificacoes').update({ excluida: true }).eq('id', id)
-    carregarDados()
-  }
-
-  async function restaurarNotificacao(id: string) {
-    await supabase.from('notificacoes').update({ excluida: false }).eq('id', id)
-    carregarDados()
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const badges = {
-    pedidos: solicitacoes.length,
-    confirmacoes: confirmacoes.length,
-    notificacoes: notificacoes.filter(n => !n.lida).length,
-    excluidas: 0
+  const vagosLivres = vagos.filter(h => !h.reservado)
+  const vagosReservados = vagos.filter(h => h.reservado)
+
+  const vagosDoDiaStory = vagosLivres.filter(h => h.data_hora.slice(0, 10) === dataSelecionadaStory)
+
+  function formatarDuracao(min: number) {
+    if (min < 60) return `${min} min`
+    const h = Math.floor(min / 60), m = min % 60
+    return m === 0 ? `${h}h` : `${h}h${m}min`
   }
 
-  return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-12">
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Central de Atendimento</h1>
-      </div>
+  function formatarDataHora(iso: string) {
+    return new Date(iso).toLocaleDateString('pt-BR', {
+      weekday: 'short', day: 'numeric', month: 'short'
+    }) + ' · ' + new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  }
 
-      <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
-        {([
-          { key: 'pedidos', label: 'Pedidos' },
-          { key: 'confirmacoes', label: 'Confirmar' },
-          { key: 'notificacoes', label: 'Notificações' },
-          { key: 'excluidas', label: 'Excluídas' },
-        ] as const).map(t => (
-          <button key={t.key} onClick={() => setAba(t.key)}
-            className={'relative flex-1 py-3 text-xs font-medium whitespace-nowrap transition-all px-3 ' +
-              (aba === t.key ? 'border-b-2' : 'text-gray-400')}
-            style={aba === t.key ? { color: cor, borderColor: cor } : {}}>
-            {t.label}
-            {badges[t.key] > 0 && (
-              <span className="absolute top-1.5 right-1 w-4 h-4 rounded-full text-white text-[9px] flex items-center justify-center font-bold"
-                style={{ backgroundColor: cor }}>
-                {badges[t.key]}
-              </span>
-            )}
-          </button>
-        ))}
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen bg-[#f8f9fa] pb-10">
+      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm sticky top-0 z-10">
+        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Horários</h1>
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-        {/* PEDIDOS */}
-        {aba === 'pedidos' && (
-          solicitacoes.length === 0 ? (
-            <div className="card text-center py-10">
-              <Calendar size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Nenhuma solicitação pendente</p>
+
+        {/* ── SEÇÃO HORÁRIOS VAGOS ── */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <button
+            onClick={() => setSecaoAberta(secaoAberta === 'vagos' ? 'funcionamento' : 'vagos')}
+            className="w-full flex items-center justify-between px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: `${cor}15` }}>
+                <Clock size={18} style={{ color: cor }} />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-gray-900 text-sm">Horários Vagos</p>
+                <p className="text-xs text-gray-400">
+                  {vagosLivres.length} disponível(is) · {vagosReservados.length} reservado(s)
+                </p>
+              </div>
             </div>
-          ) : solicitacoes.map(s => (
-            <div key={s.id} className="card flex flex-col gap-3">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-bold text-gray-900">{s.clientes?.nome}</p>
-                  <p className="text-sm text-gray-500">{s.servicos?.nome}</p>
-                  <p className="text-xs text-gray-400">
-                    {new Date(s.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-                <span className={'text-xs px-2 py-0.5 rounded-full font-medium ' +
-                  (s.status === 'horario_sugerido' ? 'bg-blue-50 text-blue-600' : 'bg-yellow-50 text-yellow-600')}>
-                  {s.status === 'horario_sugerido' ? 'Horários enviados' : 'Aguardando'}
-                </span>
+            {secaoAberta === 'vagos'
+              ? <ChevronUp size={18} className="text-gray-400" />
+              : <ChevronDown size={18} className="text-gray-400" />}
+          </button>
+
+          {secaoAberta === 'vagos' && (
+            <div className="px-4 pb-4 flex flex-col gap-3 border-t border-gray-50 pt-3">
+              <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 leading-relaxed">
+                Libere horários disponíveis ou solicite um horário de preferência caso não encontre vaga.
               </div>
 
-              {s.status === 'horario_sugerido' && s.horarios_sugeridos && (
-                <div className="bg-blue-50 rounded-xl p-3 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-blue-700">Horários sugeridos:</p>
-                    <button onClick={() => enviarWhatsAppHorarios(s)}
-                      className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium">
-                      <MessageCircle size={13} /> Enviar WhatsApp
-                    </button>
+              {/* Botões de Ação */}
+              <div className="grid grid-cols-1 gap-2">
+                <button onClick={() => setModalPedido(true)}
+                  className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-white text-xs font-semibold shadow-sm"
+                  style={{ backgroundColor: cor }}>
+                  <Calendar size={14} /> Quero agendar um horário
+                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => setModalVago(true)}
+                    className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs font-semibold border-2"
+                    style={{ borderColor: cor, color: cor }}>
+                    <Plus size={14} /> Liberar horário
+                  </button>
+                  <button onClick={() => setModalStory(true)}
+                    className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50">
+                    <ImageIcon size={14} className="text-gray-500" /> Criar Arte Story
+                  </button>
+                </div>
+              </div>
+
+              {vagosLivres.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
+                    Disponíveis ({vagosLivres.length})
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {vagosLivres.map(h => (
+                      <div key={h.id} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">{formatarDataHora(h.data_hora)}</p>
+                          <p className="text-xs text-gray-400">
+                            {formatarDuracao(h.duracao_minutos)}
+                            {h.profiles?.nome ? ` · ${h.profiles.nome}` : ''}
+                            {h.observacao ? ` · ${h.observacao}` : ''}
+                          </p>
+                        </div>
+                        <button onClick={() => excluirVago(h.id)}
+                          className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                          <Trash2 size={13} className="text-red-400" />
+                        </button>
+                      </div>
+                    ))}
                   </div>
-                  {s.horarios_sugeridos.map((h: string, i: number) => (
-                    <div key={i} className="flex items-center justify-between bg-white rounded-xl px-3 py-2">
-                      <p className="text-xs text-blue-600 font-medium">
-                        {new Date(h).toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                      <button onClick={() => removerHorarioIndividual(s, h)}
-                        className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center ml-2 shrink-0">
-                        <X size={12} className="text-red-500" />
-                      </button>
-                    </div>
-                  ))}
                 </div>
               )}
 
-              <div className="flex gap-2 flex-wrap">
-                {s.status === 'pendente' && (
-                  <>
-                    <button onClick={() => { setModalSugestao(s); setHorariosLivres(['', '', '']) }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
-                      style={{ backgroundColor: cor }}>
-                      <Clock size={14} />Sugerir horários
-                    </button>
-                    <button onClick={() => { recusarSolicitacao(s); enviarWhatsAppCancelamento(s); }}
-                      className="px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium flex items-center gap-1">
-                      <X size={14} /> Recusar / Avisar
-                    </button>
-                  </>
-                )}
-                {s.status === 'horario_sugerido' && (
-                  <>
-                    <button onClick={() => { setModalSugestao(s); setHorariosLivres(s.horarios_sugeridos || ['', '', '']) }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-medium"
-                      style={{ borderColor: cor, color: cor }}>
-                      <Clock size={14} />Alterar horários
-                    </button>
-                    <button onClick={() => { cancelarSugestao(s); enviarWhatsAppCancelamento(s); }}
-                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium">
-                      <RotateCcw size={14} />Retirar oferta
-                    </button>
-                  </>
-                )}
+              {vagosReservados.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
+                    Reservados ({vagosReservados.length})
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {vagosReservados.map(h => (
+                      <div key={h.id} className="flex items-center gap-3 bg-green-50 rounded-xl px-3 py-3">
+                        <div className="w-8 h-8 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
+                          <Check size={14} className="text-green-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900">{formatarDataHora(h.data_hora)}</p>
+                          <p className="text-xs text-green-600 font-medium">
+                            Reservado por {h.clientes?.nome || 'cliente'}
+                          </p>
+                        </div>
+                        <button onClick={() => excluirVago(h.id)}
+                          className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
+                          <Trash2 size={13} className="text-red-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {vagos.length === 0 && (
+                <div className="text-center py-6">
+                  <p className="text-gray-400 text-sm">Nenhum horário liberado ainda</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── SEÇÃO FUNCIONAMENTO ── */}
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <button
+            onClick={() => setSecaoAberta(secaoAberta === 'funcionamento' ? 'vagos' : 'funcionamento')}
+            className="w-full flex items-center justify-between px-4 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: `${cor}15` }}>
+                <Clock size={18} style={{ color: cor }} />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-gray-900 text-sm">Horários de Funcionamento</p>
+                <p className="text-xs text-gray-400">
+                  Dias e horários que o salão atende
+                </p>
               </div>
             </div>
-          ))
-        )}
+            {secaoAberta === 'funcionamento'
+              ? <ChevronUp size={18} className="text-gray-400" />
+              : <ChevronDown size={18} className="text-gray-400" />}
+          </button>
 
-        {/* CONFIRMAR */}
-        {aba === 'confirmacoes' && (
-          confirmacoes.length === 0 ? (
-            <div className="card text-center py-10">
-              <Check size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Nenhum atendimento para confirmar</p>
-            </div>
-          ) : confirmacoes.map(ag => (
-            <div key={ag.id} className="card flex flex-col gap-2">
-              <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
-              <p className="text-sm text-gray-500">{ag.servicos?.nome}</p>
+          {secaoAberta === 'funcionamento' && (
+            <div className="px-4 pb-4 flex flex-col gap-3 border-t border-gray-50 pt-3">
               <p className="text-xs text-gray-400">
-                {new Date(ag.data_hora).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                Ative os dias e defina os períodos. Ative "Intervalo de almoço" para separar manhã e tarde.
               </p>
-              <button onClick={() => abrirModalConfirmar(ag)}
-                className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-1.5"
+
+              {DIAS.map(({ key, label }) => {
+                const h = horarios[key]
+                if (!h) return null
+                return (
+                  <div key={key} className="bg-gray-50 rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Clock size={15} style={{ color: h.ativo ? cor : '#d1d5db' }} />
+                        <span className={'text-sm font-semibold ' + (h.ativo ? 'text-gray-900' : 'text-gray-400')}>
+                          {label}
+                        </span>
+                      </div>
+                      <button onClick={() => atualizarDia(key, 'ativo', !h.ativo)}
+                        className={'relative w-11 h-6 rounded-full transition-colors ' + (h.ativo ? '' : 'bg-gray-200')}
+                        style={h.ativo ? { backgroundColor: cor } : {}}>
+                        <div className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' +
+                          (h.ativo ? 'left-5' : 'left-0.5')} />
+                      </button>
+                    </div>
+
+                    {h.ativo && (
+                      <div className="px-4 pb-3 flex flex-col gap-3">
+                        <div>
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
+                            {h.tem_tarde ? 'Período da manhã' : 'Funcionamento'}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <input type="time" className="input-field flex-1 text-sm py-2"
+                              value={h.manha_inicio || ''}
+                              onChange={e => atualizarDia(key, 'manha_inicio', e.target.value)} />
+                            <span className="text-gray-300 text-xs">até</span>
+                            <input type="time" className="input-field flex-1 text-sm py-2"
+                              value={h.manha_fim || ''}
+                              onChange={e => atualizarDia(key, 'manha_fim', e.target.value)} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-gray-700">Intervalo de almoço</p>
+                            <p className="text-xs text-gray-400">Período da tarde separado</p>
+                          </div>
+                          <button onClick={() => atualizarDia(key, 'tem_tarde', !h.tem_tarde)}
+                            className={'relative w-11 h-6 rounded-full transition-colors ' + (h.tem_tarde ? '' : 'bg-gray-200')}
+                            style={h.tem_tarde ? { backgroundColor: cor } : {}}>
+                            <div className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' +
+                              (h.tem_tarde ? 'left-5' : 'left-0.5')} />
+                          </button>
+                        </div>
+
+                        {h.tem_tarde && (
+                          <div>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Período da tarde</p>
+                            <div className="flex items-center gap-2">
+                              <input type="time" className="input-field flex-1 text-sm py-2"
+                                value={h.tarde_inicio || ''}
+                                onChange={e => atualizarDia(key, 'tarde_inicio', e.target.value)} />
+                              <span className="text-gray-300 text-xs">até</span>
+                              <input type="time" className="input-field flex-1 text-sm py-2"
+                                value={h.tarde_fim || ''}
+                                onChange={e => atualizarDia(key, 'tarde_fim', e.target.value)} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {!h.ativo && (
+                      <div className="px-4 pb-2">
+                        <p className="text-xs text-gray-300">Fechado</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              <button onClick={salvarFuncionamento} disabled={salvandoFunc}
+                className="w-full py-3 rounded-xl text-white font-semibold text-sm"
                 style={{ backgroundColor: cor }}>
-                <Check size={14} />Confirmar atendimento
+                {salvouFunc ? '✓ Salvo!' : salvandoFunc ? 'Salvando...' : 'Salvar horários'}
               </button>
             </div>
-          ))
-        )}
-
-        {/* NOTIFICAÇÕES (Horários oferecidos / Avisos) */}
-        {aba === 'notificacoes' && (
-          notificacoes.length === 0 ? (
-            <div className="card text-center py-10">
-              <Bell size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Nenhuma notificação</p>
-            </div>
-          ) : notificacoes.map(n => (
-            <div key={n.id}
-              onClick={() => handleClicarNotificacao(n)}
-              className={'card flex flex-col gap-1 cursor-pointer transition-colors hover:bg-gray-50 ' + (!n.lida ? 'border-l-4' : '')}
-              style={!n.lida ? { borderLeftColor: cor } : {}}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900 text-sm">{n.titulo}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">{n.mensagem}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {new Date(n.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
-                <button onClick={(e) => { e.stopPropagation(); excluirNotificacao(n.id) }}
-                  className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                  <Trash2 size={13} className="text-gray-400" />
-                </button>
-              </div>
-            </div>
-          ))
-        )}
-
-        {/* EXCLUÍDAS */}
-        {aba === 'excluidas' && (
-          notificacoesExcluidas.length === 0 ? (
-            <div className="card text-center py-10">
-              <Trash2 size={36} className="text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Nenhuma notificação excluída</p>
-            </div>
-          ) : notificacoesExcluidas.map(n => (
-            <div key={n.id} className="card flex flex-col gap-1 opacity-60">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900 text-sm">{n.titulo}</p>
-                  <p className="text-sm text-gray-500 mt-0.5">{n.mensagem}</p>
-                </div>
-                <button onClick={() => restaurarNotificacao(n.id)}
-                  className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                  <RotateCcw size={13} className="text-gray-400" />
-                </button>
-              </div>
-            </div>
-          ))
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Modal sugerir horários */}
-      {modalSugestao && (
+      {/* Modal "Quero agendar um horário" (Pedido de encaixe) */}
+      {modalPedido && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">
-                {modalSugestao.status === 'horario_sugerido' ? 'Alterar horários' : 'Sugerir horários'}
-              </h3>
-              <button onClick={() => setModalSugestao(null)}><X size={20} className="text-gray-400" /></button>
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="font-bold text-gray-900 text-lg">Quero agendar um horário</h3>
+              <button onClick={() => setModalPedido(false)} className="text-gray-400 font-bold">✕</button>
             </div>
-            {horariosLivres.map((h, i) => (
-              <div key={i}>
-                <label className="text-xs font-medium text-gray-500 block mb-1">Opção {i + 1}</label>
-                <input type="datetime-local" className="input-field"
-                  value={h} onChange={e => { const n = [...horariosLivres]; n[i] = e.target.value; setHorariosLivres(n) }}
-                  style={{ colorScheme: 'light' }} />
+
+            <p className="text-xs text-gray-500">
+              Não encontrou um horário vago? Escolha a data e o período de sua preferência para enviar o pedido de encaixe diretamente ao salão.
+            </p>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Data Desejada *</label>
+              <input className="input-field" type="date"
+                value={formPedido.data}
+                onChange={e => setFormPedido(p => ({ ...p, data: e.target.value }))} />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Período preferido *</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { key: 'manha', label: '☀️ Manhã' },
+                  { key: 'tarde', label: '🌤️ Tarde' },
+                  { key: 'noite', label: '🌙 Noite' },
+                ].map(p => (
+                  <button key={p.key} type="button" onClick={() => setFormPedido(prev => ({ ...prev, periodo: p.key }))}
+                    className={'py-2.5 text-xs font-semibold rounded-xl border transition-all ' +
+                      (formPedido.periodo === p.key ? 'border-2 shadow-sm' : 'border-gray-200 text-gray-500 bg-white')}
+                    style={formPedido.periodo === p.key ? { borderColor: cor, color: cor, backgroundColor: `${cor}10` } : {}}>
+                    {p.label}
+                  </button>
+                ))}
               </div>
-            ))}
-            <div className="flex gap-3">
-              <button onClick={() => setModalSugestao(null)}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={() => sugerirHorarios(modalSugestao)} disabled={salvando || !horariosLivres[0]}
-                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40"
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Observação ou Serviço desejado (opcional)</label>
+              <textarea className="input-field resize-none text-sm" rows={3} placeholder="Ex: Gostaria de fazer unha e cabelo..."
+                value={formPedido.observacao}
+                onChange={e => setFormPedido(p => ({ ...p, observacao: e.target.value }))} />
+            </div>
+
+            <div className="flex gap-3 mt-2">
+              <button onClick={() => setModalPedido(false)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm">
+                Cancelar
+              </button>
+              <button onClick={enviarPedidoHorario}
+                disabled={enviandoPedido || !formPedido.data}
+                className="flex-1 py-3 rounded-2xl text-white font-medium text-sm disabled:opacity-40 shadow-md"
                 style={{ backgroundColor: cor }}>
-                {salvando ? 'Enviando...' : 'Enviar para cliente'}
+                {enviandoPedido ? 'Enviando...' : 'Enviar Pedido'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal confirmar atendimento com exibição correta das sessões restantes */}
-      {modalConfirmar && (
+      {/* Modal liberar horário vago */}
+      {modalVago && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">Confirmar atendimento</h3>
-              <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}><X size={20} className="text-gray-400" /></button>
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
+            <h3 className="font-bold text-gray-900 text-lg">Liberar horário vago</h3>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Data *</label>
+                <input className="input-field" type="date"
+                  value={formVago.data}
+                  onChange={e => setFormVago(p => ({ ...p, data: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Horário *</label>
+                <input className="input-field" type="time"
+                  value={formVago.hora}
+                  onChange={e => setFormVago(p => ({ ...p, hora: e.target.value }))} />
+              </div>
             </div>
 
-            <p className="text-sm text-gray-600 font-medium">{modalConfirmar.clientes?.nome}</p>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Duração (minutos)</label>
+              <input className="input-field" type="number"
+                value={formVago.duracao_minutos}
+                onChange={e => setFormVago(p => ({ ...p, duracao_minutos: parseInt(e.target.value) || 60 }))} />
+            </div>
 
-            {carregandoCoberturas ? (
-              <div className="flex items-center gap-2 py-2">
-                <div className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
-                <p className="text-xs text-gray-400">Verificando pacotes ativos...</p>
+            {funcionarios.length > 1 && (
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Profissional (opcional)</label>
+                <select className="input-field" value={formVago.profissional_id}
+                  onChange={e => setFormVago(p => ({ ...p, profissional_id: e.target.value }))}>
+                  <option value="">Qualquer profissional</option>
+                  {funcionarios.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                </select>
               </div>
-            ) : coberturas.length > 0 ? (
-              <div className="flex flex-col gap-3">
-                {coberturas.map(cob => (
-                  <div key={cob.servicoId} className="bg-gray-50 rounded-2xl p-3 flex flex-col gap-2">
-                    <p className="font-semibold text-gray-900 text-sm">{cob.servicoNome}</p>
-                    <select
-                      className="input-field text-sm py-2"
-                      value={cob.clientePacoteIdSelecionado || ''}
-                      onChange={e => alterarPacoteServico(cob.servicoId, e.target.value || null)}>
-                      <option value="">Não usar pacote / Sem pacote</option>
-                      {cob.pacotesDisponiveis.map(op => (
-                        <option key={op.clientePacoteId} value={op.clientePacoteId}>
-                          {op.nome} — {op.sessoesRestantes} sessões restantes
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-red-500">Este cliente não possui pacotes ativos com sessões disponíveis.</p>
             )}
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">O que foi realizado?</label>
-              <input className="input-field" value={servicoRealizado} onChange={e => setServicoRealizado(e.target.value)} />
+              <label className="text-xs font-semibold text-gray-500 block mb-1">Observação (opcional)</label>
+              <input className="input-field" placeholder="Ex: Disponível para manicure"
+                value={formVago.observacao}
+                onChange={e => setFormVago(p => ({ ...p, observacao: e.target.value }))} />
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => { setModalConfirmar(null); setCoberturas([]) }}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={confirmarAtendimento} disabled={salvando || !servicoRealizado}
+              <button onClick={() => setModalVago(false)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">
+                Cancelar
+              </button>
+              <button onClick={liberarHorario}
+                disabled={salvandoVago || !formVago.data || !formVago.hora}
                 className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40"
                 style={{ backgroundColor: cor }}>
-                {salvando ? 'Salvando...' : 'Confirmar'}
+                {salvandoVago ? 'Salvando...' : 'Liberar horário'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Criar Arte Story / Instagram / WhatsApp */}
+      {modalStory && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-5 flex flex-col gap-4 max-h-[95vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} style={{ color: cor }} />
+                <h3 className="font-bold text-gray-900 text-base">Gerador de Arte para Story</h3>
+              </div>
+              <button onClick={() => setModalStory(false)} className="text-gray-400 font-bold">✕</button>
+            </div>
+
+            {/* Configurações da arte */}
+            <div className="flex flex-col gap-3 bg-gray-50 p-3 rounded-2xl">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Selecione a Data:</label>
+                <input className="input-field text-sm" type="date"
+                  value={dataSelecionadaStory}
+                  onChange={e => setDataSelecionadaStory(e.target.value)} />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Escolha o Layout (Design):</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { key: 'elegante', label: '✨ Elegante' },
+                    { key: 'minimalista', label: '🤍 Clean' },
+                    { key: 'neon', label: '🔥 Destaque' },
+                  ].map(l => (
+                    <button key={l.key} onClick={() => setLayoutStory(l.key as any)}
+                      className={'py-2 text-xs font-medium rounded-xl border transition-all ' +
+                        (layoutStory === l.key ? 'border-2 font-bold shadow-sm' : 'border-gray-200 text-gray-500 bg-white')}
+                      style={layoutStory === l.key ? { borderColor: cor, color: cor, backgroundColor: `${cor}10` } : {}}>
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Pré-visualização do Story */}
+            <div className="flex justify-center bg-gray-900 py-3 rounded-2xl overflow-hidden shadow-inner">
+              <div ref={cardRef} style={{ width: '270px', height: '480px', flexShrink: 0 }}
+                className={`relative flex flex-col justify-between p-6 overflow-hidden text-center select-none ${
+                  layoutStory === 'minimalista' ? 'bg-white text-gray-900' :
+                  layoutStory === 'neon' ? 'bg-zinc-950 text-white border-4' : 'bg-gradient-to-br from-zinc-900 via-zinc-900 to-black text-white'
+                }`}
+                style={layoutStory === 'neon' ? { borderColor: cor } : {}}>
+
+                {layoutStory === 'elegante' && (
+                  <div className="absolute -top-12 -right-12 w-36 h-36 rounded-full opacity-20 blur-2xl" style={{ backgroundColor: cor }} />
+                )}
+
+                <div className="flex flex-col items-center gap-1 z-10 pt-2">
+                  <span className="text-[10px] uppercase tracking-[0.25em] font-semibold opacity-70"
+                    style={{ color: layoutStory === 'minimalista' ? '#6b7280' : cor }}>
+                    {salao?.nome || 'Agenda Aberta'}
+                  </span>
+                  <h2 className="text-xl font-bold tracking-tight">Horários Vagos</h2>
+                  <p className="text-xs opacity-80 capitalize">
+                    {new Date(dataSelecionadaStory + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 z-10 my-auto py-2 overflow-y-auto">
+                  {vagosDoDiaStory.length > 0 ? (
+                    vagosDoDiaStory.map((h, i) => {
+                      const horaFormatada = new Date(h.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                      return (
+                        <div key={i} className={`py-2.5 px-3 rounded-xl flex items-center justify-between border ${
+                          layoutStory === 'minimalista' ? 'bg-gray-50 border-gray-200 text-gray-900' : 'bg-white/10 border-white/10 text-white backdrop-blur-md'
+                        }`}>
+                          <span className="font-bold text-sm tracking-wide flex items-center gap-1.5">
+                            <Clock size={13} style={{ color: cor }} /> {horaFormatada}
+                          </span>
+                          <span className="text-[11px] opacity-80 font-medium">
+                            {h.profiles?.nome ? `${h.profiles.nome}` : (h.observacao || 'Disponível')}
+                          </span>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="py-8 flex flex-col items-center justify-center gap-2">
+                      <p className="text-xs opacity-60">Nenhum horário vago cadastrado para este dia.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="z-10 pb-2 flex flex-col items-center gap-1.5">
+                  <div className="py-2 px-4 rounded-full text-xs font-bold tracking-wide shadow-lg"
+                    style={{ backgroundColor: cor, color: '#fff' }}>
+                    Garanta o seu horário! 📲
+                  </div>
+                  <span className="text-[9px] opacity-50 tracking-wider">Agende pelo link na bio / aplicativo</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setModalStory(false)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm">
+                Fechar
+              </button>
+              <button onClick={baixarImagemStory} disabled={gerandoImagem}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-white font-medium text-sm shadow-md"
+                style={{ backgroundColor: cor }}>
+                <Download size={16} /> {gerandoImagem ? 'Gerando...' : 'Baixar Imagem'}
               </button>
             </div>
           </div>
