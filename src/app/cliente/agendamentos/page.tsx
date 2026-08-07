@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Calendar, Clock, Plus, Minus, ShoppingCart, X, CheckCircle, Package } from 'lucide-react'
+import { ArrowLeft, Calendar, Clock, Plus, Minus, X, CheckCircle } from 'lucide-react'
 
 function formatarDuracao(minutos: number): string {
   if (minutos < 60) return `${minutos} min`
@@ -23,6 +23,8 @@ export default function ClienteAgendamentosPage() {
   const [cliente, setCliente] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<any[]>([])
   const [servicos, setServicos] = useState<any[]>([])
+  const [categorias, setCategorias] = useState<string[]>([])
+  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('todos')
   const [filtro, setFiltro] = useState<'proximos' | 'historico'>('proximos')
   
   // Estados para o fluxo de agendamento / carrinho
@@ -44,10 +46,15 @@ export default function ClienteAgendamentosPage() {
     setSalao(cli?.saloes)
     const salaoId = cli?.saloes?.id
 
-    // Busca serviços disponíveis do salão para poder montar o agendamento
+    // Busca serviços disponíveis do salão
     if (salaoId) {
       const { data: srvs } = await supabase.from('servicos').select('*').eq('salao_id', salaoId).eq('ativo', true).order('categoria')
-      setServicos(srvs || [])
+      if (srvs) {
+        setServicos(srvs)
+        // Extrai categorias únicas
+        const cats = Array.from(new Set(srvs.map(s => s.categoria).filter(Boolean))) as string[]
+        setCategorias(cats)
+      }
     }
 
     // 1. Busca os agendamentos do cliente
@@ -119,12 +126,16 @@ export default function ClienteAgendamentosPage() {
     })
   }
 
-  function removerItemCompleto(id: string) { setCarrinho(prev => prev.filter(i => i.id !== id)) }
   function qtdCarrinho(id: string) { return carrinho.find(i => i.id === id)?.quantidade || 0 }
 
   const totalCarrinho = carrinho.reduce((acc, i) => acc + i.preco * i.quantidade, 0)
   const totalItens = carrinho.reduce((acc, i) => acc + i.quantidade, 0)
   const duracaoTotal = carrinho.reduce((acc, i) => acc + i.duracao_minutos * i.quantidade, 0)
+
+  // Filtra serviços no modal de acordo com a categoria selecionada
+  const servicosFiltrados = categoriaSelecionada === 'todos' 
+    ? servicos 
+    : servicos.filter(s => s.categoria === categoriaSelecionada)
 
   async function enviarCarrinho() {
     if (carrinho.length === 0 || !cliente || !salao) return
@@ -196,7 +207,7 @@ export default function ClienteAgendamentosPage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-        {/* Botão de Agendar Horário em destaque que abre o modal de seleção */}
+        {/* Botão de Agendar Horário em destaque */}
         <div 
           onClick={() => setModalAgendar(true)}
           className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex items-center justify-between cursor-pointer transition-transform active:scale-98">
@@ -279,12 +290,43 @@ export default function ClienteAgendamentosPage() {
               </div>
             ) : (
               <>
-                <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase mb-2">1. Selecione os serviços desejados</p>
-                  <div className="flex flex-col gap-2 max-h-56 overflow-y-auto pr-1">
-                    {servicos.length === 0 ? (
-                      <p className="text-xs text-gray-400 py-2">Nenhum serviço disponível no momento.</p>
-                    ) : servicos.map(s => {
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-400 uppercase">1. Selecione os serviços</p>
+                  </div>
+
+                  {/* Filtro por Categoria */}
+                  {categorias.length > 0 && (
+                    <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                      <button
+                        onClick={() => setCategoriaSelecionada('todos')}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                          categoriaSelecionada === 'todos' ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-600'
+                        }`}
+                        style={categoriaSelecionada === 'todos' ? { backgroundColor: cor } : {}}
+                      >
+                        Todos
+                      </button>
+                      {categorias.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => setCategoriaSelecionada(cat)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                            categoriaSelecionada === cat ? 'text-white shadow-sm' : 'bg-gray-100 text-gray-600'
+                          }`}
+                          style={categoriaSelecionada === cat ? { backgroundColor: cor } : {}}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Lista de serviços filtrados */}
+                  <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1 mt-1">
+                    {servicosFiltrados.length === 0 ? (
+                      <p className="text-xs text-gray-400 py-3 text-center">Nenhum serviço encontrado nesta categoria.</p>
+                    ) : servicosFiltrados.map(s => {
                       const qtd = qtdCarrinho(s.id)
                       return (
                         <div key={s.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3 border border-gray-100">
