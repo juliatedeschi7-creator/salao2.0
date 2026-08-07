@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Clock, CheckCircle, XCircle, User, Plus, Minus, X } from 'lucide-react'
+import { ArrowLeft, Clock, CheckCircle, XCircle, User, Plus, Minus, X, Calendar } from 'lucide-react'
 
 const DIAS = [
   { key: 'segunda', label: 'Segunda-feira', abrev: 'SEG' },
@@ -15,6 +15,23 @@ const DIAS = [
   { key: 'sexta', label: 'Sexta-feira', abrev: 'SEX' },
   { key: 'sabado', label: 'Sábado', abrev: 'SÁB' },
   { key: 'domingo', label: 'Domingo', abrev: 'DOM' },
+]
+
+const DIAS_SEMANA_OPCOES = [
+  { id: 'segunda', label: 'Segunda-feira' },
+  { id: 'terca', label: 'Terça-feira' },
+  { id: 'quarta', label: 'Quarta-feira' },
+  { id: 'quinta', label: 'Quinta-feira' },
+  { id: 'sexta', label: 'Sexta-feira' },
+  { id: 'sabado', label: 'Sábado' },
+  { id: 'domingo', label: 'Domingo' },
+]
+
+const PERIODOS_VAGOS = [
+  { id: 'manha', label: 'Manhã' },
+  { id: 'tarde', label: 'Tarde' },
+  { id: 'noite', label: 'Noite' },
+  { id: 'qualquer', label: 'Qualquer horário' },
 ]
 
 const CHAVE_DIA = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
@@ -38,7 +55,14 @@ export default function ClienteHorariosPage() {
   const [reservando, setReservando] = useState<string | null>(null)
   const [reservados, setReservados] = useState<Set<string>>(new Set())
   const [carregando, setCarregando] = useState(true)
-  const [aba, setAba] = useState<'vagas' | 'funcionamento'>('vagas')
+  const [aba, setAba] = useState<'vagas' | 'solicitar_vago' | 'funcionamento'>('vagas')
+
+  // Estados para a aba de Solicitação de Horário Vago
+  const [diaSelecionadoVago, setDiaSelecionadoVago] = useState('segunda')
+  const [periodoSelecionadoVago, setPeriodoSelecionadoVago] = useState('manha')
+  const [observacaoVago, setObservacaoVago] = useState('')
+  const [enviandoVago, setEnviandoVago] = useState(false)
+  const [sucessoVago, setSucessoVago] = useState(false)
 
   // Estados para o modal de agendamento (serviços, categorias, carrinho)
   const [servicos, setServicos] = useState<any[]>([])
@@ -83,6 +107,39 @@ export default function ClienteHorariosPage() {
       .order('data_hora')
     setVagos(hrs || [])
     setCarregando(false)
+  }
+
+  async function enviarSolicitacaoHorarioVago() {
+    if (!salao || !cliente) return
+    setEnviandoVago(true)
+
+    const diaLabel = DIAS_SEMANA_OPCOES.find(d => d.id === diaSelecionadoVago)?.label || diaSelecionadoVago
+    const periodoLabel = PERIODOS_VAGOS.find(p => p.id === periodoSelecionadoVago)?.label || periodoSelecionadoVago
+
+    // Inserindo na tabela de solicitações ou depoimentos/mensagens dependendo da estrutura (usando solicitacoes_agendamento com campos adaptados ou tabela geral se houver)
+    // Como o app usa solicitacoes_agendamento, criamos um registro indicando o interesse em horário vago
+    const { error } = await supabase.from('solicitacoes_agendamento').insert({
+      salao_id: salao.id,
+      cliente_id: cliente.id,
+      status: 'pendente',
+      data_preferida: null,
+      periodo_preferido: periodoSelecionadoVago,
+    })
+
+    await notificar({
+      salaoId: salao.id,
+      remetenteId: profile!.id,
+      destinatarioId: salao.dono_id,
+      titulo: 'Solicitação de Horário Vago',
+      mensagem: `${cliente.nome} busca horário vago para ${diaLabel} (${periodoLabel}). ${observacaoVago ? `Obs: ${observacaoVago}` : ''}`,
+      tipo: 'solicitacao',
+      url: '/salao/notificacoes'
+    })
+
+    setEnviandoVago(false)
+    setSucessoVago(true)
+    setObservacaoVago('')
+    setTimeout(() => setSucessoVago(false), 4000)
   }
 
   function adicionarAoCarrinho(s: any) {
@@ -214,14 +271,19 @@ export default function ClienteHorariosPage() {
         </div>
       </div>
 
-      <div className="bg-white border-b border-gray-100 flex sticky top-0 z-10 shadow-sm">
+      <div className="bg-white border-b border-gray-100 flex sticky top-0 z-10 shadow-sm overflow-x-auto">
         <button onClick={() => setAba('vagas')}
-          className={'flex-1 py-3 text-sm font-semibold transition-all ' + (aba === 'vagas' ? 'border-b-2' : 'text-gray-400')}
+          className={'flex-1 py-3 px-2 text-xs font-semibold whitespace-nowrap transition-all ' + (aba === 'vagas' ? 'border-b-2' : 'text-gray-400')}
           style={aba === 'vagas' ? { color: cor, borderColor: cor } : {}}>
           Vagas {vagos.length > 0 && `(${vagos.length})`}
         </button>
+        <button onClick={() => setAba('solicitar_vago')}
+          className={'flex-1 py-3 px-2 text-xs font-semibold whitespace-nowrap transition-all ' + (aba === 'solicitar_vago' ? 'border-b-2' : 'text-gray-400')}
+          style={aba === 'solicitar_vago' ? { color: cor, borderColor: cor } : {}}>
+          Horários Vagos (Pedir)
+        </button>
         <button onClick={() => setAba('funcionamento')}
-          className={'flex-1 py-3 text-sm font-semibold transition-all ' + (aba === 'funcionamento' ? 'border-b-2' : 'text-gray-400')}
+          className={'flex-1 py-3 px-2 text-xs font-semibold whitespace-nowrap transition-all ' + (aba === 'funcionamento' ? 'border-b-2' : 'text-gray-400')}
           style={aba === 'funcionamento' ? { color: cor, borderColor: cor } : {}}>
           Funcionamento
         </button>
@@ -305,6 +367,79 @@ export default function ClienteHorariosPage() {
               </div>
             ))
           )
+        )}
+
+        {/* ABA SOLICITAR HORÁRIO VAGO */}
+        {aba === 'solicitar_vago' && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${cor}15` }}>
+                <Calendar size={20} style={{ color: cor }} />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-sm">Solicitar Horário Vago</p>
+                <p className="text-xs text-gray-400">Informe o dia e o período desejado para o dono avaliar</p>
+              </div>
+            </div>
+
+            {sucessoVago && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                <p className="text-green-700 text-xs font-medium">Solicitação enviada com sucesso ao salão!</p>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-700">Selecione o Dia da Semana</label>
+              <select 
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none bg-gray-50"
+                value={diaSelecionadoVago}
+                onChange={e => setDiaSelecionadoVago(e.target.value)}
+              >
+                {DIAS_SEMANA_OPCOES.map(d => (
+                  <option key={d.id} value={d.id}>{d.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-700">Selecione o Período</label>
+              <div className="grid grid-cols-2 gap-2">
+                {PERIODOS_VAGOS.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPeriodoSelecionadoVago(p.id)}
+                    className="py-2.5 px-3 rounded-xl text-xs font-semibold border transition-all"
+                    style={periodoSelecionadoVago === p.id 
+                      ? { backgroundColor: cor, color: 'white', borderColor: cor }
+                      : { backgroundColor: '#f9fafb', color: '#4b5563', borderColor: '#e5e7eb' }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-700">Observações adicionais (opcional)</label>
+              <textarea
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none resize-none bg-gray-50"
+                rows={3}
+                placeholder="Ex: Preciso fazer corte e escova..."
+                value={observacaoVago}
+                onChange={e => setObservacaoVago(e.target.value)}
+              />
+            </div>
+
+            <button 
+              onClick={enviarSolicitacaoHorarioVago}
+              disabled={enviandoVago}
+              className="w-full py-3.5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              style={{ backgroundColor: cor }}
+            >
+              {enviandoVago ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Enviar Solicitação'}
+            </button>
+          </div>
         )}
 
         {/* ABA FUNCIONAMENTO */}
