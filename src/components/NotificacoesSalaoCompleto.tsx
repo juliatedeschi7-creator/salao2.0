@@ -132,20 +132,25 @@ export default function NotificacoesDonoPage() {
       .select('id, nome, sessoes_equivalentes')
       .eq('salao_id', profile!.salao_id!)
 
-    const { data: resumoPacotes, error: erroView } = await supabase.from('pacotes_clientes_resumo')
-      .select('*')
+    const { data: clientePacotesData, error: cpError } = await supabase.from('cliente_pacotes')
+      .select('id, sessoes_usadas, sessoes_total, pacotes(nome)')
       .eq('cliente_id', agendamento.cliente_id)
-      .gt('sessoes_restantes', 0)
+      .eq('status', 'ativo')
 
-    if (erroView) {
-      console.error("Erro ao consultar pacotes_clientes_resumo:", erroView)
+    if (cpError) {
+      console.error("Erro ao consultar cliente_pacotes:", cpError)
     }
 
-    const opcoesGerais: PacoteOpcao[] = (resumoPacotes || []).map((cp: any) => ({
-      clientePacoteId: cp.id || cp.cliente_pacote_id,
-      nome: cp.pacote_nome || cp.nome || 'Pacote Ativo',
-      sessoesRestantes: Number(cp.sessoes_restantes ?? 0),
-    }))
+    const opcoesGerais: PacoteOpcao[] = (clientePacotesData || []).map((cp: any) => {
+      const sTotal = Number(cp.sessoes_total ?? 0)
+      const sUsadas = Number(cp.sessoes_usadas ?? 0)
+      const restantes = Math.max(0, sTotal - sUsadas)
+      return {
+        clientePacoteId: cp.id,
+        nome: cp.pacotes?.nome || 'Pacote Ativo',
+        sessoesRestantes: restantes,
+      }
+    }).filter(op => op.sessoesRestantes > 0)
 
     if (idsServicos.length === 0) {
       return [{
