@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import { notificar } from '@/lib/notificar'
-import { ArrowLeft, Search, Plus, User, Phone, ChevronRight, MessageSquare, Check, X, Clock, GitMerge } from 'lucide-react'
+import { ArrowLeft, Search, Plus, User, Phone, ChevronRight, MessageSquare, Check, X, Clock, GitMerge, Edit3, Save } from 'lucide-react'
 
 export default function ClientesPage() {
   const { profile, loading } = useAuth()
@@ -27,6 +27,12 @@ export default function ClientesPage() {
   const [observacoes, setObservacoes] = useState('')
   const [salvando, setSalvando] = useState(false)
 
+  // Estado para Edição Rápida de Nome/Cliente
+  const [clienteEditando, setClienteEditando] = useState<any | null>(null)
+  const [novoNomeEdicao, setNovoNomeEdicao] = useState('')
+  const [novoTelefoneEdicao, setNovoTelefoneEdicao] = useState('')
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+
   useEffect(() => {
     if (loading) return
     if (!profile) { router.push('/login'); return }
@@ -40,14 +46,12 @@ export default function ClientesPage() {
     const { data: sal } = await supabase.from('saloes').select('*').eq('id', profile!.salao_id!).single()
     setSalao(sal)
 
-    // Busca todos os clientes do salão para tratar no código de forma segura
     const { data: todos } = await supabase.from('clientes')
       .select('*')
       .eq('salao_id', profile!.salao_id!)
       .order('nome', { ascending: true })
 
     if (todos) {
-      // Separa quem é pendente e quem são os cadastrados (ativos ou sem status)
       const pendentesList = todos.filter(c => c.status === 'pendente')
       const ativosList = todos.filter(c => c.status !== 'pendente')
       
@@ -61,7 +65,6 @@ export default function ClientesPage() {
     setCarregando(false)
   }
 
-  // Função auxiliar para normalizar nomes para detecção de duplicados (remove acentos, espaços extras e converte para minúsculas)
   function normalizarNome(texto: string) {
     if (!texto) return ''
     return texto
@@ -71,31 +74,80 @@ export default function ClientesPage() {
       .trim()
   }
 
-  // Agrupa clientes ativos que possuem pelo menos 1 nome igual (baseado no primeiro nome ou nome completo normalizado)
-  // Como critério robusto de "ao menos 1 nome igual", podemos agrupar por primeiro nome ou por correspondência exata de nomes normalizados,
-  // ou verificar se compartilham qualquer palavra (token) do nome. Vamos usar o primeiro nome ou agrupamento por nomes idênticos normalizados.
-  // Caso queira exatamente "ao menos 1 nome igual" (ex: se o primeiro nome for igual, ex: "Ana Silva" e "Ana Souza"), agrupamos por primeiro nome.
+  // Algoritmo refinado para nomes semelhantes (ex: Dionisia Garbim / Dionisia Garbin ou Ana Garbim / Ana Paula Garbin)
+  // Agrupa se o primeiro nome for idêntico E houver compartilhamento de pelo menos um sobrenome/termo ou proximidade forte.
   function obterGruposDuplicados() {
-    const gruposMap: { [primeiroNome: string]: any[] } = {}
+    const gruposMap: { [chave: string]: any[] } = {}
 
     clientes.forEach(cliente => {
       if (!cliente.nome) return
-      const primeiroNome = normalizarNome(cliente.nome).split(' ')[0]
-      if (!primeiroNome) return
+      const nomeNorm = normalizarNome(cliente.nome)
+      const partes = nomeNorm.split(/\s+/)
+      if (partes.length === 0) return
 
+      const primeiroNome = partes[0]
+      const segundoNome = partes[1] || ''
+
+      // Chave de agrupamento mais inteligente: Primeiro nome + a primeira letra do segundo nome (ou segundo nome completo se existir)
+      // Ex: "Dionisia Garbin" e "Dionisia Garbim" geram chaves muito próximas. 
+      // Vamos agrupar por primeiro nome, mas filtrar grupos onde os clientes compartilham semelhança real nos sobrenomes.
       if (!gruposMap[primeiroNome]) {
         gruposMap[primeiroNome] = []
       }
       gruposMap[primeiroNome].push(cliente)
     })
 
-    // Filtra apenas os grupos que realmente possuem 2 ou mais cadastros
-    const resultado = Object.keys(gruposMap)
-      .map(primeiroNome => ({
-        primeiroNome,
-        clientes: gruposMap[primeiroNome]
-      }))
-      .filter(grupo => grupo.clientes.length > 1)
+    const resultado: { chaveGrupo: string; clientes: any[] }[] = []
+
+    Object.keys(gruposMap).forEach(primeiroNome => {
+      const lista = gruposMap[primeiroNome]
+      if (lista.length < 2) return
+
+      // Dentro do mesmo primeiro nome, vamos sub-agrupar se houver semelhança de sobrenome ou se houver poucos termos (ex: Ana Silva e Ana Souza não necessariamente são duplicados a menos que tenham o mesmo sobrenome, mas vamos manter flexível: se compartilham 1 sobrenome ou iniciais parecidas)
+      // Para garantir que "Ana Garbim" e "Ana Paula Garbin" caiam juntas (compartilham o primeiro nome e o sobrenome Garb...), vamos checar interseção de palavras ou proximidade.
+      const subGrupos: any[][] = []
+
+      lista.forEach(cli => {
+        const palavrasCli = normalizarNome(cli.nome).split(/\s+/)
+        let alocado = false
+
+        for (const sg of subGrupos) {
+          const representante = sg[0]
+          const palavrasRep = normalizarNome(representante.nome).split(/\s+/)
+
+          // Verifica se compartilham o primeiro nome e pelo menos mais uma palavra em comum (ou com 1 letra de diferença / prefixo igual)
+          const temSobrenomeSemelhante = palavrasCli.some((pC, idxC) => 
+            palavrasRep.some((pR, idxR) => {
+              if (idxC === 0 && idxR === 0) return true // Primeiro nome igual
+              // Verifica igualdade ou semelhança estrita (ex: garbin vs garbim)
+              if (pC === pR || (pC.length > 3 && pR.length > 3 && (pC.startsWith(pR.slice(0, 3)) || pR.startsWith(pC.slice(0, 3))))) {
+                return true
+              }
+              return false
+            })
+          )
+
+          if (temSobrenomeSemelhante) {
+            sg.push(cli)
+            alocado = true
+            break
+          }
+        }
+
+        if (!alocado) {
+          subGrupos.push([cli])
+        }
+      })
+
+      subGrupos.forEach(sg => {
+        if (sg.length > 1) {
+          resultado.push({
+            chaveGrupo: primeiroNome.toUpperCase(),
+            clientes: sg
+          })
+        }
+      })
+    })
 
     return resultado
   }
@@ -116,25 +168,21 @@ export default function ClientesPage() {
 
     try {
       for (const dup of duplicados) {
-        // 1. Atualizar agendamentos vinculados ao cliente duplicado para o cliente principal
         await supabase
           .from('agendamentos')
           .update({ cliente_id: principal.id })
           .eq('cliente_id', dup.id)
 
-        // 2. Atualizar depoimentos vinculados se houver tabela
         await supabase
           .from('depoimentos')
           .update({ cliente_id: principal.id })
           .eq('cliente_id', dup.id)
 
-        // 3. Atualizar outras tabelas relacionadas se necessário (ex: comissoes, historico, etc.)
         await supabase
           .from('historico_cliente')
           .update({ cliente_id: principal.id })
           .eq('cliente_id', dup.id)
 
-        // 4. Deletar o cadastro duplicado
         await supabase
           .from('clientes')
           .delete()
@@ -186,6 +234,44 @@ export default function ClientesPage() {
     if (!error) {
       carregarDados()
     }
+  }
+
+  async function salvarEdicaoCliente(e: React.FormEvent) {
+    e.preventDefault()
+    if (!clienteEditando || !novoNomeEdicao.trim()) return
+
+    setSalvandoEdicao(true)
+    const { error } = await supabase
+      .from('clientes')
+      .update({
+        nome: novoNomeEdicao.trim(),
+        telefone: novoTelefoneEdicao.trim() || null
+      })
+      .eq('id', clienteEditando.id)
+
+    if (error) {
+      console.error(error)
+      notificar({
+        salaoId: profile!.salao_id!,
+        remetenteId: profile!.id,
+        destinatarioId: profile!.id,
+        titulo: 'Erro',
+        mensagem: 'Não foi possível atualizar o cliente.',
+        tipo: 'sistema'
+      })
+    } else {
+      notificar({
+        salaoId: profile!.salao_id!,
+        remetenteId: profile!.id,
+        destinatarioId: profile!.id,
+        titulo: 'Atualizado',
+        mensagem: 'Dados do cliente alterados com sucesso.',
+        tipo: 'sistema'
+      })
+      setClienteEditando(null)
+      carregarDados()
+    }
+    setSalvandoEdicao(false)
   }
 
   async function cadastrarCliente(e: React.FormEvent) {
@@ -260,7 +346,7 @@ export default function ClientesPage() {
         </button>
       </div>
 
-      {/* Abas: Ativos / Solicitações / Duplicados */}
+      {/* Abas */}
       <div className="flex bg-white border-b border-gray-100 px-4">
         <button 
           onClick={() => setAbaAtiva('ativos')}
@@ -295,7 +381,6 @@ export default function ClientesPage() {
       <div className="px-4 py-4 flex flex-col gap-4">
         {abaAtiva === 'ativos' && (
           <>
-            {/* Barra de Pesquisa */}
             <div className="relative">
               <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input 
@@ -315,7 +400,6 @@ export default function ClientesPage() {
               </div>
             )}
 
-            {/* Lista de Clientes */}
             {carregando ? (
               <div className="flex justify-center py-12">
                 <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: cor }} />
@@ -344,6 +428,17 @@ export default function ClientesPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setClienteEditando(cliente)
+                          setNovoNomeEdicao(cliente.nome || '')
+                          setNovoTelefoneEdicao(cliente.telefone || '')
+                        }}
+                        className="w-8 h-8 rounded-full bg-gray-50 text-gray-600 flex items-center justify-center hover:bg-gray-100"
+                        title="Editar nome/telefone">
+                        <Edit3 size={14} />
+                      </button>
                       {cliente.telefone && (
                         <a 
                           href={`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}`} 
@@ -386,9 +481,20 @@ export default function ClientesPage() {
                         {sol.email && <p className="text-xs text-gray-400 mt-0.5">{sol.email}</p>}
                       </div>
                     </div>
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase bg-yellow-50 text-yellow-600">
-                      Pendente
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button 
+                        onClick={() => {
+                          setClienteEditando(sol)
+                          setNovoNomeEdicao(sol.nome || '')
+                          setNovoTelefoneEdicao(sol.telefone || '')
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-gray-100 text-gray-700 text-xs font-semibold flex items-center gap-1">
+                        <Edit3 size={12} /> Editar
+                      </button>
+                      <span className="text-[10px] font-bold px-2 py-1 rounded-full uppercase bg-yellow-50 text-yellow-600">
+                        Pendente
+                      </span>
+                    </div>
                   </div>
 
                   <div className="flex gap-2 pt-2 border-t border-gray-50">
@@ -421,14 +527,14 @@ export default function ClientesPage() {
               <>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                   <p className="text-xs text-amber-800 font-medium text-center">
-                    ⚠️ Encontramos cadastros com nomes semelhantes. Selecione abaixo qual deles será o registro <strong>principal</strong> para unificar os históricos.
+                    ⚠️ Encontramos cadastros com nomes semelhantes (como variações de grafia ou nomes parecidos). Selecione abaixo qual deles será o registro <strong>principal</strong> para unificar os históricos.
                   </p>
                 </div>
 
                 {gruposDuplicados.map((grupo, idx) => (
                   <div key={idx} className="card bg-white border border-gray-100 shadow-sm rounded-2xl p-4 flex flex-col gap-3">
                     <div className="flex items-center justify-between border-b border-gray-100 pb-2">
-                      <span className="text-xs font-bold text-gray-500 uppercase">Grupo com nome: "{grupo.primeiroNome}"</span>
+                      <span className="text-xs font-bold text-gray-500 uppercase">Grupo com prefixo: "{grupo.chaveGrupo}"</span>
                       <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">{grupo.clientes.length} cadastros</span>
                     </div>
 
@@ -445,14 +551,25 @@ export default function ClientesPage() {
                             </div>
                           </div>
 
-                          <button
-                            onClick={() => mesclarGrupo(grupo.clientes, cli.id)}
-                            disabled={processandoMesclagem}
-                            className="px-3 py-1.5 rounded-lg text-white text-xs font-semibold shadow-sm flex items-center gap-1 disabled:opacity-50"
-                            style={{ backgroundColor: cor }}
-                          >
-                            <GitMerge size={12} /> {processandoMesclagem ? 'Mesclando...' : 'Manter este'}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => {
+                                setClienteEditando(cli)
+                                setNovoNomeEdicao(cli.nome || '')
+                                setNovoTelefoneEdicao(cli.telefone || '')
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-semibold flex items-center gap-1">
+                              <Edit3 size={12} />
+                            </button>
+                            <button
+                              onClick={() => mesclarGrupo(grupo.clientes, cli.id)}
+                              disabled={processandoMesclagem}
+                              className="px-3 py-1.5 rounded-lg text-white text-xs font-semibold shadow-sm flex items-center gap-1 disabled:opacity-50"
+                              style={{ backgroundColor: cor }}
+                            >
+                              <GitMerge size={12} /> {processandoMesclagem ? 'Mesclando...' : 'Manter este'}
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -463,6 +580,57 @@ export default function ClientesPage() {
           </div>
         )}
       </div>
+
+      {/* Modal para Editar Nome/Telefone do Cliente */}
+      {clienteEditando && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">Editar Cadastro</h3>
+              <button onClick={() => setClienteEditando(null)}><span className="text-gray-400 text-xl font-bold">×</span></button>
+            </div>
+
+            <form onSubmit={salvarEdicaoCliente} className="flex flex-col gap-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Nome do Cliente *</label>
+                <input 
+                  type="text" 
+                  required
+                  className="input-field text-sm"
+                  value={novoNomeEdicao}
+                  onChange={e => setNovoNomeEdicao(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Telefone / WhatsApp</label>
+                <input 
+                  type="text" 
+                  className="input-field text-sm"
+                  value={novoTelefoneEdicao}
+                  onChange={e => setNovoTelefoneEdicao(e.target.value)}
+                />
+              </div>
+
+              <div className="flex gap-3 mt-2">
+                <button 
+                  type="button" 
+                  onClick={() => setClienteEditando(null)}
+                  className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm">
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={salvandoEdicao}
+                  className="flex-1 py-3 rounded-2xl text-white font-medium text-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  style={{ backgroundColor: cor }}>
+                  <Save size={16} /> {salvandoEdicao ? 'Salvando...' : 'Salvar Alterações'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Modal para Adicionar Novo Cliente */}
       {modalAberto && (
