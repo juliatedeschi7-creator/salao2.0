@@ -1,4 +1,5 @@
 {
+  "id": "/",
   "name": "Organiza Salão",
   "short_name": "Organiza Salão",
   "description": "Sistema de gestão para salões de beleza",
@@ -9,15 +10,9 @@
   "icons": [
     {
       "src": "/logo.png",
-      "sizes": "192x192",
+      "sizes": "1024x1024",
       "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/logo.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
