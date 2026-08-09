@@ -110,7 +110,7 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── Carregar dados ────────────────────────────────────────────────────
+  // ─── Carregar dados ────────────────────────────────────────────────    
 
   async function carregarDados() {
     if (!profile?.salao_id) return
@@ -204,24 +204,6 @@ export default function NotificacoesDonoPage() {
   }
 
   // ─── PACOTES ────────────────────────────────────────────────────────────
-  //
-  // IMPORTANTE:
-  // Esta função NÃO consulta mais cliente_pacotes.
-  //
-  // A fonte oficial agora é:
-  // pacotes_clientes_resumo
-  //
-  // Campos utilizados:
-  // id
-  // cliente_nome
-  // servico
-  // sessoes_total
-  // sessoes_restantes
-  // data_sessao
-  // created_at
-  // status
-  // historico_sessoes
-  //
 
   async function montarCoberturas(
     agendamento: any
@@ -241,13 +223,11 @@ export default function NotificacoesDonoPage() {
       idsServicos.push(agendamento.servicos.id)
     }
 
-    // Serviços do salão
     const { data: servicosInfo } = await supabase
       .from('servicos')
       .select('id, nome, sessoes_equivalentes')
       .eq('salao_id', profile!.salao_id!)
 
-    // Nome do cliente
     const clienteNome =
       agendamento.clientes?.nome ||
       agendamento.cliente_nome ||
@@ -257,14 +237,8 @@ export default function NotificacoesDonoPage() {
       console.error(
         'Não foi possível identificar o nome do cliente.'
       )
-
       return []
     }
-
-    // ─────────────────────────────────────────────────────────────
-    // BUSCA DOS PACOTES:
-    // agora diretamente em pacotes_clientes_resumo
-    // ─────────────────────────────────────────────────────────────
 
     const { data: pacotesData, error: pacotesError } =
       await supabase
@@ -299,31 +273,25 @@ export default function NotificacoesDonoPage() {
           pacote => pacote.sessoesRestantes > 0
         )
 
-    // Caso o agendamento não tenha serviço identificado
     if (idsServicos.length === 0) {
       return [
         {
           servicoId:
             agendamento.servico_id || 'geral',
-
           servicoNome:
             agendamento.servicos?.nome ||
             'Atendimento',
-
           sessoesEquivalentes: 1,
-
           clientePacoteIdSelecionado:
             opcoesGerais.length > 0
               ? opcoesGerais[0].clientePacoteId
               : null,
-
           pacotesDisponiveis:
             opcoesGerais
         }
       ]
     }
 
-    // Monta cobertura para cada serviço
     return idsServicos.map(id => {
       const srv = (servicosInfo || []).find(
         (s: any) => s.id === id
@@ -331,20 +299,16 @@ export default function NotificacoesDonoPage() {
 
       return {
         servicoId: id,
-
         servicoNome:
           srv?.nome || 'Serviço',
-
         sessoesEquivalentes:
           Number(
             srv?.sessoes_equivalentes ?? 1
           ),
-
         clientePacoteIdSelecionado:
           opcoesGerais.length > 0
             ? opcoesGerais[0].clientePacoteId
             : null,
-
         pacotesDisponiveis:
           opcoesGerais
       }
@@ -403,23 +367,16 @@ export default function NotificacoesDonoPage() {
     setSalvando(true)
 
     try {
-      // ─────────────────────────────────────────────────────────
-      // 1. Registrar confirmação do atendimento
-      // ─────────────────────────────────────────────────────────
-
       const { error: confirmacaoError } =
         await supabase
           .from('confirmacoes_atendimento')
           .insert({
             agendamento_id:
               modalConfirmar.id,
-
             salao_id:
               profile.salao_id,
-
             confirmado_por:
               profile.id,
-
             servico_realizado:
               servicoRealizado
           })
@@ -429,13 +386,8 @@ export default function NotificacoesDonoPage() {
           'Erro ao registrar confirmação:',
           confirmacaoError
         )
-
         throw confirmacaoError
       }
-
-      // ─────────────────────────────────────────────────────────
-      // 2. Concluir agendamento
-      // ─────────────────────────────────────────────────────────
 
       const { error: agendamentoError } =
         await supabase
@@ -450,13 +402,8 @@ export default function NotificacoesDonoPage() {
           'Erro ao concluir agendamento:',
           agendamentoError
         )
-
         throw agendamentoError
       }
-
-      // ─────────────────────────────────────────────────────────
-      // 3. Agrupar descontos por pacote
-      // ─────────────────────────────────────────────────────────
 
       const descontos: Record<
         string,
@@ -489,10 +436,6 @@ export default function NotificacoesDonoPage() {
         })
       }
 
-      // ─────────────────────────────────────────────────────────
-      // 4. Atualizar pacotes_clientes_resumo
-      // ─────────────────────────────────────────────────────────
-
       const hoje =
         new Date()
           .toISOString()
@@ -511,7 +454,6 @@ export default function NotificacoesDonoPage() {
             0
           )
 
-        // Busca o pacote diretamente na tabela correta
         const {
           data: pacote,
           error: pacoteError
@@ -528,7 +470,6 @@ export default function NotificacoesDonoPage() {
             'Erro ao buscar pacote:',
             pacoteError
           )
-
           continue
         }
 
@@ -549,7 +490,6 @@ export default function NotificacoesDonoPage() {
             ? 'concluido'
             : 'ativo'
 
-        // Histórico atual
         let historico =
           Array.isArray(
             pacote.historico_sessoes
@@ -558,10 +498,6 @@ export default function NotificacoesDonoPage() {
                 ...pacote.historico_sessoes
               ]
             : []
-
-        // ─────────────────────────────────────────────────────
-        // Adiciona cada sessão realizada ao histórico
-        // ─────────────────────────────────────────────────────
 
         for (const item of itens) {
           for (
@@ -577,9 +513,7 @@ export default function NotificacoesDonoPage() {
                   : `${Date.now()}-${Math.random()
                       .toString(36)
                       .substring(2, 9)}`,
-
               data: hoje,
-
               servico:
                 item.peso > 1
                   ? `${item.nome} (${i + 1}/${item.peso})`
@@ -588,10 +522,6 @@ export default function NotificacoesDonoPage() {
           }
         }
 
-        // ─────────────────────────────────────────────────────
-        // Atualiza a própria linha do resumo
-        // ─────────────────────────────────────────────────────
-
         const {
           error: updateError
         } = await supabase
@@ -599,13 +529,10 @@ export default function NotificacoesDonoPage() {
           .update({
             sessoes_restantes:
               sessoesRestantesNovas,
-
             status:
               novoStatus,
-
             data_sessao:
               hoje,
-
             historico_sessoes:
               historico
           })
@@ -616,7 +543,6 @@ export default function NotificacoesDonoPage() {
             'Erro ao atualizar pacote:',
             updateError
           )
-
           throw updateError
         }
 
@@ -624,55 +550,22 @@ export default function NotificacoesDonoPage() {
           totalPeso
       }
 
-      // ─────────────────────────────────────────────────────────
-      // 5. Verifica se ainda existe algum pacote disponível
-      // ─────────────────────────────────────────────────────────
+      const nenhumPacoteUsado = coberturas.every(
+        cob => !cob.clientePacoteIdSelecionado
+      )
 
-      const { data: pacotesAtivosDepois } =
-        await supabase
-          .from('pacotes_clientes_resumo')
-          .select(
-            'id, sessoes_restantes, status'
-          )
-          .eq(
-            'cliente_nome',
-            modalConfirmar.clientes?.nome
-          )
-          .eq('status', 'ativo')
-          .gt(
-            'sessoes_restantes',
-            0
-          )
+      if (nenhumPacoteUsado) {
+        const venderNovo = window.confirm(
+          "Este atendimento está sem sessões no pacote. Deseja vender novo pacote?"
+        )
 
-      const possuiPacoteDisponivel =
-        (pacotesAtivosDepois || []).length >
-        0
-
-      // ─────────────────────────────────────────────────────────
-      // 6. Se não possui mais pacote, pergunta se quer criar outro
-      // ─────────────────────────────────────────────────────────
-
-      if (
-        totalDescontados > 0 &&
-        !possuiPacoteDisponivel
-      ) {
-        const iniciarNovo =
-          window.confirm(
-            'Esta cliente não possui mais sessões disponíveis. Deseja criar um novo pacote para ela agora?'
-          )
-
-        if (iniciarNovo) {
+        if (venderNovo) {
           router.push(
             `/salao/pacotes/clientes?cliente_id=${modalConfirmar.cliente_id}&novo=true`
           )
-
           return
         }
       }
-
-      // ─────────────────────────────────────────────────────────
-      // 7. Notificar cliente
-      // ─────────────────────────────────────────────────────────
 
       const {
         data: clienteInfo
@@ -689,32 +582,22 @@ export default function NotificacoesDonoPage() {
         await notificar({
           salaoId:
             profile.salao_id,
-
           remetenteId:
             profile.id,
-
           destinatarioId:
             clienteInfo.profile_id,
-
           titulo:
             '✅ Atendimento confirmado!',
-
           mensagem:
             totalDescontados > 0
               ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
               : 'Seu atendimento foi registrado com sucesso!',
-
           tipo:
             'confirmacao',
-
           url:
             '/cliente/pacotes'
         })
       }
-
-      // ─────────────────────────────────────────────────────────
-      // 8. Limpeza
-      // ─────────────────────────────────────────────────────────
 
       setModalConfirmar(null)
       setServicoRealizado('')
@@ -727,7 +610,6 @@ export default function NotificacoesDonoPage() {
         'Erro ao confirmar atendimento:',
         error
       )
-
       alert(
         'Não foi possível confirmar o atendimento. Verifique o console para mais detalhes.'
       )
@@ -753,10 +635,8 @@ export default function NotificacoesDonoPage() {
       .update({
         status:
           'horario_sugerido',
-
         horarios_sugeridos:
           horarios,
-
         profissional_id:
           profile!.id
       })
@@ -780,22 +660,16 @@ export default function NotificacoesDonoPage() {
       await notificar({
         salaoId:
           profile!.salao_id,
-
         remetenteId:
           profile!.id,
-
         destinatarioId:
           cp.profile_id,
-
         titulo:
           '📅 Horários disponíveis para você!',
-
         mensagem:
           `${salao?.nome} sugeriu horários para ${solicitacao.servicos?.nome}. Escolha o melhor para você!`,
-
         tipo:
           'horario_sugerido',
-
         url:
           '/cliente/agendamentos'
       })
@@ -812,8 +686,6 @@ export default function NotificacoesDonoPage() {
     carregarDados()
   }
 
-  // ─── Cancelar sugestão ─────────────────────────────────────────────────
-
   async function cancelarSugestao(
     solicitacao: any
   ) {
@@ -822,10 +694,8 @@ export default function NotificacoesDonoPage() {
       .update({
         status:
           'pendente',
-
         horarios_sugeridos:
           null,
-
         profissional_id:
           null
       })
@@ -836,8 +706,6 @@ export default function NotificacoesDonoPage() {
 
     carregarDados()
   }
-
-  // ─── Recusar solicitação ───────────────────────────────────────────────
 
   async function recusarSolicitacao(
     solicitacao: any
@@ -855,8 +723,6 @@ export default function NotificacoesDonoPage() {
 
     carregarDados()
   }
-
-  // ─── WhatsApp ──────────────────────────────────────────────────────────
 
   function enviarWhatsAppHorarios(
     solicitacao: any
@@ -946,8 +812,6 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── Remover horário ───────────────────────────────────────────────────
-
   async function removerHorarioIndividual(
     solicitacao: any,
     horarioRemover: string
@@ -962,7 +826,6 @@ export default function NotificacoesDonoPage() {
       cancelarSugestao(
         solicitacao
       )
-
       return
     }
 
@@ -979,8 +842,6 @@ export default function NotificacoesDonoPage() {
 
     carregarDados()
   }
-
-  // ─── Notificações excluídas ─────────────────────────────────────────────
 
   async function excluirNotificacao(
     id: string
@@ -1014,8 +875,6 @@ export default function NotificacoesDonoPage() {
     carregarDados()
   }
 
-  // ─── Visual ─────────────────────────────────────────────────────────────
-
   const cor =
     salao?.cor_primaria ||
     '#E91E8C'
@@ -1023,28 +882,19 @@ export default function NotificacoesDonoPage() {
   const badges = {
     pedidos:
       solicitacoes.length,
-
     confirmacoes:
       confirmacoes.length,
-
     notificacoes:
       notificacoes.filter(
         n => !n.lida
       ).length,
-
     excluidas:
       0
   }
 
-  // ─── Render ─────────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-12">
-
-      {/* Cabeçalho */}
-
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-
         <button
           onClick={() =>
             router.back()
@@ -1059,13 +909,9 @@ export default function NotificacoesDonoPage() {
         <h1 className="font-bold text-gray-900 text-lg flex-1">
           Central de Atendimento
         </h1>
-
       </div>
 
-      {/* Abas */}
-
       <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
-
         {(
           [
             {
@@ -1086,7 +932,6 @@ export default function NotificacoesDonoPage() {
             }
           ] as const
         ).map(t => (
-
           <button
             key={t.key}
             onClick={() =>
@@ -1109,7 +954,6 @@ export default function NotificacoesDonoPage() {
                 : {}
             }
           >
-
             {t.label}
 
             {badges[t.key] > 0 && (
@@ -1122,55 +966,36 @@ export default function NotificacoesDonoPage() {
                 {badges[t.key]}
               </span>
             )}
-
           </button>
-
         ))}
-
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-
-        {/* PEDIDOS */}
-
         {aba === 'pedidos' && (
-
           solicitacoes.length === 0 ? (
-
             <div className="card text-center py-10">
-
               <Calendar
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhuma solicitação pendente
               </p>
-
             </div>
-
           ) : (
-
             solicitacoes.map(s => (
-
               <div
                 key={s.id}
                 className="card flex flex-col gap-3"
               >
-
                 <div className="flex items-start justify-between">
-
                   <div>
-
                     <p className="font-bold text-gray-900">
                       {s.clientes?.nome}
                     </p>
-
                     <p className="text-sm text-gray-500">
                       {s.servicos?.nome}
                     </p>
-
                     <p className="text-xs text-gray-400">
                       {new Date(
                         s.created_at
@@ -1184,7 +1009,6 @@ export default function NotificacoesDonoPage() {
                         }
                       )}
                     </p>
-
                   </div>
 
                   <span
@@ -1205,17 +1029,13 @@ export default function NotificacoesDonoPage() {
                         : 'Aguardando'
                     }
                   </span>
-
                 </div>
 
                 {s.status ===
                   'horario_sugerido' &&
                   s.horarios_sugeridos && (
-
                     <div className="bg-blue-50 rounded-xl p-3 flex flex-col gap-2">
-
                       <div className="flex items-center justify-between">
-
                         <p className="text-xs font-medium text-blue-700">
                           Horários sugeridos:
                         </p>
@@ -1229,7 +1049,6 @@ export default function NotificacoesDonoPage() {
                           <MessageCircle size={13} />
                           Enviar WhatsApp
                         </button>
-
                       </div>
 
                       {s.horarios_sugeridos.map(
@@ -1237,14 +1056,11 @@ export default function NotificacoesDonoPage() {
                           h: string,
                           i: number
                         ) => (
-
                           <div
                             key={i}
                             className="flex items-center justify-between bg-white rounded-xl px-3 py-2"
                           >
-
                             <p className="text-xs text-blue-600 font-medium">
-
                               {new Date(
                                 h
                               ).toLocaleDateString(
@@ -1257,7 +1073,6 @@ export default function NotificacoesDonoPage() {
                                   minute: '2-digit'
                                 }
                               )}
-
                             </p>
 
                             <button
@@ -1274,22 +1089,16 @@ export default function NotificacoesDonoPage() {
                                 className="text-red-500"
                               />
                             </button>
-
                           </div>
-
                         )
                       )}
-
                     </div>
-
                   )}
 
                 <div className="flex gap-2 flex-wrap">
-
                   {s.status ===
                     'pendente' && (
                     <>
-
                       <button
                         onClick={() => {
                           setModalSugestao(s)
@@ -1318,18 +1127,15 @@ export default function NotificacoesDonoPage() {
                         <X size={14} />
                         Recusar / Avisar
                       </button>
-
                     </>
                   )}
 
                   {s.status ===
                     'horario_sugerido' && (
                     <>
-
                       <button
                         onClick={() => {
                           setModalSugestao(s)
-
                           setHorariosLivres(
                             s.horarios_sugeridos ||
                               [
@@ -1359,58 +1165,38 @@ export default function NotificacoesDonoPage() {
                         <RotateCcw size={14} />
                         Retirar oferta
                       </button>
-
                     </>
                   )}
-
                 </div>
-
               </div>
-
             ))
-
           )
-
         )}
 
-        {/* CONFIRMAR */}
-
         {aba === 'confirmacoes' && (
-
           confirmacoes.length === 0 ? (
-
             <div className="card text-center py-10">
-
               <Check
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhum atendimento para confirmar
               </p>
-
             </div>
-
           ) : (
-
             confirmacoes.map(ag => (
-
               <div
                 key={ag.id}
                 className="card flex flex-col gap-2"
               >
-
                 <p className="font-bold text-gray-900">
                   {ag.clientes?.nome}
                 </p>
-
                 <p className="text-sm text-gray-500">
                   {ag.servicos?.nome}
                 </p>
-
                 <p className="text-xs text-gray-400">
-
                   {new Date(
                     ag.data_hora
                   ).toLocaleDateString(
@@ -1423,7 +1209,6 @@ export default function NotificacoesDonoPage() {
                       minute: '2-digit'
                     }
                   )}
-
                 </p>
 
                 <button
@@ -1438,38 +1223,24 @@ export default function NotificacoesDonoPage() {
                   <Check size={14} />
                   Confirmar atendimento
                 </button>
-
               </div>
-
             ))
-
           )
-
         )}
 
-        {/* NOTIFICAÇÕES */}
-
         {aba === 'notificacoes' && (
-
           notificacoes.length === 0 ? (
-
             <div className="card text-center py-10">
-
               <Bell
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhuma notificação
               </p>
-
             </div>
-
           ) : (
-
             notificacoes.map(n => (
-
               <div
                 key={n.id}
                 onClick={() =>
@@ -1490,21 +1261,15 @@ export default function NotificacoesDonoPage() {
                     : {}
                 }
               >
-
                 <div className="flex items-start justify-between gap-2">
-
                   <div className="flex-1">
-
                     <p className="font-semibold text-gray-900 text-sm">
                       {n.titulo}
                     </p>
-
                     <p className="text-sm text-gray-500 mt-0.5">
                       {n.mensagem}
                     </p>
-
                     <p className="text-xs text-gray-400 mt-1">
-
                       {new Date(
                         n.created_at
                       ).toLocaleDateString(
@@ -1516,9 +1281,7 @@ export default function NotificacoesDonoPage() {
                           minute: '2-digit'
                         }
                       )}
-
                     </p>
-
                   </div>
 
                   <button
@@ -1535,57 +1298,37 @@ export default function NotificacoesDonoPage() {
                       className="text-gray-400"
                     />
                   </button>
-
                 </div>
-
               </div>
-
             ))
-
           )
-
         )}
 
-        {/* EXCLUÍDAS */}
-
         {aba === 'excluidas' && (
-
           notificacoesExcluidas.length === 0 ? (
-
             <div className="card text-center py-10">
-
               <Trash2
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhuma notificação excluída
               </p>
-
             </div>
-
           ) : (
-
             notificacoesExcluidas.map(n => (
-
               <div
                 key={n.id}
                 className="card flex flex-col gap-1 opacity-60"
               >
-
                 <div className="flex items-start justify-between gap-2">
-
                   <div className="flex-1">
-
                     <p className="font-semibold text-gray-900 text-sm">
                       {n.titulo}
                     </p>
-
                     <p className="text-sm text-gray-500 mt-0.5">
                       {n.mensagem}
                     </p>
-
                   </div>
 
                   <button
@@ -1601,31 +1344,17 @@ export default function NotificacoesDonoPage() {
                       className="text-gray-400"
                     />
                   </button>
-
                 </div>
-
               </div>
-
             ))
-
           )
-
         )}
-
       </div>
 
-      {/* ─────────────────────────────────────────────────────────────── */}
-      {/* MODAL SUGERIR HORÁRIOS */}
-      {/* ─────────────────────────────────────────────────────────────── */}
-
       {modalSugestao && (
-
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-
             <div className="flex items-center justify-between">
-
               <h3 className="font-bold text-gray-900 text-lg">
                 {
                   modalSugestao.status ===
@@ -1645,14 +1374,11 @@ export default function NotificacoesDonoPage() {
                   className="text-gray-400"
                 />
               </button>
-
             </div>
 
             {horariosLivres.map(
               (h, i) => (
-
                 <div key={i}>
-
                   <label className="text-xs font-medium text-gray-500 block mb-1">
                     Opção {i + 1}
                   </label>
@@ -1665,10 +1391,8 @@ export default function NotificacoesDonoPage() {
                       const n = [
                         ...horariosLivres
                       ]
-
                       n[i] =
                         e.target.value
-
                       setHorariosLivres(n)
                     }}
                     style={{
@@ -1676,14 +1400,11 @@ export default function NotificacoesDonoPage() {
                         'light'
                     }}
                   />
-
                 </div>
-
               )
             )}
 
             <div className="flex gap-3">
-
               <button
                 onClick={() =>
                   setModalSugestao(null)
@@ -1713,27 +1434,15 @@ export default function NotificacoesDonoPage() {
                   ? 'Enviando...'
                   : 'Enviar para cliente'}
               </button>
-
             </div>
-
           </div>
-
         </div>
-
       )}
 
-      {/* ─────────────────────────────────────────────────────────────── */}
-      {/* MODAL CONFIRMAR ATENDIMENTO */}
-      {/* ─────────────────────────────────────────────────────────────── */}
-
       {modalConfirmar && (
-
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-
             <div className="flex items-center justify-between">
-
               <h3 className="font-bold text-gray-900 text-lg">
                 Confirmar atendimento
               </h3>
@@ -1749,44 +1458,32 @@ export default function NotificacoesDonoPage() {
                   className="text-gray-400"
                 />
               </button>
-
             </div>
 
             <p className="text-sm text-gray-600 font-medium">
               {modalConfirmar.clientes?.nome}
             </p>
 
-            {/* Pacotes */}
-
             {carregandoCoberturas ? (
-
               <div className="flex items-center gap-2 py-2">
-
                 <div
                   className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
                   style={{
                     borderColor: cor
                   }}
                 />
-
                 <p className="text-xs text-gray-400">
                   Verificando pacotes ativos...
                 </p>
-
               </div>
-
             ) : coberturas.length > 0 ? (
-
               <div className="flex flex-col gap-3">
-
                 {coberturas.map(
                   cob => (
-
                     <div
                       key={cob.servicoId}
                       className="bg-gray-50 rounded-2xl p-3 flex flex-col gap-2"
                     >
-
                       <p className="font-semibold text-gray-900 text-sm">
                         {cob.servicoNome}
                       </p>
@@ -1805,14 +1502,12 @@ export default function NotificacoesDonoPage() {
                           )
                         }
                       >
-
                         <option value="">
                           Não usar pacote / Sem pacote
                         </option>
 
                         {cob.pacotesDisponiveis.map(
                           op => (
-
                             <option
                               key={
                                 op.clientePacoteId
@@ -1827,31 +1522,20 @@ export default function NotificacoesDonoPage() {
                               }{' '}
                               sessões restantes
                             </option>
-
                           )
                         )}
-
                       </select>
-
                     </div>
-
                   )
                 )}
-
               </div>
-
             ) : (
-
               <p className="text-xs text-red-500">
                 Este cliente não possui pacotes ativos com sessões disponíveis.
               </p>
-
             )}
 
-            {/* Serviço realizado */}
-
             <div>
-
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 O que foi realizado?
               </label>
@@ -1867,11 +1551,9 @@ export default function NotificacoesDonoPage() {
                   )
                 }
               />
-
             </div>
 
             <div className="flex gap-3">
-
               <button
                 onClick={() => {
                   setModalConfirmar(null)
@@ -1900,15 +1582,10 @@ export default function NotificacoesDonoPage() {
                   ? 'Salvando...'
                   : 'Confirmar'}
               </button>
-
             </div>
-
           </div>
-
         </div>
-
       )}
-
     </div>
   )
 }
