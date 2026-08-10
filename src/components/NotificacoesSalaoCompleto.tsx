@@ -605,13 +605,13 @@ export default function NotificacoesDonoPage() {
 
       await carregarDados()
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(
         'Erro ao confirmar atendimento:',
         error
       )
       alert(
-        'Não foi possível confirmar o atendimento. Verifique o console para mais detalhes.'
+        'Erro detalhado: ' + (error?.message || JSON.stringify(error))
       )
     } finally {
       setSalvando(false)
@@ -765,7 +765,6 @@ export default function NotificacoesDonoPage() {
         )
         .join('\n')
 
-    // Pega o modelo salvo nas configurações do salão ou usa o padrão caso esteja vazio
     const modeloSalvo = salao?.mensagem_sugestao_horarios || 'Olá {cliente}, tudo bem? Sugerimos pelo aplicativo estes horários, caso não tenha checado por lá, estamos enviando por aqui para lembra-la!'
 
     const textoFinal = modeloSalvo
