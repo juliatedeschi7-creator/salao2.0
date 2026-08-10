@@ -765,10 +765,14 @@ export default function NotificacoesDonoPage() {
         )
         .join('\n')
 
-    const texto =
-      encodeURIComponent(
-        `Olá, ${solicitacao.clientes?.nome}! Aqui do *${salao?.nome || 'Salão'}*. Separamos os seguintes horários disponíveis para o seu atendimento de *${solicitacao.servicos?.nome}*:\n\n${listaHorarios}\n\nQual destas opções fica melhor para você?`
-      )
+    // Pega o modelo salvo nas configurações do salão ou usa o padrão caso esteja vazio
+    const modeloSalvo = salao?.mensagem_sugestao_horarios || 'Olá {cliente}, tudo bem? Sugerimos pelo aplicativo estes horários, caso não tenha checado por lá, estamos enviando por aqui para lembra-la!'
+
+    const textoFinal = modeloSalvo
+      .replace(/{cliente}/g, solicitacao.clientes?.nome || 'Cliente')
+      .replace(/{servico}/g, solicitacao.servicos?.nome || 'Atendimento') + `\n\n${listaHorarios}\n\nQual destas opções fica melhor para você?`
+
+    const texto = encodeURIComponent(textoFinal)
 
     if (telefone) {
       window.open(
