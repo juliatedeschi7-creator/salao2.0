@@ -225,7 +225,7 @@ export default function ContasPage() {
 
     setModalEdicaoPagamento(null)
     setSalvando(false)
-    carregarDados()
+    await carregarDados()
   }
 
   async function excluirPagamentoHistorico(pag: any, conta: any) {
