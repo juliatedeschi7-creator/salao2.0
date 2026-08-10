@@ -595,7 +595,7 @@ export default function ContasPage() {
       {/* Modal editar registro de pagamento */}
       {modalEdicaoPagamento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto z-50" style={{ zIndex: 99999 }}>
             <h3 className="font-bold text-gray-900 text-lg">Editar registro de pagamento</h3>
             <p className="text-sm text-gray-500">
               {modalEdicaoPagamento.conta?.clientes?.nome}
@@ -628,7 +628,7 @@ export default function ContasPage() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Data</label>
+              <label className="text-sm font-medium text-gray-700 mb-1/2 block">Data</label>
               <input className="input-field" type="date" value={formEdicaoPagamento.data_pagamento}
                 onChange={e => setFormEdicaoPagamento(p => ({ ...p, data_pagamento: e.target.value }))}
                 style={{ colorScheme: 'light' }} />
