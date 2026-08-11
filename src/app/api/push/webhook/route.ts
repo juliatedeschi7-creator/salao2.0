@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { PushTemplates, dispararParaPerfil } from '@/lib/push' // Certifique-se de importar a função de disparo se usar
+import { PushTemplates, dispararParaPerfil } from '@/lib/push'
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,12 +28,12 @@ export async function POST(req: NextRequest) {
       }
 
       if (type === 'UPDATE' && old_record?.status === 'pendente' && record.status === 'confirmado') {
-        if (PushTemplates.agendamento ConfirmadoCliente) {
+        if (typeof PushTemplates.agendamentoConfirmadoCliente === 'function') {
           const payload = PushTemplates.agendamentoConfirmadoCliente(
             record.servico_nome || 'Serviço',
             record.data_hora || record.data
           )
-          // Se for para o cliente, você precisará buscar o token do cliente ao invés do donoId
+          // Se for para o cliente, ajuste o ID do receptor se necessário
         }
       }
     }
