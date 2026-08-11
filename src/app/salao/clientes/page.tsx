@@ -49,6 +49,7 @@ export default function ClientesPage() {
     const { data: todos } = await supabase.from('clientes')
       .select('*')
       .eq('salao_id', profile!.salao_id!)
+      .eq('ignorar_duplicado', false) // <--- Ignora os que já foram descartados dos duplicados
       .order('nome', { ascending: true })
 
     if (todos) {
@@ -74,8 +75,6 @@ export default function ClientesPage() {
       .trim()
   }
 
-  // Algoritmo refinado para nomes semelhantes (ex: Dionisia Garbim / Dionisia Garbin ou Ana Garbim / Ana Paula Garbin)
-  // Agrupa se o primeiro nome for idêntico E houver compartilhamento de pelo menos um sobrenome/termo ou proximidade forte.
   function obterGruposDuplicados() {
     const gruposMap: { [chave: string]: any[] } = {}
 
@@ -86,11 +85,6 @@ export default function ClientesPage() {
       if (partes.length === 0) return
 
       const primeiroNome = partes[0]
-      const segundoNome = partes[1] || ''
-
-      // Chave de agrupamento mais inteligente: Primeiro nome + a primeira letra do segundo nome (ou segundo nome completo se existir)
-      // Ex: "Dionisia Garbin" e "Dionisia Garbim" geram chaves muito próximas. 
-      // Vamos agrupar por primeiro nome, mas filtrar grupos onde os clientes compartilham semelhança real nos sobrenomes.
       if (!gruposMap[primeiroNome]) {
         gruposMap[primeiroNome] = []
       }
@@ -103,8 +97,6 @@ export default function ClientesPage() {
       const lista = gruposMap[primeiroNome]
       if (lista.length < 2) return
 
-      // Dentro do mesmo primeiro nome, vamos sub-agrupar se houver semelhança de sobrenome ou se houver poucos termos (ex: Ana Silva e Ana Souza não necessariamente são duplicados a menos que tenham o mesmo sobrenome, mas vamos manter flexível: se compartilham 1 sobrenome ou iniciais parecidas)
-      // Para garantir que "Ana Garbim" e "Ana Paula Garbin" caiam juntas (compartilham o primeiro nome e o sobrenome Garb...), vamos checar interseção de palavras ou proximidade.
       const subGrupos: any[][] = []
 
       lista.forEach(cli => {
@@ -115,11 +107,9 @@ export default function ClientesPage() {
           const representante = sg[0]
           const palavrasRep = normalizarNome(representante.nome).split(/\s+/)
 
-          // Verifica se compartilham o primeiro nome e pelo menos mais uma palavra em comum (ou com 1 letra de diferença / prefixo igual)
           const temSobrenomeSemelhante = palavrasCli.some((pC, idxC) => 
             palavrasRep.some((pR, idxR) => {
-              if (idxC === 0 && idxR === 0) return true // Primeiro nome igual
-              // Verifica igualdade ou semelhança estrita (ex: garbin vs garbim)
+              if (idxC === 0 && idxR === 0) return true
               if (pC === pR || (pC.length > 3 && pR.length > 3 && (pC.startsWith(pR.slice(0, 3)) || pR.startsWith(pC.slice(0, 3))))) {
                 return true
               }
@@ -153,6 +143,20 @@ export default function ClientesPage() {
   }
 
   const gruposDuplicados = obterGruposDuplicados()
+
+  // Função para dispensar/ignorar um cliente da lista de duplicados usando o X
+  async function ignorarDuplicado(clienteId: string) {
+    const { error } = await supabase
+      .from('clientes')
+      .update({ ignorar_duplicado: true })
+      .eq('id', clienteId)
+
+    if (!error) {
+      carregarDados()
+    } else {
+      console.error(error)
+    }
+  }
 
   async function mesclarGrupo(grupoClientes: any[], clientePrincipalId: string) {
     if (processandoMesclagem) return
@@ -527,7 +531,7 @@ export default function ClientesPage() {
               <>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                   <p className="text-xs text-amber-800 font-medium text-center">
-                    ⚠️ Encontramos cadastros com nomes semelhantes (como variações de grafia ou nomes parecidos). Selecione abaixo qual deles será o registro <strong>principal</strong> para unificar os históricos.
+                    ⚠️ Encontramos cadastros com nomes semelhantes (como variações de grafia ou nomes parecidos). Selecione abaixo qual deles será o registro <strong>principal</strong> para unificar os históricos, ou clique no <strong>X</strong> para descartar da lista.
                   </p>
                 </div>
 
@@ -558,9 +562,19 @@ export default function ClientesPage() {
                                 setNovoNomeEdicao(cli.nome || '')
                                 setNovoTelefoneEdicao(cli.telefone || '')
                               }}
-                              className="px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-semibold flex items-center gap-1">
+                              className="px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs font-semibold flex items-center gap-1"
+                              title="Editar">
                               <Edit3 size={12} />
                             </button>
+
+                            {/* Botão X para descartar este cadastro da lista de duplicados */}
+                            <button
+                              onClick={() => ignorarDuplicado(cli.id)}
+                              className="px-2 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs font-semibold flex items-center gap-1 hover:bg-red-100"
+                              title="Descartar / Não é duplicado">
+                              <X size={14} />
+                            </button>
+
                             <button
                               onClick={() => mesclarGrupo(grupo.clientes, cli.id)}
                               disabled={processandoMesclagem}
