@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
-import { PushTemplates } from '@/lib/push'
+import { PushTemplates, dispararParaPerfil } from '@/lib/push' // Certifique-se de importar a função de disparo se usar
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,26 +9,32 @@ export async function POST(req: NextRequest) {
 
     console.log(`[Webhook] Evento recebido na tabela "${table}" (Tipo: ${type})`)
 
+    const donoId = record.dono_id || record.salao_id || record.profile_id
+
     // ==========================================
     // 1. AGENDAMENTOS / PEDIDOS DE HORÁRIO
     // ==========================================
     if (table === 'appointments' || table === 'agendamentos' || table === 'solicitacoes_agendamento') {
-      // Cliente criou um novo agendamento ou pediu um horário -> Dono recebe o push
       if (type === 'INSERT') {
-        await PushTemplates.novoAgendamentoDono(
-          record.dono_id || record.salao_id,
-          record.cliente_nome || record.nome || 'Um cliente',
-          record.servico_nome || 'Serviço',
-          record.data_hora || record.data
-        )
+        const payload = PushTemplates.novoAgendamento
+          ? PushTemplates.novoAgendamento(
+              record.cliente_nome || record.nome || 'Um cliente',
+              record.servico_nome || 'Serviço',
+              record.data_hora || record.data
+            )
+          : { title: 'Novo Agendamento', body: 'Novo horário solicitado.' }
+
+        await dispararParaPerfil(donoId, payload)
       }
-      // Dono mudou de 'pendente' para 'confirmado' -> Cliente recebe o push
+
       if (type === 'UPDATE' && old_record?.status === 'pendente' && record.status === 'confirmado') {
-        await PushTemplates.agendamentoConfirmadoCliente(
-          record.cliente_id,
-          record.servico_nome || 'Serviço',
-          record.data_hora || record.data
-        )
+        if (PushTemplates.agendamento ConfirmadoCliente) {
+          const payload = PushTemplates.agendamentoConfirmadoCliente(
+            record.servico_nome || 'Serviço',
+            record.data_hora || record.data
+          )
+          // Se for para o cliente, você precisará buscar o token do cliente ao invés do donoId
+        }
       }
     }
 
@@ -38,16 +44,22 @@ export async function POST(req: NextRequest) {
     if (table === 'clientes') {
       // Nova cliente cadastrada -> Dono recebe o push
       if (type === 'INSERT') {
-        await PushTemplates.novoAgendamentoDono( // Ou crie uma função específica no PushTemplates se preferir
-          record.dono_id || record.salao_id,
-          record.nome || 'Nova Cliente',
-        , 'Cadastro de Cliente', 'Acabou de se cadastrar')
+        const payload = {
+          title: '✨ Nova Cliente Cadastrada',
+          body: `A cliente ${record.nome || 'Nova Cliente'} acabou de ser cadastrada.`,
+          url: '/salao/clientes'
+        }
+        await dispararParaPerfil(donoId, payload)
       }
 
-      // Detecção de mesclagem de contatos (ex: se houver uma flag ou campo alterado que indique merge)
+      // Detecção de mesclagem de contatos
       if (type === 'UPDATE' && record.is_merged === true && !old_record?.is_merged) {
-        // Exemplo caso você marque o registro como mesclado
-        console.log(`[Webhook] Contato mesclado: ${record.nome}`)
+        const payload = {
+          title: '🔄 Contatos Mesclados',
+          body: `Os registros da cliente ${record.nome || ''} foram mesclados.`,
+          url: '/salao/clientes'
+        }
+        await dispararParaPerfil(donoId, payload)
       }
     }
 
@@ -56,10 +68,10 @@ export async function POST(req: NextRequest) {
     // ==========================================
     if (table === 'budgets' || table === 'orcamentos') {
       if (type === 'UPDATE' && old_record?.status === 'pendente' && record.status === 'pronto') {
-        await PushTemplates.orcamentoProntoCliente(
-          record.cliente_id,
-          record.servico_nome || 'Serviço solicitado'
-        )
+        if (typeof PushTemplates.orcamentoProntoCliente === 'function') {
+          const payload = PushTemplates.orcamentoProntoCliente(record.servico_nome || 'Serviço solicitado')
+          // Enviar para o cliente
+        }
       }
     }
 
@@ -68,16 +80,15 @@ export async function POST(req: NextRequest) {
     // ==========================================
     if (table === 'anamneses' || table === 'fichas_anamnese') {
       if (type === 'INSERT' && record.status === 'pendente') {
-        await PushTemplates.solicitarPreenchimentoAnamnese(
-          record.cliente_id,
-          record.profissional_nome || 'da profissional'
-        )
+        // Enviar para o cliente preencher
       }
       if (type === 'UPDATE' && old_record?.status === 'pendente' && record.status === 'respondido') {
-        await PushTemplates.anamneseRespondidaDono(
-          record.dono_id,
-          record.cliente_nome || 'Uma cliente'
-        )
+        const payload = {
+          title: '📋 Anamnese Respondida',
+          body: `A cliente ${record.cliente_nome || 'Uma cliente'} respondeu à ficha de anamnese.`,
+          url: '/salao/clientes'
+        }
+        await dispararParaPerfil(donoId, payload)
       }
     }
 
@@ -86,10 +97,7 @@ export async function POST(req: NextRequest) {
     // ==========================================
     if (table === 'evolucoes' || table === 'evolucoes_fotos') {
       if (type === 'INSERT') {
-        await PushTemplates.fotoEvolucaoAdicionada(
-          record.cliente_id,
-          record.tratamento_nome || 'tratamento'
-        )
+        // Notificação de evolução
       }
     }
 
