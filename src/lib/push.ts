@@ -75,18 +75,25 @@ export async function enviarPush(
   }
 }
 
-// Função auxiliar para disparar em massa para um perfil (ex: dono do salão)
+// Função auxiliar para disparar em massa buscando pelo profile_id correto
 export async function dispararParaPerfil(
   profileId: string, 
   payload: { title: string; body: string; url?: string }
 ) {
   try {
+    if (!profileId) {
+      console.log('Nenhum profileId fornecido para o disparo de push.')
+      return { ok: false, message: 'profileId ausente.' }
+    }
+
+    // Busca focada na coluna profile_id onde o seu ID está cadastrado
     const { data: subs, error } = await supabase
       .from('push_subscriptions')
       .select('id, subscription')
       .eq('profile_id', profileId)
 
     if (error || !subs || subs.length === 0) {
+      console.log(`Nenhuma inscrição encontrada na tabela push_subscriptions para o profile_id: ${profileId}`)
       return { ok: false, message: 'Nenhuma inscrição encontrada para este perfil.' }
     }
 
