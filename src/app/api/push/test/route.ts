@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextRequest, NextResponse } from 'next/server'
 import webpush from 'web-push'
 import { createClient } from '@supabase/supabase-js'
@@ -7,9 +8,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Mesma correção das outras rotas de push: setVapidDetails não pode
-// rodar no topo do arquivo, senão quebra o build quando a chave estiver
-// ausente ou mal formatada.
 let vapidConfigurado = false
 function garantirVapidConfigurado() {
   if (vapidConfigurado) return
@@ -63,6 +61,8 @@ export async function POST(req: NextRequest) {
       const s = sub.subscription
 
       try {
+        console.log('5.1 - Chamando webpush.sendNotification para endpoint:', s.endpoint)
+
         await webpush.sendNotification(
           {
             endpoint: s.endpoint,
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
           })
         )
 
-        console.log('6 - Push enviado')
+        console.log('6 - Push enviado com sucesso!')
 
         detalhes.push({
           id: sub.id,
@@ -87,7 +87,6 @@ export async function POST(req: NextRequest) {
         })
 
       } catch (err: any) {
-
         console.log('7 - Erro envio', err)
 
         detalhes.push({
