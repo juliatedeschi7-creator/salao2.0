@@ -72,12 +72,17 @@ export default function PacotesClientesPage() {
 
         await carregarClientes(salaoId)
 
-        const { data: listaPacotes } = await supabase
+        // Busca de pacotes disponíveis com tratamento de erro
+        const { data: listaPacotes, error: errPacotes } = await supabase
           .from('pacotes')
           .select('*')
           .eq('salao_id', salaoId)
 
-        setPacotesDisponiveis(listaPacotes || [])
+        if (errPacotes) {
+          console.error('Erro ao buscar pacotes criados:', errPacotes.message)
+        } else {
+          setPacotesDisponiveis(listaPacotes || [])
+        }
 
       } catch (e) {
         console.error('Erro ao carregar:', e)
@@ -161,7 +166,16 @@ export default function PacotesClientesPage() {
 
     try {
       const pacoteObj = pacotesDisponiveis.find(p => p.id === pacoteEscolhido)
-      const totalSessoes = pacoteObj?.sessoes || 1
+      
+      // Mapeamento flexível para garantir que leia a quantidade de sessões independente do nome da coluna no banco
+      const totalSessoes = Number(
+        pacoteObj?.sessoes ?? 
+        pacoteObj?.sessoes_total ?? 
+        pacoteObj?.quantidade ?? 
+        pacoteObj?.total_sessoes ?? 
+        1
+      )
+      
       const nomeServico = pacoteObj?.nome || 'Pacote'
 
       const { error } = await supabase
@@ -507,7 +521,7 @@ export default function PacotesClientesPage() {
         )}
       </div>
 
-      {/* Modal Novo Cliente (Igual da Agenda) */}
+      {/* Modal Novo Cliente */}
       {modalNovoClienteAberto && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
@@ -551,9 +565,12 @@ export default function PacotesClientesPage() {
                 <select value={pacoteEscolhido} onChange={e => setPacoteEscolhido(e.target.value)} required
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none text-gray-700">
                   <option value="">Selecione...</option>
-                  {pacotesDisponiveis.map(p => (
-                    <option key={p.id} value={p.id}>{p.nome} ({p.sessoes} sessões)</option>
-                  ))}
+                  {pacotesDisponiveis.map(p => {
+                    const numSessoes = p.sessoes ?? p.sessoes_total ?? p.quantidade ?? p.total_sessoes ?? 1
+                    return (
+                      <option key={p.id} value={p.id}>{p.nome} ({numSessoes} sessões)</option>
+                    )
+                  })}
                 </select>
               </div>
               <div className="flex gap-2 pt-2">
