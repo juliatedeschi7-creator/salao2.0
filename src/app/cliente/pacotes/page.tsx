@@ -9,9 +9,7 @@ export default function MeusPacotesPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
   const [salao, setSalao] = useState<any>(null)
-  const [cliente, setCliente] = useState<any>(null)
   const [meusPacotes, setMeusPacotes] = useState<any[]>([])
-  const [sessoes, setSessoes] = useState<Record<string, any[]>>({})
   const [expandido, setExpandido] = useState<string | null>(null)
   const [carregando, setCarregando] = useState(true)
 
@@ -20,33 +18,32 @@ export default function MeusPacotesPage() {
   }, [loading, profile])
 
   async function carregarDados() {
+    // 1. Busca o cliente vinculado ao profile logado e os dados do salão
     const { data: cli } = await supabase
-      .from('clientes').select('*, saloes(*)').eq('profile_id', profile!.id).single()
-    if (!cli) { setCarregando(false); return }
-    setCliente(cli)
+      .from('clientes')
+      .select('*, saloes(*)')
+      .eq('profile_id', profile!.id)
+      .single()
+
+    if (!cli) { 
+      setCarregando(false)
+      return 
+    }
+    
     setSalao(cli.saloes)
 
-    const { data: pacs } = await supabase
-      .from('cliente_pacotes')
-      .select('*, pacotes(nome, descricao, categoria)')
-      .eq('cliente_id', cli.id)
-      .order('data_compra', { ascending: false })
-    setMeusPacotes(pacs || [])
+    // 2. Busca os pacotes na tabela unificada usada pelo painel do dono
+    const { data: pacs, error } = await supabase
+      .from('pacotes_clientes_resumo')
+      .select('*')
+      .eq('cliente_nome', cli.nome)
+      .order('created_at', { ascending: false })
 
-    if (pacs && pacs.length > 0) {
-      const ids = pacs.map((p: any) => p.id)
-      const { data: sess } = await supabase.from('sessoes_pacote')
-        .select('*')
-        .in('cliente_pacote_id', ids)
-        .order('data_sessao', { ascending: false })
-      const agrupado: Record<string, any[]> = {}
-      ;(sess || []).forEach((s: any) => {
-        if (!agrupado[s.cliente_pacote_id]) agrupado[s.cliente_pacote_id] = []
-        agrupado[s.cliente_pacote_id].push(s)
-      })
-      setSessoes(agrupado)
+    if (error) {
+      console.error('Erro ao carregar pacotes do cliente:', error.message)
     }
 
+    setMeusPacotes(pacs || [])
     setCarregando(false)
   }
 
@@ -57,8 +54,11 @@ export default function MeusPacotesPage() {
     expirado: 'bg-red-50 text-red-500',
     concluido: 'bg-gray-100 text-gray-400',
   }
+  
   const statusLabel: Record<string, string> = {
-    ativo: 'Ativo', expirado: 'Expirado', concluido: 'Concluído'
+    ativo: 'Ativo', 
+    expirado: 'Expirado', 
+    concluido: 'Concluído'
   }
 
   if (loading || carregando) return (
@@ -72,6 +72,16 @@ export default function MeusPacotesPage() {
       </div>
     </div>
   )
+
+  const totalAtivos = meusPacotes.filter(p => (p.status || 'ativo') === 'ativo').length
+  const totalRestantes = meusPacotes
+    .filter(p => (p.status || 'ativo') === 'ativo')
+    .reduce((acc, p) => acc + (p.sessoes_restantes ?? 0), 0)
+  const totalRealizadas = meusPacotes.reduce((acc, p) => {
+    const total = p.sessoes_total || 1
+    const restantes = p.sessoes_restantes ?? total
+    return acc + Math.max(0, total - restantes)
+  }, 0)
 
   return (
     <div className="min-h-screen pb-10" style={{ backgroundColor: '#f4f4f8' }}>
@@ -92,21 +102,15 @@ export default function MeusPacotesPage() {
         <div className="px-4 -mt-5 relative z-10 mb-4">
           <div className="bg-white rounded-2xl shadow-md grid grid-cols-3 divide-x divide-gray-100">
             <div className="px-3 py-3 text-center">
-              <p className="text-2xl font-bold text-gray-900">
-                {meusPacotes.filter(p => p.status === 'ativo').length}
-              </p>
+              <p className="text-2xl font-bold text-gray-900">{totalAtivos}</p>
               <p className="text-xs text-gray-400 mt-0.5">Ativos</p>
             </div>
             <div className="px-3 py-3 text-center">
-              <p className="text-2xl font-bold" style={{ color: cor }}>
-                {meusPacotes.filter(p => p.status === 'ativo').reduce((acc, p) => acc + (p.sessoes_total - p.sessoes_usadas), 0)}
-              </p>
+              <p className="text-2xl font-bold" style={{ color: cor }}>{totalRestantes}</p>
               <p className="text-xs text-gray-400 mt-0.5">Sessões restantes</p>
             </div>
             <div className="px-3 py-3 text-center">
-              <p className="text-2xl font-bold text-gray-900">
-                {meusPacotes.reduce((acc, p) => acc + p.sessoes_usadas, 0)}
-              </p>
+              <p className="text-2xl font-bold text-gray-900">{totalRealizadas}</p>
               <p className="text-xs text-gray-400 mt-0.5">Realizadas</p>
             </div>
           </div>
@@ -126,9 +130,13 @@ export default function MeusPacotesPage() {
             </p>
           </div>
         ) : meusPacotes.map(mp => {
-          const progresso = mp.sessoes_total > 0 ? (mp.sessoes_usadas / mp.sessoes_total) * 100 : 0
-          const restantes = mp.sessoes_total - mp.sessoes_usadas
-          const historico = sessoes[mp.id] || []
+          const nomeServico = mp.servico || 'Pacote'
+          const total = mp.sessoes_total || 1
+          const restantes = mp.sessoes_restantes ?? total
+          const usadas = Math.max(0, total - restantes)
+          const progresso = total > 0 ? (usadas / total) * 100 : 0
+          const status = mp.status || 'ativo'
+          const historico = Array.isArray(mp.historico_sessoes) ? mp.historico_sessoes : []
           const aberto = expandido === mp.id
 
           return (
@@ -136,21 +144,18 @@ export default function MeusPacotesPage() {
               {/* Cabeçalho */}
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="font-bold text-gray-900">{mp.pacotes?.nome || 'Pacote'}</p>
-                  {mp.pacotes?.categoria && (
-                    <p className="text-xs text-gray-400 mt-0.5">{mp.pacotes.categoria}</p>
-                  )}
+                  <p className="font-bold text-gray-900">{nomeServico}</p>
                 </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${statusCor[mp.status] || 'bg-gray-100 text-gray-400'}`}>
-                  {statusLabel[mp.status] || mp.status}
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium shrink-0 ${statusCor[status] || 'bg-gray-100 text-gray-400'}`}>
+                  {statusLabel[status] || status}
                 </span>
               </div>
 
               {/* Barra de progresso */}
               <div>
                 <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                  <span>{mp.sessoes_usadas} sessões usadas</span>
-                  <span className="font-semibold" style={{ color: mp.status === 'ativo' ? cor : '#9ca3af' }}>
+                  <span>{usadas} sessões usadas</span>
+                  <span className="font-semibold" style={{ color: status === 'ativo' ? cor : '#9ca3af' }}>
                     {restantes} restante{restantes !== 1 ? 's' : ''}
                   </span>
                 </div>
@@ -158,33 +163,19 @@ export default function MeusPacotesPage() {
                   <div className="h-full rounded-full transition-all"
                     style={{
                       width: `${progresso}%`,
-                      backgroundColor: mp.status === 'ativo' ? cor : '#d1d5db'
+                      backgroundColor: status === 'ativo' ? cor : '#d1d5db'
                     }} />
                 </div>
-                <p className="text-xs text-gray-300 mt-1 text-right">{mp.sessoes_total} sessões no total</p>
+                <p className="text-xs text-gray-300 mt-1 text-right">{total} sessões no total</p>
               </div>
 
-              {/* Datas */}
+              {/* Data de Criação */}
               <div className="flex gap-4 text-xs text-gray-400">
                 <div>
-                  <p className="font-semibold text-gray-500 mb-0.5">Compra</p>
-                  <p>{new Date(mp.data_compra).toLocaleDateString('pt-BR')}</p>
+                  <p className="font-semibold text-gray-500 mb-0.5">Adquirido em</p>
+                  <p>{new Date(mp.created_at).toLocaleDateString('pt-BR')}</p>
                 </div>
-                {mp.data_expiracao && (
-                  <div>
-                    <p className="font-semibold text-gray-500 mb-0.5">Expira em</p>
-                    <p className={new Date(mp.data_expiracao) < new Date() ? 'text-red-400 font-medium' : ''}>
-                      {new Date(mp.data_expiracao).toLocaleDateString('pt-BR')}
-                    </p>
-                  </div>
-                )}
               </div>
-
-              {mp.pacotes?.descricao && (
-                <p className="text-xs text-gray-400 leading-relaxed border-t border-gray-50 pt-2">
-                  {mp.pacotes.descricao}
-                </p>
-              )}
 
               {/* Histórico de sessões */}
               {historico.length > 0 && (
@@ -198,14 +189,17 @@ export default function MeusPacotesPage() {
                   </button>
                   {aberto && (
                     <div className="flex flex-col gap-1.5 mt-2">
-                      {historico.map(s => (
-                        <div key={s.id} className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2">
-                          <span className="shrink-0 font-medium text-gray-600">
-                            {new Date(s.data_sessao + 'T12:00:00').toLocaleDateString('pt-BR')}
-                          </span>
-                          <span className="flex-1 text-right truncate ml-2">{s.servico_realizado}</span>
-                        </div>
-                      ))}
+                      {historico.map((s: any, idx: number) => {
+                        const dataFormatada = s.data ? s.data.split('-').reverse().join('/') : ''
+                        return (
+                          <div key={s.id || idx} className="flex items-center justify-between text-xs text-gray-500 bg-gray-50 rounded-xl px-3 py-2">
+                            <span className="shrink-0 font-medium text-gray-600">
+                              {dataFormatada}
+                            </span>
+                            <span className="flex-1 text-right truncate ml-2">{s.servico}</span>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
