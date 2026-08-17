@@ -35,6 +35,9 @@ type CoberturaServico = {
 }
 
 export default function NotificacoesDonoPage() {
+  // Teste imediato de renderização para validação no Console
+  console.log('🚀 [TESTE] A página NotificacoesDonoPage foi renderizada!');
+
   const { profile, loading } = useAuth()
   const router = useRouter()
 
