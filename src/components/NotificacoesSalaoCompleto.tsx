@@ -76,37 +76,66 @@ export default function NotificacoesDonoPage() {
     }
   }, [loading, profile])
 
-  // ─── Push ───────────────────────────────────────────────────────────────
+  // ─── Push com Logs Passo a Passo ────────────────────────────────────────
 
   async function registrarPushNotification() {
-    if (
-      typeof window !== 'undefined' &&
-      'serviceWorker' in navigator &&
-      'PushManager' in window
-    ) {
-      try {
-        const registration = await navigator.serviceWorker.ready
+    console.log('🔔 [PUSH] 1 - Iniciando registro de Push Notification...');
 
-        const subscription =
-          await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey:
-              process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-          })
+    if (typeof window === 'undefined') {
+      console.log('🔔 [PUSH] X - Window não definido (SSR)');
+      return;
+    }
 
-        await supabase
-          .from('push_subscriptions')
-          .upsert(
-            {
-              user_id: profile?.id,
-              salao_id: profile?.salao_id,
-              subscription: subscription.toJSON()
-            },
-            { onConflict: 'user_id' }
-          )
-      } catch (err) {
-        console.error('Erro ao registrar push:', err)
+    if (!('serviceWorker' in navigator)) {
+      console.log('🔔 [PUSH] X - Service Worker não suportado neste navegador');
+      return;
+    }
+
+    if (!('PushManager' in window)) {
+      console.log('🔔 [PUSH] X - PushManager não suportado neste navegador');
+      return;
+    }
+
+    try {
+      console.log('🔔 [PUSH] 2 - Aguardando serviceWorker.ready...');
+      const registration = await navigator.serviceWorker.ready
+      console.log('🔔 [PUSH] 3 - Service Worker pronto:', registration);
+
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      console.log('🔔 [PUSH] 4 - VAPID Public Key presente?', !!vapidKey);
+
+      if (!vapidKey) {
+        console.error('🔔 [PUSH] Erro: NEXT_PUBLIC_VAPID_PUBLIC_KEY não está definida!');
+        return;
       }
+
+      console.log('🔔 [PUSH] 5 - Solicitando inscrição (pushManager.subscribe)...');
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey
+      })
+      console.log('🔔 [PUSH] 6 - Inscrição obtida com sucesso:', subscription);
+
+      console.log('🔔 [PUSH] 7 - Salvando subscription no Supabase (tabela push_subscriptions)...');
+      const { error: upsertError } = await supabase
+        .from('push_subscriptions')
+        .upsert(
+          {
+            user_id: profile?.id,
+            salao_id: profile?.salao_id,
+            subscription: subscription.toJSON()
+          },
+          { onConflict: 'user_id' }
+        )
+
+      if (upsertError) {
+        console.error('🔔 [PUSH] Erro ao salvar subscription no Supabase:', upsertError);
+      } else {
+        console.log('🔔 [PUSH] 8 - Subscription salva com sucesso no banco de dados!');
+      }
+
+    } catch (err) {
+      console.error('🔔 [PUSH] Erro crítico ao registrar push:', err)
     }
   }
 
