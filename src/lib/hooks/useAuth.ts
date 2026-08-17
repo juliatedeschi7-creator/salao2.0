@@ -1,4 +1,39 @@
-// Substitua o seu AuthProvider atual por este bloco otimizado:
+// @ts-nocheck
+'use client'
+
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
+
+interface Profile {
+  id: string
+  nome: string
+  email?: string
+  role?: string
+  tipo?: string
+  salao_id?: string | null
+  nivel_acesso?: string | null
+  aprovado?: boolean
+  ativo?: boolean
+}
+
+interface AuthContextType {
+  user: any | null
+  profile: Profile | null
+  loading: boolean
+  temAcessoTotal: boolean
+  signOut: () => Promise<void>
+  logout: () => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+  temAcessoTotal: false,
+  signOut: async () => {},
+  logout: async () => {},
+})
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<any | null>(null)
@@ -9,40 +44,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true
 
-    // Reduzimos o timer de segurança para 1.5 segundo para evitar que a tela preta trave por muito tempo
     const safetyTimer = setTimeout(() => {
-      if (isMounted && loading) setLoading(false)
+      if (isMounted) setLoading(false)
     }, 1500)
 
     async function carregarSessao() {
       try {
-        // Usamos getUser() em vez de apenas getSession() para validar o token no servidor com segurança e rapidez
         const { data: { user: currentUser }, error } = await supabase.auth.getUser()
-        if (!isMounted) return
-
+        
         if (error || !currentUser) {
-          setUser(null)
-          setProfile(null)
-          setLoading(false)
-          clearTimeout(safetyTimer)
+          if (isMounted) {
+            setUser(null)
+            setProfile(null)
+            setLoading(false)
+          }
           return
         }
 
         setUser(currentUser)
 
         const { data: prof } = await supabase
-          .from('profiles').select('*').eq('id', currentUser.id).maybeSingle()
-        
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .maybeSingle()
+
         if (isMounted) {
           setProfile(prof || { id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
+          setLoading(false)
+          clearTimeout(safetyTimer)
         }
       } catch (e) {
         console.error('Erro ao carregar sessão:', e)
-      } finally {
-        if (isMounted) { 
-          setLoading(false) 
-          clearTimeout(safetyTimer) 
-        }
+        if (isMounted) setLoading(false)
       }
     }
 
@@ -50,28 +84,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!isMounted) return
+      
       const currentUser = session?.user ?? null
       setUser(currentUser)
       
       if (currentUser) {
         const { data: prof } = await supabase
-          .from('profiles').select('*').eq('id', currentUser.id).maybeSingle()
-        if (isMounted) setProfile(prof || { id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
+          .from('profiles')
+          .select('*')
+          .eq('id', currentUser.id)
+          .maybeSingle()
+        
+        if (isMounted) {
+          setProfile(prof || { id: currentUser.id, nome: currentUser.email?.split('@')[0] || 'Usuário' })
+        }
       } else {
         if (isMounted) setProfile(null)
       }
-      if (isMounted) { 
-        setLoading(false)
-        clearTimeout(safetyTimer) 
-      }
+      
+      if (isMounted) setLoading(false)
+      clearTimeout(safetyTimer)
     })
 
-    return () => { isMounted = false; clearTimeout(safetyTimer); subscription.unsubscribe() }
+    return () => { 
+      isMounted = false
+      clearTimeout(safetyTimer)
+      subscription.unsubscribe() 
+    }
   }, [])
 
   async function signOut() {
     await supabase.auth.signOut()
-    setUser(null); setProfile(null)
+    setUser(null)
+    setProfile(null)
     router.push('/login')
   }
 
@@ -79,9 +124,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile?.role === 'dono_salao' ||
     (profile?.role === 'funcionario' && profile?.nivel_acesso === 'total')
 
-  return React.createElement(
-    AuthContext.Provider,
-    { value: { user, profile, loading, temAcessoTotal, signOut, logout: signOut } },
-    children
+  return (
+    <AuthContext.Provider 
+      value={{ user, profile, loading, temAcessoTotal, signOut, logout: signOut }}
+    >
+      {children}
+    </AuthContext.Provider>
   )
+}
+
+export function useAuth() {
+  return useContext(AuthContext)
 }
