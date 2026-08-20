@@ -34,53 +34,6 @@ type CoberturaServico = {
   pacotesDisponiveis: PacoteOpcao[]
 }
 
-// ─── Funções de formatação ────────────────────────────────────────────────
-
-// Formata a data_preferida sem sofrer alteração de dia por causa do fuso
-function formatarDataPreferida(data: string) {
-  if (!data) return ''
-
-  const partes = String(data).split('-')
-
-  if (partes.length !== 3) {
-    return new Date(data).toLocaleDateString('pt-BR')
-  }
-
-  const [ano, mes, dia] = partes
-
-  const dataLocal = new Date(
-    Number(ano),
-    Number(mes) - 1,
-    Number(dia)
-  )
-
-  return dataLocal.toLocaleDateString('pt-BR', {
-    weekday: 'long',
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric'
-  })
-}
-
-function formatarPeriodoPreferido(periodo: string) {
-  if (!periodo) return ''
-
-  const valor = String(periodo).toLowerCase().trim()
-
-  const periodos: Record<string, string> = {
-    manha: 'Manhã',
-    manhã: 'Manhã',
-    tarde: 'Tarde',
-    noite: 'Noite',
-    qualquer: 'Qualquer período',
-    'qualquer período': 'Qualquer período',
-    qualquer_horario: 'Qualquer horário',
-    'qualquer horário': 'Qualquer horário'
-  }
-
-  return periodos[valor] || periodo
-}
-
 export default function NotificacoesDonoPage() {
   console.log(
     '🚀 [TESTE] A página NotificacoesDonoPage foi renderizada!'
@@ -127,7 +80,7 @@ export default function NotificacoesDonoPage() {
     }
   }, [loading, profile])
 
-  // ─── Push com Logs Passo a Passo ────────────────────────────────────────
+  // ─── Push ───────────────────────────────────────────────────────────────
 
   async function registrarPushNotification() {
     console.log(
@@ -208,8 +161,12 @@ export default function NotificacoesDonoPage() {
           .upsert(
             {
               user_id: profile?.id,
+              profile_id: profile?.id,
               salao_id: profile?.salao_id,
-              subscription: subscription.toJSON()
+              subscription:
+                subscription.toJSON(),
+              updated_at:
+                new Date().toISOString()
             },
             {
               onConflict: 'user_id'
@@ -223,7 +180,12 @@ export default function NotificacoesDonoPage() {
         )
       } else {
         console.log(
-          '🔔 [PUSH] 8 - Subscription salva com sucesso no banco de dados!'
+          '🔔 [PUSH] 8 - Subscription salva com sucesso no banco de dados!',
+          {
+            user_id: profile?.id,
+            profile_id: profile?.id,
+            salao_id: profile?.salao_id
+          }
         )
       }
     } catch (err) {
@@ -248,20 +210,14 @@ export default function NotificacoesDonoPage() {
     setSalao(sal)
 
     // Solicitações
-    // O * já traz data_preferida e periodo_preferido
     const { data: sols } = await supabase
       .from('solicitacoes_agendamento')
       .select(
         '*, clientes(id, nome, email, telefone), servicos(nome, duracao_minutos)'
       )
       .eq('salao_id', profile.salao_id)
-      .in('status', [
-        'pendente',
-        'horario_sugerido'
-      ])
-      .order('created_at', {
-        ascending: false
-      })
+      .in('status', ['pendente', 'horario_sugerido'])
+      .order('created_at', { ascending: false })
 
     setSolicitacoes(sols || [])
 
@@ -276,14 +232,8 @@ export default function NotificacoesDonoPage() {
       )
       .eq('salao_id', profile.salao_id)
       .eq('status', 'confirmado')
-      .gte(
-        'data_hora',
-        ontem.toISOString()
-      )
-      .lte(
-        'data_hora',
-        new Date().toISOString()
-      )
+      .gte('data_hora', ontem.toISOString())
+      .lte('data_hora', new Date().toISOString())
       .order('data_hora')
 
     setConfirmacoes(
@@ -294,69 +244,42 @@ export default function NotificacoesDonoPage() {
     )
 
     // Notificações
-    const { data: notifs } =
-      await supabase
-        .from('notificacoes')
-        .select('*')
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
-        .eq(
-          'destinatario_id',
-          profile.id
-        )
-        .eq('excluida', false)
-        .order('created_at', {
-          ascending: false
-        })
+    const { data: notifs } = await supabase
+      .from('notificacoes')
+      .select('*')
+      .eq('salao_id', profile.salao_id)
+      .eq('destinatario_id', profile.id)
+      .eq('excluida', false)
+      .order('created_at', { ascending: false })
 
     setNotificacoes(notifs || [])
 
     // Notificações excluídas
-    const { data: excluidas } =
-      await supabase
-        .from('notificacoes')
-        .select('*')
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
-        .eq(
-          'destinatario_id',
-          profile.id
-        )
-        .eq('excluida', true)
-        .order('created_at', {
-          ascending: false
-        })
-        .limit(30)
+    const { data: excluidas } = await supabase
+      .from('notificacoes')
+      .select('*')
+      .eq('salao_id', profile.salao_id)
+      .eq('destinatario_id', profile.id)
+      .eq('excluida', true)
+      .order('created_at', { ascending: false })
+      .limit(30)
 
-    setNotificacoesExcluidas(
-      excluidas || []
-    )
+    setNotificacoesExcluidas(excluidas || [])
   }
 
   // ─── Notificações ──────────────────────────────────────────────────────
 
-  async function handleClicarNotificacao(
-    n: any
-  ) {
+  async function handleClicarNotificacao(n: any) {
     if (!n.lida) {
       await supabase
         .from('notificacoes')
-        .update({
-          lida: true
-        })
+        .update({ lida: true })
         .eq('id', n.id)
 
       setNotificacoes(prev =>
         prev.map(item =>
           item.id === n.id
-            ? {
-                ...item,
-                lida: true
-              }
+            ? { ...item, lida: true }
             : item
         )
       )
@@ -373,13 +296,9 @@ export default function NotificacoesDonoPage() {
     agendamento: any
   ): Promise<CoberturaServico[]> {
     const idsServicos: string[] =
-      Array.isArray(
-        agendamento.servicos_ids
-      ) &&
+      Array.isArray(agendamento.servicos_ids) &&
       agendamento.servicos_ids.length > 0
-        ? [
-            ...agendamento.servicos_ids
-          ]
+        ? [...agendamento.servicos_ids]
         : agendamento.servico_id
           ? [agendamento.servico_id]
           : []
@@ -388,22 +307,13 @@ export default function NotificacoesDonoPage() {
       idsServicos.length === 0 &&
       agendamento.servicos?.id
     ) {
-      idsServicos.push(
-        agendamento.servicos.id
-      )
+      idsServicos.push(agendamento.servicos.id)
     }
 
-    const {
-      data: servicosInfo
-    } = await supabase
+    const { data: servicosInfo } = await supabase
       .from('servicos')
-      .select(
-        'id, nome, sessoes_equivalentes'
-      )
-      .eq(
-        'salao_id',
-        profile!.salao_id!
-      )
+      .select('id, nome, sessoes_equivalentes')
+      .eq('salao_id', profile!.salao_id!)
 
     const clienteNome =
       agendamento.clientes?.nome ||
@@ -417,34 +327,18 @@ export default function NotificacoesDonoPage() {
       return []
     }
 
-    const {
-      data: pacotesData,
-      error: pacotesError
-    } = await supabase
-      .from(
-        'pacotes_clientes_resumo'
-      )
-      .select(
-        'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
-      )
-      .eq(
-        'cliente_nome',
-        clienteNome
-      )
-      .eq(
-        'status',
-        'ativo'
-      )
-      .gt(
-        'sessoes_restantes',
-        0
-      )
-      .order(
-        'created_at',
-        {
+    const { data: pacotesData, error: pacotesError } =
+      await supabase
+        .from('pacotes_clientes_resumo')
+        .select(
+          'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
+        )
+        .eq('cliente_nome', clienteNome)
+        .eq('status', 'ativo')
+        .gt('sessoes_restantes', 0)
+        .order('created_at', {
           ascending: true
-        }
-      )
+        })
 
     if (pacotesError) {
       console.error(
@@ -455,43 +349,30 @@ export default function NotificacoesDonoPage() {
 
     const opcoesGerais: PacoteOpcao[] =
       (pacotesData || [])
-        .map(
-          (pacote: any) => ({
-            clientePacoteId:
-              pacote.id,
-            nome:
-              pacote.servico ||
-              'Pacote',
-            sessoesRestantes:
-              Number(
-                pacote.sessoes_restantes ??
-                  0
-              )
-          })
-        )
+        .map((pacote: any) => ({
+          clientePacoteId: pacote.id,
+          nome: pacote.servico || 'Pacote',
+          sessoesRestantes: Number(
+            pacote.sessoes_restantes ?? 0
+          )
+        }))
         .filter(
           pacote =>
-            pacote.sessoesRestantes >
-            0
+            pacote.sessoesRestantes > 0
         )
 
-    if (
-      idsServicos.length === 0
-    ) {
+    if (idsServicos.length === 0) {
       return [
         {
           servicoId:
-            agendamento.servico_id ||
-            'geral',
+            agendamento.servico_id || 'geral',
           servicoNome:
-            agendamento.servicos
-              ?.nome ||
+            agendamento.servicos?.nome ||
             'Atendimento',
           sessoesEquivalentes: 1,
           clientePacoteIdSelecionado:
             opcoesGerais.length > 0
-              ? opcoesGerais[0]
-                  .clientePacoteId
+              ? opcoesGerais[0].clientePacoteId
               : null,
           pacotesDisponiveis:
             opcoesGerais
@@ -499,65 +380,46 @@ export default function NotificacoesDonoPage() {
       ]
     }
 
-    return idsServicos.map(
-      id => {
-        const srv =
-          (
-            servicosInfo ||
-            []
-          ).find(
-            (s: any) =>
-              s.id === id
-          )
+    return idsServicos.map(id => {
+      const srv = (servicosInfo || []).find(
+        (s: any) => s.id === id
+      )
 
-        return {
-          servicoId: id,
-          servicoNome:
-            srv?.nome ||
-            'Serviço',
-          sessoesEquivalentes:
-            Number(
-              srv?.sessoes_equivalentes ??
-                1
-            ),
-          clientePacoteIdSelecionado:
-            opcoesGerais.length >
-            0
-              ? opcoesGerais[0]
-                  .clientePacoteId
-              : null,
-          pacotesDisponiveis:
-            opcoesGerais
-        }
+      return {
+        servicoId: id,
+        servicoNome:
+          srv?.nome || 'Serviço',
+        sessoesEquivalentes:
+          Number(
+            srv?.sessoes_equivalentes ?? 1
+          ),
+        clientePacoteIdSelecionado:
+          opcoesGerais.length > 0
+            ? opcoesGerais[0].clientePacoteId
+            : null,
+        pacotesDisponiveis:
+          opcoesGerais
       }
-    )
+    })
   }
 
   // ─── Abrir confirmação ─────────────────────────────────────────────────
 
-  async function abrirModalConfirmar(
-    ag: any
-  ) {
+  async function abrirModalConfirmar(ag: any) {
     setModalConfirmar(ag)
 
     setServicoRealizado(
       ag.servicos?.nome || ''
     )
 
-    setCarregandoCoberturas(
-      true
-    )
+    setCarregandoCoberturas(true)
 
     const covs =
-      await montarCoberturas(
-        ag
-      )
+      await montarCoberturas(ag)
 
     setCoberturas(covs)
 
-    setCarregandoCoberturas(
-      false
-    )
+    setCarregandoCoberturas(false)
   }
 
   // ─── Alterar pacote escolhido ──────────────────────────────────────────
@@ -593,22 +455,19 @@ export default function NotificacoesDonoPage() {
     setSalvando(true)
 
     try {
-      const {
-        error: confirmacaoError
-      } = await supabase
-        .from(
-          'confirmacoes_atendimento'
-        )
-        .insert({
-          agendamento_id:
-            modalConfirmar.id,
-          salao_id:
-            profile.salao_id,
-          confirmado_por:
-            profile.id,
-          servico_realizado:
-            servicoRealizado
-        })
+      const { error: confirmacaoError } =
+        await supabase
+          .from('confirmacoes_atendimento')
+          .insert({
+            agendamento_id:
+              modalConfirmar.id,
+            salao_id:
+              profile.salao_id,
+            confirmado_por:
+              profile.id,
+            servico_realizado:
+              servicoRealizado
+          })
 
       if (confirmacaoError) {
         console.error(
@@ -618,18 +477,13 @@ export default function NotificacoesDonoPage() {
         throw confirmacaoError
       }
 
-      const {
-        error: agendamentoError
-      } = await supabase
-        .from('agendamentos')
-        .update({
-          status:
-            'concluido'
-        })
-        .eq(
-          'id',
-          modalConfirmar.id
-        )
+      const { error: agendamentoError } =
+        await supabase
+          .from('agendamentos')
+          .update({
+            status: 'concluido'
+          })
+          .eq('id', modalConfirmar.id)
 
       if (agendamentoError) {
         console.error(
@@ -647,12 +501,8 @@ export default function NotificacoesDonoPage() {
         }[]
       > = {}
 
-      for (
-        const cob of coberturas
-      ) {
-        if (
-          !cob.clientePacoteIdSelecionado
-        ) {
+      for (const cob of coberturas) {
+        if (!cob.clientePacoteIdSelecionado) {
           continue
         }
 
@@ -669,39 +519,26 @@ export default function NotificacoesDonoPage() {
         descontos[
           cob.clientePacoteIdSelecionado
         ].push({
-          nome:
-            cob.servicoNome,
-          peso:
-            cob.sessoesEquivalentes
+          nome: cob.servicoNome,
+          peso: cob.sessoesEquivalentes
         })
       }
 
       const hoje =
         new Date()
           .toISOString()
-          .slice(
-            0,
-            10
-          )
+          .slice(0, 10)
 
       let totalDescontados = 0
 
       for (
-        const [
-          pacoteId,
-          itens
-        ] of Object.entries(
-          descontos
-        )
+        const [pacoteId, itens]
+        of Object.entries(descontos)
       ) {
         const totalPeso =
           itens.reduce(
-            (
-              acc,
-              item
-            ) =>
-              acc +
-              item.peso,
+            (acc, item) =>
+              acc + item.peso,
             0
           )
 
@@ -709,22 +546,14 @@ export default function NotificacoesDonoPage() {
           data: pacote,
           error: pacoteError
         } = await supabase
-          .from(
-            'pacotes_clientes_resumo'
-          )
+          .from('pacotes_clientes_resumo')
           .select(
             'id, cliente_nome, servico, sessoes_total, sessoes_restantes, status, historico_sessoes'
           )
-          .eq(
-            'id',
-            pacoteId
-          )
+          .eq('id', pacoteId)
           .single()
 
-        if (
-          pacoteError ||
-          !pacote
-        ) {
+        if (pacoteError || !pacote) {
           console.error(
             'Erro ao buscar pacote:',
             pacoteError
@@ -734,8 +563,7 @@ export default function NotificacoesDonoPage() {
 
         const sessoesRestantesAtuais =
           Number(
-            pacote.sessoes_restantes ??
-              0
+            pacote.sessoes_restantes ?? 0
           )
 
         const sessoesRestantesNovas =
@@ -746,8 +574,7 @@ export default function NotificacoesDonoPage() {
           )
 
         const novoStatus =
-          sessoesRestantesNovas <=
-          0
+          sessoesRestantesNovas <= 0
             ? 'concluido'
             : 'ativo'
 
@@ -760,9 +587,7 @@ export default function NotificacoesDonoPage() {
               ]
             : []
 
-        for (
-          const item of itens
-        ) {
+        for (const item of itens) {
           for (
             let i = 0;
             i < item.peso;
@@ -770,16 +595,12 @@ export default function NotificacoesDonoPage() {
           ) {
             historico.push({
               id:
-                typeof crypto !==
-                  'undefined' &&
+                typeof crypto !== 'undefined' &&
                 crypto.randomUUID
                   ? crypto.randomUUID()
                   : `${Date.now()}-${Math.random()
                       .toString(36)
-                      .substring(
-                        2,
-                        9
-                      )}`,
+                      .substring(2, 9)}`,
               data: hoje,
               servico:
                 item.peso > 1
@@ -792,9 +613,7 @@ export default function NotificacoesDonoPage() {
         const {
           error: updateError
         } = await supabase
-          .from(
-            'pacotes_clientes_resumo'
-          )
+          .from('pacotes_clientes_resumo')
           .update({
             sessoes_restantes:
               sessoesRestantesNovas,
@@ -805,10 +624,7 @@ export default function NotificacoesDonoPage() {
             historico_sessoes:
               historico
           })
-          .eq(
-            'id',
-            pacoteId
-          )
+          .eq('id', pacoteId)
 
         if (updateError) {
           console.error(
@@ -822,19 +638,14 @@ export default function NotificacoesDonoPage() {
           totalPeso
       }
 
-      const nenhumPacoteUsado =
-        coberturas.every(
-          cob =>
-            !cob.clientePacoteIdSelecionado
-        )
+      const nenhumPacoteUsado = coberturas.every(
+        cob => !cob.clientePacoteIdSelecionado
+      )
 
-      if (
-        nenhumPacoteUsado
-      ) {
-        const venderNovo =
-          window.confirm(
-            'Este atendimento está sem sessões no pacote. Deseja vender novo pacote?'
-          )
+      if (nenhumPacoteUsado) {
+        const venderNovo = window.confirm(
+          'Este atendimento está sem sessões no pacote. Deseja vender novo pacote?'
+        )
 
         if (venderNovo) {
           router.push(
@@ -848,18 +659,14 @@ export default function NotificacoesDonoPage() {
         data: clienteInfo
       } = await supabase
         .from('clientes')
-        .select(
-          'profile_id'
-        )
+        .select('profile_id')
         .eq(
           'id',
           modalConfirmar.cliente_id
         )
         .single()
 
-      if (
-        clienteInfo?.profile_id
-      ) {
+      if (clienteInfo?.profile_id) {
         await notificar({
           salaoId:
             profile.salao_id,
@@ -870,8 +677,7 @@ export default function NotificacoesDonoPage() {
           titulo:
             '✅ Atendimento confirmado!',
           mensagem:
-            totalDescontados >
-            0
+            totalDescontados > 0
               ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
               : 'Seu atendimento foi registrado com sucesso!',
           tipo:
@@ -881,27 +687,21 @@ export default function NotificacoesDonoPage() {
         })
       }
 
-      setModalConfirmar(
-        null
-      )
-      setServicoRealizado(
-        ''
-      )
+      setModalConfirmar(null)
+      setServicoRealizado('')
       setCoberturas([])
 
       await carregarDados()
+
     } catch (error: any) {
       console.error(
         'Erro ao confirmar atendimento:',
         error
       )
-
       alert(
         'Erro detalhado: ' +
-          (
-            error?.message ||
-            JSON.stringify(error)
-          )
+          (error?.message ||
+            JSON.stringify(error))
       )
     } finally {
       setSalvando(false)
@@ -914,19 +714,14 @@ export default function NotificacoesDonoPage() {
     solicitacao: any
   ) {
     const horarios =
-      horariosLivres.filter(
-        h => h
-      )
+      horariosLivres.filter(h => h)
 
-    if (!horarios.length)
-      return
+    if (!horarios.length) return
 
     setSalvando(true)
 
     await supabase
-      .from(
-        'solicitacoes_agendamento'
-      )
+      .from('solicitacoes_agendamento')
       .update({
         status:
           'horario_sugerido',
@@ -944,9 +739,7 @@ export default function NotificacoesDonoPage() {
       data: cp
     } = await supabase
       .from('clientes')
-      .select(
-        'profile_id'
-      )
+      .select('profile_id')
       .eq(
         'id',
         solicitacao.cliente_id
@@ -972,16 +765,12 @@ export default function NotificacoesDonoPage() {
       })
     }
 
-    setModalSugestao(
-      null
-    )
-
+    setModalSugestao(null)
     setHorariosLivres([
       '',
       '',
       ''
     ])
-
     setSalvando(false)
 
     carregarDados()
@@ -991,9 +780,7 @@ export default function NotificacoesDonoPage() {
     solicitacao: any
   ) {
     await supabase
-      .from(
-        'solicitacoes_agendamento'
-      )
+      .from('solicitacoes_agendamento')
       .update({
         status:
           'pendente',
@@ -1014,9 +801,7 @@ export default function NotificacoesDonoPage() {
     solicitacao: any
   ) {
     await supabase
-      .from(
-        'solicitacoes_agendamento'
-      )
+      .from('solicitacoes_agendamento')
       .update({
         status:
           'recusado'
@@ -1033,8 +818,7 @@ export default function NotificacoesDonoPage() {
     solicitacao: any
   ) {
     const telefone =
-      solicitacao.clientes
-        ?.telefone
+      solicitacao.clientes?.telefone
         ? solicitacao.clientes.telefone.replace(
             /\D/g,
             ''
@@ -1079,22 +863,18 @@ export default function NotificacoesDonoPage() {
       modeloSalvo
         .replace(
           /{cliente}/g,
-          solicitacao.clientes
-            ?.nome ||
+          solicitacao.clientes?.nome ||
             'Cliente'
         )
         .replace(
           /{servico}/g,
-          solicitacao.servicos
-            ?.nome ||
+          solicitacao.servicos?.nome ||
             'Atendimento'
         ) +
       `\n\n${listaHorarios}\n\nQual destas opções fica melhor para você?`
 
     const texto =
-      encodeURIComponent(
-        textoFinal
-      )
+      encodeURIComponent(textoFinal)
 
     if (telefone) {
       window.open(
@@ -1113,8 +893,7 @@ export default function NotificacoesDonoPage() {
     solicitacao: any
   ) {
     const telefone =
-      solicitacao.clientes
-        ?.telefone
+      solicitacao.clientes?.telefone
         ? solicitacao.clientes.telefone.replace(
             /\D/g,
             ''
@@ -1146,13 +925,10 @@ export default function NotificacoesDonoPage() {
     const novos =
       solicitacao.horarios_sugeridos.filter(
         (h: string) =>
-          h !==
-          horarioRemover
+          h !== horarioRemover
       )
 
-    if (
-      novos.length === 0
-    ) {
+    if (novos.length === 0) {
       cancelarSugestao(
         solicitacao
       )
@@ -1160,9 +936,7 @@ export default function NotificacoesDonoPage() {
     }
 
     await supabase
-      .from(
-        'solicitacoes_agendamento'
-      )
+      .from('solicitacoes_agendamento')
       .update({
         horarios_sugeridos:
           novos
@@ -1226,7 +1000,6 @@ export default function NotificacoesDonoPage() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-12">
-
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
         <button
           onClick={() =>
@@ -1282,21 +1055,18 @@ export default function NotificacoesDonoPage() {
               aba === t.key
                 ? {
                     color: cor,
-                    borderColor:
-                      cor
+                    borderColor: cor
                   }
                 : {}
             }
           >
             {t.label}
 
-            {badges[t.key] >
-              0 && (
+            {badges[t.key] > 0 && (
               <span
                 className="absolute top-1.5 right-1 w-4 h-4 rounded-full text-white text-[9px] flex items-center justify-center font-bold"
                 style={{
-                  backgroundColor:
-                    cor
+                  backgroundColor: cor
                 }}
               >
                 {badges[t.key]}
@@ -1307,552 +1077,397 @@ export default function NotificacoesDonoPage() {
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
-
-        {/* ═══════════════════════════════════════════════════════════════
-            PEDIDOS
-        ═══════════════════════════════════════════════════════════════ */}
-
         {aba === 'pedidos' && (
-          solicitacoes.length ===
-          0 ? (
+          solicitacoes.length === 0 ? (
             <div className="card text-center py-10">
               <Calendar
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhuma solicitação pendente
               </p>
             </div>
           ) : (
-            solicitacoes.map(
-              s => (
-                <div
-                  key={s.id}
-                  className="card flex flex-col gap-3"
-                >
+            solicitacoes.map(s => (
+              <div
+                key={s.id}
+                className="card flex flex-col gap-3"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="font-bold text-gray-900">
+                      {s.clientes?.nome}
+                    </p>
 
-                  <div className="flex items-start justify-between">
-                    <div className="min-w-0">
-                      <p className="font-bold text-gray-900">
-                        {s.clientes?.nome}
-                      </p>
+                    <p className="text-sm text-gray-500">
+                      {s.servicos?.nome}
+                    </p>
 
-                      <p className="text-sm text-gray-500">
-                        {s.servicos?.nome}
-                      </p>
-
-                      {/* ─────────────────────────────────────────────
-                          DIA E PERÍODO PEDIDOS PELA CLIENTE
-                      ───────────────────────────────────────────── */}
-
-                      {(s.data_preferida ||
-                        s.periodo_preferido) && (
-                        <div className="mt-2 bg-pink-50 rounded-xl p-3 flex flex-col gap-1.5">
-
-                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">
-                            Preferência da cliente
-                          </p>
-
-                          {s.data_preferida && (
-                            <div className="flex items-center gap-2">
-                              <Calendar
-                                size={15}
-                                style={{
-                                  color: cor
-                                }}
-                              />
-
-                              <p className="text-sm font-medium text-gray-800 capitalize">
-                                {formatarDataPreferida(
-                                  s.data_preferida
-                                )}
-                              </p>
-                            </div>
-                          )}
-
-                          {s.periodo_preferido && (
-                            <div className="flex items-center gap-2">
-                              <Clock
-                                size={15}
-                                style={{
-                                  color: cor
-                                }}
-                              />
-
-                              <p className="text-sm font-medium text-gray-800">
-                                {formatarPeriodoPreferido(
-                                  s.periodo_preferido
-                                )}
-                              </p>
-                            </div>
-                          )}
-
-                        </div>
+                    <p className="text-xs text-gray-400">
+                      {new Date(
+                        s.created_at
+                      ).toLocaleDateString(
+                        'pt-BR',
+                        {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }
                       )}
+                    </p>
+                  </div>
 
-                      <p className="text-xs text-gray-400 mt-2">
-                        Pedido feito em{' '}
-                        {new Date(
-                          s.created_at
-                        ).toLocaleDateString(
-                          'pt-BR',
-                          {
-                            day: '2-digit',
-                            month: 'short',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          }
-                        )}
-                      </p>
-                    </div>
-
-                    <span
-                      className={
-                        'text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ml-2 ' +
-                        (
-                          s.status ===
-                          'horario_sugerido'
-                            ? 'bg-blue-50 text-blue-600'
-                            : 'bg-yellow-50 text-yellow-600'
-                        )
-                      }
-                    >
-                      {
+                  <span
+                    className={
+                      'text-xs px-2 py-0.5 rounded-full font-medium ' +
+                      (
                         s.status ===
                         'horario_sugerido'
-                          ? 'Horários enviados'
-                          : 'Aguardando'
-                      }
-                    </span>
-                  </div>
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'bg-yellow-50 text-yellow-600'
+                      )
+                    }
+                  >
+                    {
+                      s.status ===
+                      'horario_sugerido'
+                        ? 'Horários enviados'
+                        : 'Aguardando'
+                    }
+                  </span>
+                </div>
+
+                {s.status ===
+                  'horario_sugerido' &&
+                  s.horarios_sugeridos && (
+                    <div className="bg-blue-50 rounded-xl p-3 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-blue-700">
+                          Horários sugeridos:
+                        </p>
+
+                        <button
+                          onClick={() =>
+                            enviarWhatsAppHorarios(s)
+                          }
+                          className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium"
+                        >
+                          <MessageCircle size={13} />
+                          Enviar WhatsApp
+                        </button>
+                      </div>
+
+                      {s.horarios_sugeridos.map(
+                        (
+                          h: string,
+                          i: number
+                        ) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between bg-white rounded-xl px-3 py-2"
+                          >
+                            <p className="text-xs text-blue-600 font-medium">
+                              {new Date(
+                                h
+                              ).toLocaleDateString(
+                                'pt-BR',
+                                {
+                                  weekday: 'short',
+                                  day: 'numeric',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                }
+                              )}
+                            </p>
+
+                            <button
+                              onClick={() =>
+                                removerHorarioIndividual(
+                                  s,
+                                  h
+                                )
+                              }
+                              className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center ml-2 shrink-0"
+                            >
+                              <X
+                                size={12}
+                                className="text-red-500"
+                              />
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+
+                <div className="flex gap-2 flex-wrap">
+                  {s.status ===
+                    'pendente' && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setModalSugestao(s)
+                          setHorariosLivres([
+                            '',
+                            '',
+                            ''
+                          ])
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
+                        style={{
+                          backgroundColor: cor
+                        }}
+                      >
+                        <Clock size={14} />
+                        Sugerir horários
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          recusarSolicitacao(s)
+                          enviarWhatsAppCancelamento(s)
+                        }}
+                        className="px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium flex items-center gap-1"
+                      >
+                        <X size={14} />
+                        Recusar / Avisar
+                      </button>
+                    </>
+                  )}
 
                   {s.status ===
-                    'horario_sugerido' &&
-                    s.horarios_sugeridos && (
-                      <div className="bg-blue-50 rounded-xl p-3 flex flex-col gap-2">
-
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-medium text-blue-700">
-                            Horários sugeridos:
-                          </p>
-
-                          <button
-                            onClick={() =>
-                              enviarWhatsAppHorarios(
-                                s
-                              )
-                            }
-                            className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium"
-                          >
-                            <MessageCircle
-                              size={13}
-                            />
-
-                            Enviar WhatsApp
-                          </button>
-                        </div>
-
-                        {s.horarios_sugeridos.map(
-                          (
-                            h: string,
-                            i: number
-                          ) => (
-                            <div
-                              key={i}
-                              className="flex items-center justify-between bg-white rounded-xl px-3 py-2"
-                            >
-                              <p className="text-xs text-blue-600 font-medium">
-                                {new Date(
-                                  h
-                                ).toLocaleDateString(
-                                  'pt-BR',
-                                  {
-                                    weekday:
-                                      'short',
-                                    day: 'numeric',
-                                    month:
-                                      'short',
-                                    hour: '2-digit',
-                                    minute:
-                                      '2-digit'
-                                  }
-                                )}
-                              </p>
-
-                              <button
-                                onClick={() =>
-                                  removerHorarioIndividual(
-                                    s,
-                                    h
-                                  )
-                                }
-                                className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center ml-2 shrink-0"
-                              >
-                                <X
-                                  size={12}
-                                  className="text-red-500"
-                                />
-                              </button>
-                            </div>
+                    'horario_sugerido' && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setModalSugestao(s)
+                          setHorariosLivres(
+                            s.horarios_sugeridos ||
+                              [
+                                '',
+                                '',
+                                ''
+                              ]
                           )
-                        )}
-                      </div>
-                    )}
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-medium"
+                        style={{
+                          borderColor: cor,
+                          color: cor
+                        }}
+                      >
+                        <Clock size={14} />
+                        Alterar horários
+                      </button>
 
-                  <div className="flex gap-2 flex-wrap">
-
-                    {s.status ===
-                      'pendente' && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setModalSugestao(
-                              s
-                            )
-
-                            setHorariosLivres([
-                              '',
-                              '',
-                              ''
-                            ])
-                          }}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
-                          style={{
-                            backgroundColor:
-                              cor
-                          }}
-                        >
-                          <Clock
-                            size={14}
-                          />
-
-                          Sugerir horários
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            recusarSolicitacao(
-                              s
-                            )
-
-                            enviarWhatsAppCancelamento(
-                              s
-                            )
-                          }}
-                          className="px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium flex items-center gap-1"
-                        >
-                          <X
-                            size={14}
-                          />
-
-                          Recusar / Avisar
-                        </button>
-                      </>
-                    )}
-
-                    {s.status ===
-                      'horario_sugerido' && (
-                      <>
-                        <button
-                          onClick={() => {
-                            setModalSugestao(
-                              s
-                            )
-
-                            setHorariosLivres(
-                              s.horarios_sugeridos ||
-                                [
-                                  '',
-                                  '',
-                                  ''
-                                ]
-                            )
-                          }}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-medium"
-                          style={{
-                            borderColor:
-                              cor,
-                            color:
-                              cor
-                          }}
-                        >
-                          <Clock
-                            size={14}
-                          />
-
-                          Alterar horários
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            cancelarSugestao(
-                              s
-                            )
-
-                            enviarWhatsAppCancelamento(
-                              s
-                            )
-                          }}
-                          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium"
-                        >
-                          <RotateCcw
-                            size={14}
-                          />
-
-                          Retirar oferta
-                        </button>
-                      </>
-                    )}
-
-                  </div>
+                      <button
+                        onClick={() => {
+                          cancelarSugestao(s)
+                          enviarWhatsAppCancelamento(s)
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium"
+                      >
+                        <RotateCcw size={14} />
+                        Retirar oferta
+                      </button>
+                    </>
+                  )}
                 </div>
-              )
-            )
+              </div>
+            ))
           )
         )}
 
-        {/* ═══════════════════════════════════════════════════════════════
-            CONFIRMAÇÕES
-        ═══════════════════════════════════════════════════════════════ */}
-
-        {aba ===
-          'confirmacoes' && (
-          confirmacoes.length ===
-          0 ? (
+        {aba === 'confirmacoes' && (
+          confirmacoes.length === 0 ? (
             <div className="card text-center py-10">
               <Check
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhum atendimento para confirmar
               </p>
             </div>
           ) : (
-            confirmacoes.map(
-              ag => (
-                <div
-                  key={ag.id}
-                  className="card flex flex-col gap-2"
-                >
-                  <p className="font-bold text-gray-900">
-                    {ag.clientes?.nome}
-                  </p>
+            confirmacoes.map(ag => (
+              <div
+                key={ag.id}
+                className="card flex flex-col gap-2"
+              >
+                <p className="font-bold text-gray-900">
+                  {ag.clientes?.nome}
+                </p>
 
-                  <p className="text-sm text-gray-500">
-                    {ag.servicos?.nome}
-                  </p>
+                <p className="text-sm text-gray-500">
+                  {ag.servicos?.nome}
+                </p>
 
-                  <p className="text-xs text-gray-400">
-                    {new Date(
-                      ag.data_hora
-                    ).toLocaleDateString(
-                      'pt-BR',
-                      {
-                        weekday:
-                          'long',
-                        day: '2-digit',
-                        month:
-                          'short',
-                        hour: '2-digit',
-                        minute:
-                          '2-digit'
-                      }
-                    )}
-                  </p>
-
-                  <button
-                    onClick={() =>
-                      abrirModalConfirmar(
-                        ag
-                      )
+                <p className="text-xs text-gray-400">
+                  {new Date(
+                    ag.data_hora
+                  ).toLocaleDateString(
+                    'pt-BR',
+                    {
+                      weekday: 'long',
+                      day: '2-digit',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit'
                     }
-                    className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-1.5"
-                    style={{
-                      backgroundColor:
-                        cor
-                    }}
-                  >
-                    <Check
-                      size={14}
-                    />
+                  )}
+                </p>
 
-                    Confirmar atendimento
-                  </button>
-                </div>
-              )
-            )
+                <button
+                  onClick={() =>
+                    abrirModalConfirmar(ag)
+                  }
+                  className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-1.5"
+                  style={{
+                    backgroundColor: cor
+                  }}
+                >
+                  <Check size={14} />
+                  Confirmar atendimento
+                </button>
+              </div>
+            ))
           )
         )}
 
-        {/* ═══════════════════════════════════════════════════════════════
-            NOTIFICAÇÕES
-        ═══════════════════════════════════════════════════════════════ */}
-
-        {aba ===
-          'notificacoes' && (
-          notificacoes.length ===
-          0 ? (
+        {aba === 'notificacoes' && (
+          notificacoes.length === 0 ? (
             <div className="card text-center py-10">
               <Bell
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhuma notificação
               </p>
             </div>
           ) : (
-            notificacoes.map(
-              n => (
-                <div
-                  key={n.id}
-                  onClick={() =>
-                    handleClicarNotificacao(
-                      n
-                    )
-                  }
-                  className={
-                    'card flex flex-col gap-1 cursor-pointer transition-colors hover:bg-gray-50 ' +
-                    (!n.lida
-                      ? 'border-l-4'
-                      : '')
-                  }
-                  style={
-                    !n.lida
-                      ? {
-                          borderLeftColor:
-                            cor
+            notificacoes.map(n => (
+              <div
+                key={n.id}
+                onClick={() =>
+                  handleClicarNotificacao(n)
+                }
+                className={
+                  'card flex flex-col gap-1 cursor-pointer transition-colors hover:bg-gray-50 ' +
+                  (!n.lida
+                    ? 'border-l-4'
+                    : '')
+                }
+                style={
+                  !n.lida
+                    ? {
+                        borderLeftColor:
+                          cor
+                      }
+                    : {}
+                }
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900 text-sm">
+                      {n.titulo}
+                    </p>
+
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      {n.mensagem}
+                    </p>
+
+                    <p className="text-xs text-gray-400 mt-1">
+                      {new Date(
+                        n.created_at
+                      ).toLocaleDateString(
+                        'pt-BR',
+                        {
+                          day: '2-digit',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit'
                         }
-                      : {}
-                  }
-                >
-                  <div className="flex items-start justify-between gap-2">
-
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900 text-sm">
-                        {n.titulo}
-                      </p>
-
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        {n.mensagem}
-                      </p>
-
-                      <p className="text-xs text-gray-400 mt-1">
-                        {new Date(
-                          n.created_at
-                        ).toLocaleDateString(
-                          'pt-BR',
-                          {
-                            day: '2-digit',
-                            month:
-                              'short',
-                            hour: '2-digit',
-                            minute:
-                              '2-digit'
-                          }
-                        )}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-
-                        excluirNotificacao(
-                          n.id
-                        )
-                      }}
-                      className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                    >
-                      <Trash2
-                        size={13}
-                        className="text-gray-400"
-                      />
-                    </button>
-
+                      )}
+                    </p>
                   </div>
+
+                  <button
+                    onClick={e => {
+                      e.stopPropagation()
+                      excluirNotificacao(
+                        n.id
+                      )
+                    }}
+                    className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
+                  >
+                    <Trash2
+                      size={13}
+                      className="text-gray-400"
+                    />
+                  </button>
                 </div>
-              )
-            )
+              </div>
+            ))
           )
         )}
 
-        {/* ═══════════════════════════════════════════════════════════════
-            EXCLUÍDAS
-        ═══════════════════════════════════════════════════════════════ */}
-
-        {aba ===
-          'excluidas' && (
-          notificacoesExcluidas.length ===
-          0 ? (
+        {aba === 'excluidas' && (
+          notificacoesExcluidas.length === 0 ? (
             <div className="card text-center py-10">
               <Trash2
                 size={36}
                 className="text-gray-300 mx-auto mb-2"
               />
-
               <p className="text-gray-400">
                 Nenhuma notificação excluída
               </p>
             </div>
           ) : (
-            notificacoesExcluidas.map(
-              n => (
-                <div
-                  key={n.id}
-                  className="card flex flex-col gap-1 opacity-60"
-                >
-                  <div className="flex items-start justify-between gap-2">
+            notificacoesExcluidas.map(n => (
+              <div
+                key={n.id}
+                className="card flex flex-col gap-1 opacity-60"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <p className="font-semibold text-gray-900 text-sm">
+                      {n.titulo}
+                    </p>
 
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-900 text-sm">
-                        {n.titulo}
-                      </p>
-
-                      <p className="text-sm text-gray-500 mt-0.5">
-                        {n.mensagem}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() =>
-                        restaurarNotificacao(
-                          n.id
-                        )
-                      }
-                      className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                    >
-                      <RotateCcw
-                        size={13}
-                        className="text-gray-400"
-                      />
-                    </button>
-
+                    <p className="text-sm text-gray-500 mt-0.5">
+                      {n.mensagem}
+                    </p>
                   </div>
+
+                  <button
+                    onClick={() =>
+                      restaurarNotificacao(
+                        n.id
+                      )
+                    }
+                    className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
+                  >
+                    <RotateCcw
+                      size={13}
+                      className="text-gray-400"
+                    />
+                  </button>
                 </div>
-              )
-            )
+              </div>
+            ))
           )
         )}
-
       </div>
-
-      {/* ═════════════════════════════════════════════════════════════════
-          MODAL — SUGERIR HORÁRIOS
-      ═════════════════════════════════════════════════════════════════ */}
 
       {modalSugestao && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-
             <div className="flex items-center justify-between">
-
               <h3 className="font-bold text-gray-900 text-lg">
                 {
                   modalSugestao.status ===
@@ -1864,9 +1479,7 @@ export default function NotificacoesDonoPage() {
 
               <button
                 onClick={() =>
-                  setModalSugestao(
-                    null
-                  )
+                  setModalSugestao(null)
                 }
               >
                 <X
@@ -1874,13 +1487,11 @@ export default function NotificacoesDonoPage() {
                   className="text-gray-400"
                 />
               </button>
-
             </div>
 
             {horariosLivres.map(
               (h, i) => (
                 <div key={i}>
-
                   <label className="text-xs font-medium text-gray-500 block mb-1">
                     Opção {i + 1}
                   </label>
@@ -1897,27 +1508,21 @@ export default function NotificacoesDonoPage() {
                       n[i] =
                         e.target.value
 
-                      setHorariosLivres(
-                        n
-                      )
+                      setHorariosLivres(n)
                     }}
                     style={{
                       colorScheme:
                         'light'
                     }}
                   />
-
                 </div>
               )
             )}
 
             <div className="flex gap-3">
-
               <button
                 onClick={() =>
-                  setModalSugestao(
-                    null
-                  )
+                  setModalSugestao(null)
                 }
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
               >
@@ -1944,34 +1549,22 @@ export default function NotificacoesDonoPage() {
                   ? 'Enviando...'
                   : 'Enviar para cliente'}
               </button>
-
             </div>
-
           </div>
         </div>
       )}
 
-      {/* ═════════════════════════════════════════════════════════════════
-          MODAL — CONFIRMAR ATENDIMENTO
-      ═════════════════════════════════════════════════════════════════ */}
-
       {modalConfirmar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-
             <div className="flex items-center justify-between">
-
               <h3 className="font-bold text-gray-900 text-lg">
                 Confirmar atendimento
               </h3>
 
               <button
                 onClick={() => {
-                  setModalConfirmar(
-                    null
-                  )
-
+                  setModalConfirmar(null)
                   setCoberturas([])
                 }}
               >
@@ -1980,49 +1573,35 @@ export default function NotificacoesDonoPage() {
                   className="text-gray-400"
                 />
               </button>
-
             </div>
 
             <p className="text-sm text-gray-600 font-medium">
-              {
-                modalConfirmar
-                  .clientes?.nome
-              }
+              {modalConfirmar.clientes?.nome}
             </p>
 
             {carregandoCoberturas ? (
               <div className="flex items-center gap-2 py-2">
-
                 <div
                   className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
                   style={{
-                    borderColor:
-                      cor
+                    borderColor: cor
                   }}
                 />
 
                 <p className="text-xs text-gray-400">
                   Verificando pacotes ativos...
                 </p>
-
               </div>
-            ) : coberturas.length >
-              0 ? (
+            ) : coberturas.length > 0 ? (
               <div className="flex flex-col gap-3">
-
                 {coberturas.map(
                   cob => (
                     <div
-                      key={
-                        cob.servicoId
-                      }
+                      key={cob.servicoId}
                       className="bg-gray-50 rounded-2xl p-3 flex flex-col gap-2"
                     >
-
                       <p className="font-semibold text-gray-900 text-sm">
-                        {
-                          cob.servicoNome
-                        }
+                        {cob.servicoNome}
                       </p>
 
                       <select
@@ -2034,13 +1613,11 @@ export default function NotificacoesDonoPage() {
                         onChange={e =>
                           alterarPacoteServico(
                             cob.servicoId,
-                            e.target
-                              .value ||
+                            e.target.value ||
                               null
                           )
                         }
                       >
-
                         <option value="">
                           Não usar pacote / Sem pacote
                         </option>
@@ -2055,9 +1632,7 @@ export default function NotificacoesDonoPage() {
                                 op.clientePacoteId
                               }
                             >
-                              {
-                                op.nome
-                              } —{' '}
+                              {op.nome} —{' '}
                               {
                                 op.sessoesRestantes
                               }{' '}
@@ -2065,13 +1640,10 @@ export default function NotificacoesDonoPage() {
                             </option>
                           )
                         )}
-
                       </select>
-
                     </div>
                   )
                 )}
-
               </div>
             ) : (
               <p className="text-xs text-red-500">
@@ -2080,7 +1652,6 @@ export default function NotificacoesDonoPage() {
             )}
 
             <div>
-
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 O que foi realizado?
               </label>
@@ -2096,17 +1667,12 @@ export default function NotificacoesDonoPage() {
                   )
                 }
               />
-
             </div>
 
             <div className="flex gap-3">
-
               <button
                 onClick={() => {
-                  setModalConfirmar(
-                    null
-                  )
-
+                  setModalConfirmar(null)
                   setCoberturas([])
                 }}
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
@@ -2132,13 +1698,10 @@ export default function NotificacoesDonoPage() {
                   ? 'Salvando...'
                   : 'Confirmar'}
               </button>
-
             </div>
-
           </div>
         </div>
       )}
-
     </div>
   )
 }
