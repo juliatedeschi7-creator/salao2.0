@@ -1,16 +1,16 @@
 // ============================================================
-// ORGANIZA SALÃO — SERVICE WORKER
-// Web Push / PWA
+// ORGANIZA SALÃO - SERVICE WORKER
+// Push Notifications
 // ============================================================
 
-const CACHE_NAME = 'organiza-salao-v2'
+const CACHE_VERSION = 'organiza-salao-v2'
 
 // ============================================================
 // INSTALL
 // ============================================================
 
 self.addEventListener('install', event => {
-  console.log('[SW] Service Worker instalado')
+  console.log('[SW PUSH] Service Worker instalado')
 
   event.waitUntil(
     self.skipWaiting()
@@ -22,7 +22,7 @@ self.addEventListener('install', event => {
 // ============================================================
 
 self.addEventListener('activate', event => {
-  console.log('[SW] Service Worker ativado')
+  console.log('[SW PUSH] Service Worker ativado')
 
   event.waitUntil(
     self.clients.claim()
@@ -30,135 +30,163 @@ self.addEventListener('activate', event => {
 })
 
 // ============================================================
-// PUSH
+// PUSH RECEBIDO
 // ============================================================
 
 self.addEventListener('push', event => {
-  console.log('[SW] PUSH recebido')
+  console.log('[SW PUSH] ========================================')
+  console.log('[SW PUSH] PUSH RECEBIDO')
+  console.log('[SW PUSH] ========================================')
 
   event.waitUntil(
     (async () => {
-      let data = {
-        title: 'Organiza Salão',
-        body: 'Você tem uma nova notificação.',
-        icon: '/icon.png',
-        badge: '/icon.png',
-        url: '/salao'
-      }
-
       try {
+        // --------------------------------------------------------
+        // Ler os dados enviados pelo servidor
+        // --------------------------------------------------------
+
+        let data = {}
+
         if (event.data) {
-          const texto = event.data.text()
-
-          console.log('[SW] Payload recebido:', texto)
-
           try {
-            const json = JSON.parse(texto)
+            data = event.data.json()
 
-            if (json && typeof json === 'object') {
-              data = {
-                ...data,
-                ...json
-              }
-            }
+            console.log(
+              '[SW PUSH] Payload recebido:',
+              data
+            )
           } catch (jsonError) {
             console.log(
-              '[SW] Payload não era JSON válido:',
-              jsonError
+              '[SW PUSH] Payload não era JSON. Tentando texto...'
             )
 
-            if (texto) {
-              data.body = texto
+            try {
+              const texto = event.data.text()
+
+              data = {
+                title: 'Organiza Salão',
+                body: texto || 'Você tem uma nova notificação.'
+              }
+
+              console.log(
+                '[SW PUSH] Texto recebido:',
+                texto
+              )
+            } catch (textError) {
+              console.error(
+                '[SW PUSH] Não foi possível ler o payload:',
+                textError
+              )
             }
           }
         }
 
-        const title =
-          data.title ||
-          'Organiza Salão'
+        // --------------------------------------------------------
+        // Dados da notificação
+        // --------------------------------------------------------
 
-        const body =
-          data.body ||
+        const titulo =
+          data?.title ||
+          '🔔 Organiza Salão'
+
+        const mensagem =
+          data?.body ||
           'Você tem uma nova notificação.'
 
-        const icon =
-          data.icon ||
-          '/icon.png'
-
-        const badge =
-          data.badge ||
-          '/icon.png'
-
         const url =
-          data.url ||
+          data?.url ||
+          data?.data?.url ||
           '/salao'
 
-        console.log('[SW] Preparando notificação:', {
-          title,
-          body,
-          icon,
-          badge,
-          url
-        })
-
-        // ========================================================
-        // MOSTRA A NOTIFICAÇÃO
-        // ========================================================
-
-        await self.registration.showNotification(
-          title,
-          {
-            body,
-            icon,
-            badge,
-
-            // Guarda a URL para ser usada quando
-            // o usuário tocar na notificação.
-            data: {
-              url
-            },
-
-            // Ajuda a evitar várias notificações
-            // iguais acumuladas.
-            tag: 'organiza-salao-push',
-
-            renotify: true
-          }
+        console.log(
+          '[SW PUSH] Título:',
+          titulo
         )
 
-        console.log('[SW] NOTIFICAÇÃO MOSTRADA COM SUCESSO')
+        console.log(
+          '[SW PUSH] Mensagem:',
+          mensagem
+        )
+
+        console.log(
+          '[SW PUSH] URL:',
+          url
+        )
+
+        // --------------------------------------------------------
+        // Opções da notificação
+        // --------------------------------------------------------
+
+        const opcoes = {
+          body: mensagem,
+
+          // Use um arquivo que realmente exista no seu projeto.
+          icon: '/icon.png',
+
+          badge: '/icon.png',
+
+          tag: 'organiza-salao',
+
+          renotify: true,
+
+          requireInteraction: false,
+
+          data: {
+            url: url,
+            tipo:
+              data?.tipo ||
+              data?.data?.tipo ||
+              'notificacao'
+          }
+        }
+
+        console.log(
+          '[SW PUSH] Chamando showNotification...'
+        )
+
+        // --------------------------------------------------------
+        // EXIBIR NOTIFICAÇÃO
+        // --------------------------------------------------------
+
+        await self.registration.showNotification(
+          titulo,
+          opcoes
+        )
+
+        console.log(
+          '[SW PUSH] NOTIFICAÇÃO EXIBIDA COM SUCESSO'
+        )
 
       } catch (error) {
         console.error(
-          '[SW] ERRO AO PROCESSAR PUSH:',
+          '[SW PUSH] ERRO AO PROCESSAR PUSH:',
           error
         )
 
-        // ========================================================
-        // FALLBACK
-        // ========================================================
-        //
-        // Se alguma informação do payload estiver inválida,
-        // ainda tentamos mostrar uma notificação simples.
-        //
+        // ------------------------------------------------------
+        // Última tentativa de fallback
+        // ------------------------------------------------------
 
         try {
           await self.registration.showNotification(
-            'Organiza Salão',
+            '🔔 Organiza Salão',
             {
               body: 'Você tem uma nova notificação.',
               icon: '/icon.png',
-              badge: '/icon.png'
+              badge: '/icon.png',
+              data: {
+                url: '/salao'
+              }
             }
           )
 
           console.log(
-            '[SW] FALLBACK DE NOTIFICAÇÃO EXECUTADO'
+            '[SW PUSH] FALLBACK EXIBIDO COM SUCESSO'
           )
 
         } catch (fallbackError) {
           console.error(
-            '[SW] ERRO NO FALLBACK:',
+            '[SW PUSH] ERRO TAMBÉM NO FALLBACK:',
             fallbackError
           )
         }
@@ -168,102 +196,74 @@ self.addEventListener('push', event => {
 })
 
 // ============================================================
-// NOTIFICATION CLICK
+// CLIQUE NA NOTIFICAÇÃO
 // ============================================================
 
 self.addEventListener('notificationclick', event => {
-  console.log('[SW] Notificação clicada')
+  console.log(
+    '[SW PUSH] Usuário clicou na notificação'
+  )
 
   event.notification.close()
+
+  const url =
+    event.notification?.data?.url ||
+    '/salao'
 
   event.waitUntil(
     (async () => {
       try {
-        const notificationData =
-          event.notification.data || {}
-
-        const targetUrl =
-          notificationData.url ||
-          '/salao'
-
-        console.log(
-          '[SW] URL da notificação:',
-          targetUrl
-        )
-
-        const absoluteUrl =
-          new URL(
-            targetUrl,
-            self.location.origin
-          ).href
-
-        // ======================================================
-        // PROCURA UMA JANELA DO ORGANIZA SALÃO JÁ ABERTA
-        // ======================================================
-
         const windowClients =
           await self.clients.matchAll({
             type: 'window',
             includeUncontrolled: true
           })
 
-        for (const client of windowClients) {
-          try {
-            if (
-              client.url &&
-              client.url.startsWith(self.location.origin)
-            ) {
-              if ('focus' in client) {
-                await client.focus()
-              }
+        // ------------------------------------------------------
+        // Procurar uma janela do Organiza já aberta
+        // ------------------------------------------------------
 
-              // Tenta navegar a janela existente
+        for (const client of windowClients) {
+          if (
+            client.url &&
+            'focus' in client
+          ) {
+            try {
+              await client.focus()
+
+              // Tenta navegar para o destino
               if (
                 'navigate' in client &&
-                client.url !== absoluteUrl
+                url
               ) {
-                await client.navigate(absoluteUrl)
+                await client.navigate(url)
               }
 
               return
+            } catch (error) {
+              console.log(
+                '[SW PUSH] Não foi possível focar/navegar:',
+                error
+              )
             }
-          } catch (error) {
-            console.log(
-              '[SW] Erro ao reutilizar janela:',
-              error
-            )
           }
         }
 
-        // ======================================================
-        // SE NÃO EXISTIR JANELA, ABRE UMA NOVA
-        // ======================================================
+        // ------------------------------------------------------
+        // Nenhuma janela aberta
+        // ------------------------------------------------------
 
-        if (self.clients.openWindow) {
-          await self.clients.openWindow(
-            absoluteUrl
-          )
+        if (
+          self.clients.openWindow
+        ) {
+          await self.clients.openWindow(url)
         }
 
       } catch (error) {
         console.error(
-          '[SW] ERRO AO ABRIR NOTIFICAÇÃO:',
+          '[SW PUSH] Erro ao clicar na notificação:',
           error
         )
-
-        // Fallback para a página principal
-        try {
-          if (self.clients.openWindow) {
-            await self.clients.openWindow(
-              '/salao'
-            )
-          }
-        } catch (fallbackError) {
-          console.error(
-            '[SW] Erro no fallback do clique:',
-            fallbackError
-          )
-        }
       }
     })()
   )
@@ -275,7 +275,7 @@ self.addEventListener('notificationclick', event => {
 
 self.addEventListener('message', event => {
   console.log(
-    '[SW] Mensagem recebida:',
+    '[SW PUSH] Mensagem recebida:',
     event.data
   )
 
@@ -286,3 +286,11 @@ self.addEventListener('message', event => {
     self.skipWaiting()
   }
 })
+
+// ============================================================
+// FETCH
+// ============================================================
+
+// Não interceptamos os requests da aplicação.
+// O Service Worker fica responsável principalmente
+// pelas notificações Push.
