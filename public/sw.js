@@ -30,117 +30,158 @@ self.addEventListener('push', event => {
 
   event.waitUntil(
     (async () => {
-      try {
-        let data = {
-          title: 'Organiza Salão',
-          body: 'Você tem uma nova notificação.',
-          url: '/'
-        }
+      let data = {
+        title: 'Organiza Salão',
+        body: 'Você tem uma nova notificação.',
+        url: '/'
+      }
 
-        // ============================================================
-        // 1. LÊ O PAYLOAD RECEBIDO
-        // ============================================================
+      // ============================================================
+      // 1. LÊ O PAYLOAD
+      // ============================================================
 
-        if (event.data) {
+      if (event.data) {
+        try {
+          data = event.data.json()
+
+          console.log('[SW] Payload recebido:', data)
+        } catch (jsonError) {
+          console.log(
+            '[SW] Payload não é JSON. Tentando texto.'
+          )
+
           try {
-            data = event.data.json()
+            const texto = event.data.text()
 
-            console.log('[SW] Payload recebido:', data)
-          } catch (jsonError) {
-            console.log(
-              '[SW] Não foi possível interpretar JSON. Tentando texto.'
-            )
+            console.log('[SW] Texto recebido:', texto)
 
-            try {
-              const texto = event.data.text()
-
-              console.log('[SW] Texto recebido:', texto)
-
-              data = {
-                ...data,
-                body: texto
-              }
-            } catch (textError) {
-              console.error(
-                '[SW] Erro ao ler payload:',
-                textError
-              )
+            data = {
+              ...data,
+              body: texto
             }
+          } catch (textError) {
+            console.error(
+              '[SW] Erro ao ler payload:',
+              textError
+            )
           }
-        } else {
-          console.log('[SW] Push recebido sem payload')
         }
+      } else {
+        console.log('[SW] Push recebido sem payload')
+      }
 
-        // ============================================================
-        // 2. GARANTE VALORES VÁLIDOS
-        // ============================================================
+      // ============================================================
+      // 2. GARANTE OS DADOS
+      // ============================================================
 
-        const titulo =
-          data?.title ||
-          'Organiza Salão'
+      const titulo =
+        data?.title ||
+        'Organiza Salão'
 
-        const mensagem =
-          data?.body ||
-          'Você tem uma nova notificação.'
+      const mensagem =
+        data?.body ||
+        'Você tem uma nova notificação.'
 
-        const url =
-          data?.url ||
-          '/'
+      const url =
+        data?.url ||
+        '/'
 
-        console.log('[SW] Título:', titulo)
-        console.log('[SW] Mensagem:', mensagem)
-        console.log('[SW] URL:', url)
+      console.log('[SW] Título:', titulo)
+      console.log('[SW] Mensagem:', mensagem)
+      console.log('[SW] URL:', url)
 
-        // ============================================================
-        // 3. CONFIGURA A NOTIFICAÇÃO
-        //
-        // IMPORTANTE:
-        // Não estamos usando icon/badge aqui propositalmente.
-        //
-        // Assim eliminamos a possibilidade de um arquivo de imagem
-        // inexistente ou incompatível impedir a exibição da
-        // notificação no Safari/iOS.
-        // ============================================================
+      // ============================================================
+      // 3. DIAGNÓSTICO
+      //
+      // Esta chamada serve somente para descobrirmos se o push
+      // realmente chegou ao Service Worker.
+      //
+      // Se aparecer [SW-DIAGNOSTIC] nos logs da Vercel, sabemos
+      // que o iPhone recebeu o push e executou este código.
+      // ============================================================
 
-        const opcoes = {
-          body: mensagem,
+      try {
+        console.log('[SW] Enviando diagnóstico para o servidor...')
 
-          data: {
-            url
-          },
+        const diagnosticoResponse = await fetch(
+          '/api/push/sw-diagnostic',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              title: titulo,
+              body: mensagem,
+              url,
+              timestamp: new Date().toISOString(),
+              userAgent:
+                self.navigator?.userAgent ||
+                'service-worker'
+            })
+          }
+        )
 
-          tag: 'organiza-salao-notificacao',
+        console.log(
+          '[SW] Diagnóstico enviado. Status:',
+          diagnosticoResponse.status
+        )
 
-          renotify: true
-        }
+      } catch (diagnosticoError) {
+        console.error(
+          '[SW] Erro ao enviar diagnóstico:',
+          diagnosticoError
+        )
+      }
 
-        console.log('[SW] Chamando showNotification...')
+      // ============================================================
+      // 4. MOSTRA A NOTIFICAÇÃO
+      // ============================================================
 
-        // ============================================================
-        // 4. MOSTRA A NOTIFICAÇÃO
-        // ============================================================
+      const opcoes = {
+        body: mensagem,
 
+        data: {
+          url
+        },
+
+        tag: 'organiza-salao-notificacao',
+
+        renotify: true
+      }
+
+      console.log('[SW] Chamando showNotification...')
+
+      try {
         await self.registration.showNotification(
           titulo,
           opcoes
         )
 
-        console.log('[SW] ========================================')
-        console.log('[SW] NOTIFICAÇÃO EXIBIDA COM SUCESSO')
-        console.log('[SW] ========================================')
+        console.log(
+          '[SW] ========================================'
+        )
 
-      } catch (error) {
+        console.log(
+          '[SW] NOTIFICAÇÃO EXIBIDA COM SUCESSO'
+        )
+
+        console.log(
+          '[SW] ========================================'
+        )
+
+      } catch (notificationError) {
         console.error(
           '[SW] ========================================'
         )
 
         console.error(
-          '[SW] ERRO AO PROCESSAR PUSH'
+          '[SW] ERRO AO MOSTRAR NOTIFICAÇÃO:',
+          notificationError
         )
 
         console.error(
-          '[SW] ========================================',
-          error
+          '[SW] ========================================'
         )
       }
     })()
@@ -159,7 +200,10 @@ self.addEventListener('notificationclick', event => {
           event.notification?.data?.url ||
           '/'
 
-        console.log('[SW] URL da notificação:', url)
+        console.log(
+          '[SW] URL da notificação:',
+          url
+        )
 
         const windowClients = await clients.matchAll({
           type: 'window',
@@ -167,7 +211,7 @@ self.addEventListener('notificationclick', event => {
         })
 
         // ============================================================
-        // 1. TENTA ENCONTRAR UMA JANELA DO ORGANIZA JÁ ABERTA
+        // 1. PROCURA UMA JANELA JÁ ABERTA
         // ============================================================
 
         for (const client of windowClients) {
@@ -175,11 +219,12 @@ self.addEventListener('notificationclick', event => {
             client.url &&
             'focus' in client
           ) {
-            console.log('[SW] Encontrando janela existente')
+            console.log(
+              '[SW] Encontrada janela existente'
+            )
 
             await client.focus()
 
-            // Se for possível navegar diretamente para a URL
             if (
               url &&
               url !== '/' &&
@@ -189,7 +234,7 @@ self.addEventListener('notificationclick', event => {
                 await client.navigate(url)
               } catch (navigateError) {
                 console.log(
-                  '[SW] Não foi possível navegar pela janela existente:',
+                  '[SW] Não foi possível navegar:',
                   navigateError
                 )
               }
@@ -200,11 +245,14 @@ self.addEventListener('notificationclick', event => {
         }
 
         // ============================================================
-        // 2. SE NÃO EXISTIR JANELA, ABRE UMA NOVA
+        // 2. ABRE UMA NOVA JANELA
         // ============================================================
 
         if (clients.openWindow) {
-          console.log('[SW] Abrindo nova janela:', url)
+          console.log(
+            '[SW] Abrindo nova janela:',
+            url
+          )
 
           await clients.openWindow(url)
         }
