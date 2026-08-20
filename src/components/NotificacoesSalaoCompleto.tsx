@@ -143,10 +143,6 @@ export default function NotificacoesDonoPage() {
         return
       }
 
-      // ============================================================
-      // 5. VERIFICA SE JÁ EXISTE UMA SUBSCRIPTION
-      // ============================================================
-
       let subscription =
         await registration.pushManager.getSubscription()
 
@@ -199,10 +195,6 @@ export default function NotificacoesDonoPage() {
         return
       }
 
-      // ============================================================
-      // 7. SALVA PROFILE_ID + USER_ID
-      // ============================================================
-
       console.log(
         '🔔 [PUSH] 7 - Salvando subscription no Supabase...'
       )
@@ -236,11 +228,6 @@ export default function NotificacoesDonoPage() {
           '🔔 [PUSH] ERRO ao salvar subscription pelo user_id:',
           upsertError
         )
-
-        // ========================================================
-        // FALLBACK:
-        // tenta localizar pelo profile_id
-        // ========================================================
 
         const {
           data: existente,
@@ -285,7 +272,6 @@ export default function NotificacoesDonoPage() {
             )
           }
         } else {
-          // Se não existe pelo profile_id, tenta inserir.
           const {
             error: insertError,
           } = await supabase
@@ -339,6 +325,8 @@ export default function NotificacoesDonoPage() {
     setSalao(sal)
 
     // Solicitações
+    // Mantemos o select original (*) para não retirar nenhum campo
+    // utilizado pela tela, incluindo data/período escolhidos pela cliente.
     const { data: sols } = await supabase
       .from('solicitacoes_agendamento')
       .select(
@@ -394,6 +382,83 @@ export default function NotificacoesDonoPage() {
       .limit(30)
 
     setNotificacoesExcluidas(excluidas || [])
+  }
+
+  // ─── Formatação da preferência da cliente ──────────────────────────────
+
+  function formatarDataPreferida(solicitacao: any) {
+    const data =
+      solicitacao?.data_preferida ??
+      solicitacao?.data_desejada ??
+      solicitacao?.data_solicitada ??
+      solicitacao?.data
+
+    if (!data) return null
+
+    // Evita problemas de fuso quando o banco retorna somente YYYY-MM-DD.
+    const dataString = String(data)
+
+    let dataFormatada: Date
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dataString)) {
+      const [ano, mes, dia] =
+        dataString.split('-').map(Number)
+
+      dataFormatada = new Date(
+        ano,
+        mes - 1,
+        dia
+      )
+    } else {
+      dataFormatada = new Date(dataString)
+    }
+
+    if (Number.isNaN(dataFormatada.getTime())) {
+      return null
+    }
+
+    return dataFormatada.toLocaleDateString(
+      'pt-BR',
+      {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric'
+      }
+    )
+  }
+
+  function formatarPeriodoPreferido(solicitacao: any) {
+    const periodo =
+      solicitacao?.periodo_preferido ??
+      solicitacao?.periodo_desejado ??
+      solicitacao?.periodo ??
+      solicitacao?.turno
+
+    if (!periodo) return null
+
+    const valor = String(periodo).trim()
+
+    const mapa: Record<string, string> = {
+      manha: 'Manhã',
+      manhã: 'Manhã',
+      tarde: 'Tarde',
+      noite: 'Noite',
+      qualquer: 'Qualquer horário',
+      qualquer_horario: 'Qualquer horário',
+      qualquer_horário: 'Qualquer horário',
+      indiferente: 'Qualquer horário'
+    }
+
+    const normalizado = valor
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+
+    return (
+      mapa[normalizado] ||
+      valor.charAt(0).toUpperCase() +
+        valor.slice(1)
+    )
   }
 
   // ─── Notificações ──────────────────────────────────────────────────────
@@ -1337,7 +1402,14 @@ export default function NotificacoesDonoPage() {
               </div>
             ) : (
               solicitacoes.map(
-                s => (
+                s => {
+                  const dataPreferida =
+                    formatarDataPreferida(s)
+
+                  const periodoPreferido =
+                    formatarPeriodoPreferido(s)
+
+                  return (
                   <div
                     key={s.id}
                     className="card flex flex-col gap-3"
@@ -1360,7 +1432,48 @@ export default function NotificacoesDonoPage() {
                           }
                         </p>
 
-                        <p className="text-xs text-gray-400">
+                        {/* ─────────────────────────────────────
+                            PREFERÊNCIA DA CLIENTE
+                            Mostra novamente o dia e o período
+                            escolhidos no pedido.
+                           ───────────────────────────────────── */}
+                        {(dataPreferida ||
+                          periodoPreferido) && (
+                          <div className="mt-2 bg-pink-50 rounded-xl px-3 py-2.5">
+                            <p className="text-[11px] font-semibold text-pink-600 uppercase tracking-wide mb-1">
+                              Preferência da cliente
+                            </p>
+
+                            {dataPreferida && (
+                              <div className="flex items-center gap-1.5">
+                                <Calendar
+                                  size={13}
+                                  className="text-pink-500 shrink-0"
+                                />
+
+                                <p className="text-xs text-pink-700 font-medium capitalize">
+                                  {dataPreferida}
+                                </p>
+                              </div>
+                            )}
+
+                            {periodoPreferido && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <Clock
+                                  size={13}
+                                  className="text-pink-500 shrink-0"
+                                />
+
+                                <p className="text-xs text-pink-700 font-medium">
+                                  {periodoPreferido}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        <p className="text-xs text-gray-400 mt-2">
+                          Pedido feito em{' '}
                           {new Date(
                             s.created_at
                           ).toLocaleDateString(
@@ -1579,7 +1692,8 @@ export default function NotificacoesDonoPage() {
                       )}
                     </div>
                   </div>
-                )
+                  )
+                }
               )
             )
           )}
