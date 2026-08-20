@@ -1,5 +1,3 @@
-:::writing{variant="document" id="58321" title="Notificações do Dono — arquivo completo corrigido"}
-```tsx
 // @ts-nocheck
 'use client'
 
