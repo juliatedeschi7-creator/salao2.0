@@ -19,8 +19,6 @@ export async function notificar({
   tipo,
   url,
 }: NotificarParams): Promise<void> {
-  // Sem destinatário, salão ou remetente,
-  // não temos para quem registrar/enviar a notificação.
   if (!destinatarioId || !salaoId || !remetenteId) {
     console.log('[notificar] dados insuficientes', {
       salaoId,
@@ -60,7 +58,7 @@ export async function notificar({
     }
 
     // ============================================================
-    // 2. ENVIA O PUSH PARA O CELULAR / NAVEGADOR
+    // 2. ENVIA O PUSH
     // ============================================================
 
     try {
@@ -101,8 +99,6 @@ export async function notificar({
         )
       }
     } catch (pushError) {
-      // Se o Push falhar, não apagamos a notificação
-      // do sininho. Ela continua disponível normalmente.
       console.error(
         '[notificar] erro ao chamar API de Push:',
         pushError
