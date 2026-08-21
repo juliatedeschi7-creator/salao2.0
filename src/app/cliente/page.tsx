@@ -24,7 +24,9 @@ import {
 
 import {
   registrarPush,
-  verificarPushAtivo
+  verificarPushAtivo,
+  obterPermissaoPush,
+  verificarSuportePush
 } from '@/lib/push-client'
 
 export default function ClientePage() {
@@ -37,8 +39,11 @@ export default function ClientePage() {
 
   const router = useRouter()
 
-  const [salao, setSalao] = useState<any>(null)
-  const [cliente, setCliente] = useState<any>(null)
+  const [salao, setSalao] =
+    useState<any>(null)
+
+  const [cliente, setCliente] =
+    useState<any>(null)
 
   const [agendamentos, setAgendamentos] =
     useState<any[]>([])
@@ -85,6 +90,99 @@ export default function ClientePage() {
   }, [loading, profile])
 
   // ============================================================
+  // VERIFICAR PUSH
+  // ============================================================
+
+  async function verificarStatusPush() {
+
+    if (!profile?.id) {
+      return
+    }
+
+    try {
+
+      console.log(
+        '[CLIENTE] ================================='
+      )
+
+      console.log(
+        '[CLIENTE] Verificando Push da página do cliente'
+      )
+
+      const suporte =
+        verificarSuportePush()
+
+      const permissao =
+        obterPermissaoPush()
+
+      console.log(
+        '[CLIENTE] Suporte:',
+        suporte
+      )
+
+      console.log(
+        '[CLIENTE] Permissão:',
+        permissao
+      )
+
+      if (!suporte) {
+
+        console.log(
+          '[CLIENTE] Este navegador não suporta Push'
+        )
+
+        setModalPushLembrete(false)
+
+        return
+      }
+
+      const pushAtivo =
+        await verificarPushAtivo(
+          profile.id
+        )
+
+      console.log(
+        '[CLIENTE] Push ativo neste dispositivo:',
+        pushAtivo
+      )
+
+      if (pushAtivo) {
+
+        setModalPushLembrete(false)
+        setErroPush('')
+
+      } else {
+
+        /**
+         * Se a permissão estiver bloqueada,
+         * o modal ainda pode ser mostrado, mas
+         * com uma mensagem específica.
+         */
+        setModalPushLembrete(true)
+
+      }
+
+      console.log(
+        '[CLIENTE] ================================='
+      )
+
+    } catch (error) {
+
+      console.error(
+        '[CLIENTE] Erro ao verificar Push:',
+        error
+      )
+
+      /**
+       * Em caso de erro de verificação,
+       * mostramos o modal para não esconder
+       * completamente a possibilidade de ativação.
+       */
+      setModalPushLembrete(true)
+    }
+  }
+
+  // ============================================================
   // CARREGAR DADOS
   // ============================================================
 
@@ -102,10 +200,14 @@ export default function ClientePage() {
       } = await supabase
         .from('clientes')
         .select('*, saloes(*)')
-        .eq('profile_id', profile.id)
+        .eq(
+          'profile_id',
+          profile.id
+        )
         .maybeSingle()
 
       if (errCli) {
+
         console.error(
           'Erro ao buscar cliente:',
           errCli.message
@@ -122,40 +224,50 @@ export default function ClientePage() {
         profile.salao_id
       ) {
 
-        const { data: sal } =
-          await supabase
-            .from('saloes')
-            .select('*')
-            .eq('id', profile.salao_id)
-            .maybeSingle()
+        const {
+          data: sal
+        } = await supabase
+          .from('saloes')
+          .select('*')
+          .eq(
+            'id',
+            profile.salao_id
+          )
+          .maybeSingle()
 
         salaoEncontrado = sal
       }
 
-      setSalao(salaoEncontrado)
+      setSalao(
+        salaoEncontrado
+      )
 
       if (cli?.id) {
 
-        // --------------------------------------------------------
+        // ======================================================
         // AGENDAMENTOS
-        // --------------------------------------------------------
+        // ======================================================
 
         try {
 
-          const { data: ags } =
-            await supabase
-              .from('agendamentos')
-              .select(
-                '*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)'
-              )
-              .eq('cliente_id', cli.id)
-              .order(
-                'data_hora',
-                {
-                  ascending: false
-                }
-              )
-              .limit(10)
+          const {
+            data: ags
+          } = await supabase
+            .from('agendamentos')
+            .select(
+              '*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)'
+            )
+            .eq(
+              'cliente_id',
+              cli.id
+            )
+            .order(
+              'data_hora',
+              {
+                ascending: false
+              }
+            )
+            .limit(10)
 
           setAgendamentos(
             ags || []
@@ -164,33 +276,33 @@ export default function ClientePage() {
         } catch {
 
           setAgendamentos([])
-
         }
 
-        // --------------------------------------------------------
+        // ======================================================
         // PACOTES
-        // --------------------------------------------------------
+        // ======================================================
 
         try {
 
-          const { count: pacs } =
-            await supabase
-              .from('cliente_pacotes')
-              .select(
-                '*',
-                {
-                  count: 'exact',
-                  head: true
-                }
-              )
-              .eq(
-                'cliente_id',
-                cli.id
-              )
-              .eq(
-                'status',
-                'ativo'
-              )
+          const {
+            count: pacs
+          } = await supabase
+            .from('cliente_pacotes')
+            .select(
+              '*',
+              {
+                count: 'exact',
+                head: true
+              }
+            )
+            .eq(
+              'cliente_id',
+              cli.id
+            )
+            .eq(
+              'status',
+              'ativo'
+            )
 
           setPacotesAtivos(
             pacs || 0
@@ -199,33 +311,33 @@ export default function ClientePage() {
         } catch {
 
           setPacotesAtivos(0)
-
         }
 
-        // --------------------------------------------------------
+        // ======================================================
         // NOTIFICAÇÕES
-        // --------------------------------------------------------
+        // ======================================================
 
         try {
 
-          const { count: notifs } =
-            await supabase
-              .from('notificacoes')
-              .select(
-                '*',
-                {
-                  count: 'exact',
-                  head: true
-                }
-              )
-              .eq(
-                'destinatario_id',
-                profile.id
-              )
-              .eq(
-                'lida',
-                false
-              )
+          const {
+            count: notifs
+          } = await supabase
+            .from('notificacoes')
+            .select(
+              '*',
+              {
+                count: 'exact',
+                head: true
+              }
+            )
+            .eq(
+              'destinatario_id',
+              profile.id
+            )
+            .eq(
+              'lida',
+              false
+            )
 
           setNotifCount(
             notifs || 0
@@ -234,29 +346,29 @@ export default function ClientePage() {
         } catch {
 
           setNotifCount(0)
-
         }
 
-        // --------------------------------------------------------
+        // ======================================================
         // CONTRATOS
-        // --------------------------------------------------------
+        // ======================================================
 
         try {
 
-          const { count: contratos } =
-            await supabase
-              .from('contratos')
-              .select(
-                '*',
-                {
-                  count: 'exact',
-                  head: true
-                }
-              )
-              .eq(
-                'cliente_id',
-                cli.id
-              )
+          const {
+            count: contratos
+          } = await supabase
+            .from('contratos')
+            .select(
+              '*',
+              {
+                count: 'exact',
+                head: true
+              }
+            )
+            .eq(
+              'cliente_id',
+              cli.id
+            )
 
           setContratosCount(
             contratos || 0
@@ -265,29 +377,29 @@ export default function ClientePage() {
         } catch {
 
           setContratosCount(0)
-
         }
 
-        // --------------------------------------------------------
+        // ======================================================
         // CONTAS
-        // --------------------------------------------------------
+        // ======================================================
 
         try {
 
-          const { count: contas } =
-            await supabase
-              .from('contas_clientes')
-              .select(
-                '*',
-                {
-                  count: 'exact',
-                  head: true
-                }
-              )
-              .eq(
-                'cliente_id',
-                cli.id
-              )
+          const {
+            count: contas
+          } = await supabase
+            .from('contas_clientes')
+            .select(
+              '*',
+              {
+                count: 'exact',
+                head: true
+              }
+            )
+            .eq(
+              'cliente_id',
+              cli.id
+            )
 
           setContasCount(
             contas || 0
@@ -296,38 +408,21 @@ export default function ClientePage() {
         } catch {
 
           setContasCount(0)
-
         }
 
-        // --------------------------------------------------------
+        // ======================================================
         // PUSH
-        // --------------------------------------------------------
+        // ======================================================
 
-        try {
-
-          const pushAtivo =
-            await verificarPushAtivo(
-              profile.id
-            )
-
-          console.log(
-            '[CLIENTE] Push ativo:',
-            pushAtivo
-          )
-
-          if (!pushAtivo) {
-            setModalPushLembrete(true)
-          }
-
-        } catch (error) {
-
-          console.error(
-            '[CLIENTE] Erro ao verificar Push:',
-            error
-          )
-
-        }
-
+        /**
+         * Verifica DEPOIS que os dados do cliente
+         * foram carregados.
+         *
+         * A existência de um registro no banco não
+         * significa automaticamente que este dispositivo
+         * possui uma subscription.
+         */
+        await verificarStatusPush()
       }
 
     } catch (err) {
@@ -340,24 +435,27 @@ export default function ClientePage() {
     } finally {
 
       setCarregandoDados(false)
-
     }
   }
 
   // ============================================================
-  // ATIVAR PUSH
+  // ATIVAR PUSH AGORA
   // ============================================================
 
   async function ativarPushAgora() {
 
     if (!profile?.id) {
+
       setErroPush(
         'Não foi possível identificar sua conta.'
       )
+
       return
     }
 
-    if (ativandoPush) return
+    if (ativandoPush) {
+      return
+    }
 
     setAtivandoPush(true)
     setErroPush('')
@@ -365,8 +463,54 @@ export default function ClientePage() {
     try {
 
       console.log(
+        '[CLIENTE] ================================='
+      )
+
+      console.log(
         '[CLIENTE] Iniciando ativação do Push'
       )
+
+      // ========================================================
+      // SUPORTE
+      // ========================================================
+
+      if (!verificarSuportePush()) {
+
+        setErroPush(
+          'Este navegador ou dispositivo não oferece suporte a notificações Push.'
+        )
+
+        return
+      }
+
+      // ========================================================
+      // PERMISSÃO ANTES
+      // ========================================================
+
+      let permissao =
+        obterPermissaoPush()
+
+      console.log(
+        '[CLIENTE] Permissão antes:',
+        permissao
+      )
+
+      // ========================================================
+      // SE BLOQUEADO
+      // ========================================================
+
+      if (permissao === 'denied') {
+
+        setErroPush(
+          'As notificações estão bloqueadas neste dispositivo. Ative as notificações do Organiza Salão nas configurações do navegador/iPhone e depois tente novamente.'
+        )
+
+        return
+      }
+
+      // ========================================================
+      // REGISTRAR PUSH
+      // ========================================================
 
       const resultado =
         await registrarPush(
@@ -378,12 +522,17 @@ export default function ClientePage() {
         resultado
       )
 
+      // ========================================================
+      // SUCESSO
+      // ========================================================
+
       if (resultado) {
 
-        setModalPushLembrete(false)
         setErroPush('')
 
-        // Atualiza a verificação depois de salvar.
+        /**
+         * Confirma novamente depois de salvar.
+         */
         const ativo =
           await verificarPushAtivo(
             profile.id
@@ -394,30 +543,48 @@ export default function ClientePage() {
           ativo
         )
 
-        return
-      }
+        if (ativo) {
 
-      // --------------------------------------------------------
-      // Mensagens específicas para o usuário
-      // --------------------------------------------------------
-
-      if (
-        typeof window !== 'undefined' &&
-        'Notification' in window
-      ) {
-
-        if (
-          Notification.permission ===
-          'denied'
-        ) {
-
-          setErroPush(
-            'As notificações estão bloqueadas neste dispositivo. Ative as notificações do Organiza Salão nas configurações do navegador/iPhone e tente novamente.'
-          )
+          setModalPushLembrete(false)
 
           return
         }
 
+        setErroPush(
+          'A permissão foi concedida, mas não conseguimos confirmar a inscrição deste dispositivo. Tente novamente.'
+        )
+
+        return
+      }
+
+      // ========================================================
+      // VERIFICAR PERMISSÃO DEPOIS
+      // ========================================================
+
+      permissao =
+        obterPermissaoPush()
+
+      console.log(
+        '[CLIENTE] Permissão depois:',
+        permissao
+      )
+
+      if (permissao === 'denied') {
+
+        setErroPush(
+          'As notificações foram bloqueadas. Para ativá-las, permita as notificações do Organiza Salão nas configurações do navegador/iPhone.'
+        )
+
+        return
+      }
+
+      if (permissao === 'default') {
+
+        setErroPush(
+          'A permissão para notificações ainda não foi concedida. Toque novamente em "Ativar notificações".'
+        )
+
+        return
       }
 
       setErroPush(
@@ -431,6 +598,11 @@ export default function ClientePage() {
         err
       )
 
+      console.error(
+        '[CLIENTE] Mensagem:',
+        err?.message
+      )
+
       setErroPush(
         'Ocorreu um erro ao ativar as notificações. Tente novamente.'
       )
@@ -439,6 +611,9 @@ export default function ClientePage() {
 
       setAtivandoPush(false)
 
+      console.log(
+        '[CLIENTE] ================================='
+      )
     }
   }
 
@@ -648,7 +823,6 @@ export default function ClientePage() {
                   {notifCount}
 
                 </span>
-
               )}
 
             </button>
@@ -786,7 +960,6 @@ export default function ClientePage() {
           </button>
 
         </div>
-
       )}
 
       {/* ====================================================== */}
@@ -873,11 +1046,9 @@ export default function ClientePage() {
                   >
                     {badge}
                   </div>
-
                 )}
 
               </button>
-
             )
           )}
 
@@ -931,7 +1102,6 @@ export default function ClientePage() {
             />
 
           </button>
-
         )}
 
         {/* CONTRATOS */}
@@ -981,7 +1151,6 @@ export default function ClientePage() {
             />
 
           </button>
-
         )}
 
         {/* CONTAS */}
@@ -1031,7 +1200,6 @@ export default function ClientePage() {
             />
 
           </button>
-
         )}
 
         {/* HISTÓRICO */}
@@ -1126,17 +1294,14 @@ export default function ClientePage() {
                           .toFixed(2)
                           .replace('.', ',')}
                       </p>
-
                     )}
 
                   </div>
-
                 ))}
 
             </div>
 
           </div>
-
         )}
 
         {/* AVALIAÇÃO */}
@@ -1185,7 +1350,6 @@ export default function ClientePage() {
             />
 
           </button>
-
         )}
 
         {/* SAIR */}
@@ -1249,11 +1413,15 @@ export default function ClientePage() {
                 </div>
 
                 <h3 className="text-white font-bold text-xl leading-snug px-4">
+
                   Ative suas notificações!
+
                 </h3>
 
                 <p className="text-white/80 text-sm px-6 leading-relaxed">
+
                   Sem elas, você pode perder avisos de horários confirmados, lembretes de agendamento e novidades do salão.
+
                 </p>
 
               </div>
@@ -1267,17 +1435,22 @@ export default function ClientePage() {
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
 
                   <p className="text-red-600 text-sm">
+
                     {erroPush}
+
                   </p>
 
                 </div>
-
               )}
+
+              {/* ================================================= */}
+              {/* BOTÃO ATIVAR */}
+              {/* ================================================= */}
 
               <button
                 onClick={ativarPushAgora}
                 disabled={ativandoPush}
-                className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
                 style={{
                   backgroundColor: cor
                 }}
@@ -1291,12 +1464,19 @@ export default function ClientePage() {
 
                   <>
                     <Bell size={16} />
-                    Ativar notificações agora
+
+                    {obterPermissaoPush() === 'denied'
+                      ? 'Ver como ativar notificações'
+                      : 'Ativar notificações agora'}
                   </>
 
                 )}
 
               </button>
+
+              {/* ================================================= */}
+              {/* AGORA NÃO */}
+              {/* ================================================= */}
 
               <button
                 onClick={() =>
@@ -1304,7 +1484,9 @@ export default function ClientePage() {
                 }
                 className="w-full py-3 text-gray-400 text-sm font-medium"
               >
+
                 Agora não
+
               </button>
 
             </div>
@@ -1312,7 +1494,6 @@ export default function ClientePage() {
           </div>
 
         </div>
-
       )}
 
     </div>
