@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function RedefinirSenhaPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [novaSenha, setNovaSenha] = useState('')
   const [confirmarSenha, setConfirmarSenha] = useState('')
@@ -14,127 +15,198 @@ export default function RedefinirSenhaPage() {
   const [verificandoSessao, setVerificandoSessao] = useState(true)
 
   const [temSessao, setTemSessao] = useState(false)
+
   const [mensagemErro, setMensagemErro] = useState('')
   const [mensagemSucesso, setMensagemSucesso] = useState('')
 
   useEffect(() => {
     let ativo = true
 
-    async function verificarSessao() {
+    async function prepararRecuperacao() {
       try {
         /*
-         * Quando o usuário abre o link de recuperação,
-         * o Supabase pode precisar de alguns instantes
-         * para processar o token da URL e criar a sessão.
+         * ==========================================================
+         * 1. VERIFICA SE O SUPABASE ENVIOU UM CODE NA URL
+         * ==========================================================
          *
-         * Por isso verificamos mais de uma vez.
+         * No fluxo PKCE, o link de recuperação chega assim:
+         *
+         * /redefinir-senha?code=xxxxxxxx
+         *
+         * Precisamos trocar esse código por uma sessão.
          */
 
-        const tentativas = 10
+        const code = searchParams.get('code')
 
-        for (let i = 0; i < tentativas; i++) {
-          if (!ativo) return
+        if (code) {
+          console.log('[RECUPERAÇÃO] Código encontrado na URL.')
 
-          const {
-            data: { session },
-            error
-          } = await supabase.auth.getSession()
+          const { data, error } =
+            await supabase.auth.exchangeCodeForSession(code)
 
           if (error) {
             console.error(
-              'Erro ao verificar sessão:',
+              '[RECUPERAÇÃO] Erro ao trocar code por sessão:',
               error
             )
-          }
 
-          if (session) {
             if (ativo) {
-              setTemSessao(true)
+              setTemSessao(false)
+              setMensagemErro(
+                'O link de recuperação expirou ou já foi utilizado. Solicite um novo link pelo login.'
+              )
               setVerificandoSessao(false)
             }
 
             return
           }
 
-          /*
-           * Aguarda 300ms antes de tentar novamente.
-           * Isso ajuda principalmente no iPhone/Safari,
-           * onde o processamento inicial do link pode
-           * acontecer um pouco depois da renderização.
-           */
+          if (data.session) {
+            console.log(
+              '[RECUPERAÇÃO] Sessão de recuperação criada com sucesso.'
+            )
 
-          await new Promise(resolve =>
-            setTimeout(resolve, 300)
+            if (ativo) {
+              setTemSessao(true)
+              setMensagemErro('')
+              setVerificandoSessao(false)
+            }
+
+            return
+          }
+        }
+
+        /*
+         * ==========================================================
+         * 2. ESCUTA O EVENTO PASSWORD_RECOVERY
+         * ==========================================================
+         */
+
+        const {
+          data: authListener
+        } = supabase.auth.onAuthStateChange(
+          (event, session) => {
+            console.log(
+              '[RECUPERAÇÃO] Evento de autenticação:',
+              event
+            )
+
+            if (!ativo) return
+
+            if (
+              event === 'PASSWORD_RECOVERY' &&
+              session
+            ) {
+              setTemSessao(true)
+              setMensagemErro('')
+              setVerificandoSessao(false)
+
+              return
+            }
+
+            /*
+             * Também aceitamos uma sessão já existente.
+             */
+
+            if (session) {
+              setTemSessao(true)
+              setMensagemErro('')
+              setVerificandoSessao(false)
+            }
+          }
+        )
+
+        /*
+         * ==========================================================
+         * 3. VERIFICA SE JÁ EXISTE UMA SESSÃO
+         * ==========================================================
+         */
+
+        const {
+          data: { session },
+          error: sessionError
+        } = await supabase.auth.getSession()
+
+        if (sessionError) {
+          console.error(
+            '[RECUPERAÇÃO] Erro ao obter sessão:',
+            sessionError
           )
         }
 
-        if (ativo) {
+        if (session) {
+          console.log(
+            '[RECUPERAÇÃO] Sessão encontrada.'
+          )
+
+          if (ativo) {
+            setTemSessao(true)
+            setMensagemErro('')
+            setVerificandoSessao(false)
+          }
+
+          return
+        }
+
+        /*
+         * ==========================================================
+         * 4. PEQUENA ESPERA
+         * ==========================================================
+         *
+         * Útil principalmente em Safari/iPhone.
+         */
+
+        await new Promise(resolve =>
+          setTimeout(resolve, 800)
+        )
+
+        if (!ativo) return
+
+        const {
+          data: { session: sessionDepois }
+        } = await supabase.auth.getSession()
+
+        if (sessionDepois) {
+          setTemSessao(true)
+          setMensagemErro('')
+        } else {
           setTemSessao(false)
-          setVerificandoSessao(false)
+
           setMensagemErro(
-            'Não foi possível validar o link de recuperação. Abra o link novamente pelo e-mail.'
+            'Não foi possível validar o link de recuperação. Solicite um novo link pelo login.'
           )
         }
 
-      } catch (error) {
+        setVerificandoSessao(false)
+
+        return () => {
+          authListener.subscription.unsubscribe()
+        }
+
+      } catch (error: any) {
         console.error(
-          'Erro ao verificar sessão de recuperação:',
+          '[RECUPERAÇÃO] Erro inesperado:',
           error
         )
 
         if (ativo) {
           setTemSessao(false)
-          setVerificandoSessao(false)
           setMensagemErro(
-            'Não foi possível validar o link de recuperação.'
+            'Não foi possível validar o link de recuperação. Solicite um novo link pelo login.'
           )
+          setVerificandoSessao(false)
         }
       }
     }
 
-    /*
-     * Escuta o evento PASSWORD_RECOVERY.
-     *
-     * Esse é o evento específico que o Supabase dispara
-     * quando o usuário entra pelo fluxo de recuperação
-     * de senha.
-     */
-
-    const {
-      data: authListener
-    } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-
-        console.log(
-          '[REDEFINIR SENHA] Evento:',
-          event
-        )
-
-        if (!ativo) return
-
-        if (
-          event === 'PASSWORD_RECOVERY' ||
-          session
-        ) {
-          setTemSessao(true)
-          setVerificandoSessao(false)
-          setMensagemErro('')
-        }
-
-        if (event === 'SIGNED_OUT') {
-          setTemSessao(false)
-        }
-      }
-    )
-
-    verificarSessao()
+    prepararRecuperacao()
 
     return () => {
       ativo = false
-      authListener.subscription.unsubscribe()
     }
 
-  }, [])
+  }, [searchParams])
+
 
   async function handleSalvarSenha(
     e: React.FormEvent
@@ -145,7 +217,9 @@ export default function RedefinirSenhaPage() {
     setMensagemSucesso('')
 
     /*
-     * Validação da senha
+     * ==========================================================
+     * VALIDAÇÕES
+     * ==========================================================
      */
 
     if (novaSenha.length < 6) {
@@ -162,14 +236,16 @@ export default function RedefinirSenhaPage() {
       return
     }
 
-    /*
-     * Confirma novamente a sessão imediatamente antes
-     * de alterar a senha.
-     */
-
     setCarregando(true)
 
     try {
+
+      /*
+       * ==========================================================
+       * CONFIRMA A SESSÃO
+       * ==========================================================
+       */
+
       const {
         data: { session },
         error: sessionError
@@ -181,7 +257,7 @@ export default function RedefinirSenhaPage() {
 
       if (!session) {
         setMensagemErro(
-          'O link de recuperação não está mais válido. Solicite um novo link para redefinir sua senha.'
+          'O link de recuperação não está mais válido. Solicite um novo link pelo login.'
         )
 
         setTemSessao(false)
@@ -189,32 +265,34 @@ export default function RedefinirSenhaPage() {
       }
 
       /*
-       * Atualiza a senha do usuário autenticado
-       * pelo fluxo de recuperação.
+       * ==========================================================
+       * ALTERA A SENHA
+       * ==========================================================
        */
 
-      const {
-        error: updateError
-      } = await supabase.auth.updateUser({
-        password: novaSenha
-      })
+      const { error } =
+        await supabase.auth.updateUser({
+          password: novaSenha
+        })
 
-      if (updateError) {
+      if (error) {
         console.error(
-          'Erro ao atualizar senha:',
-          updateError
+          '[RECUPERAÇÃO] Erro ao atualizar senha:',
+          error
         )
 
         setMensagemErro(
           'Não foi possível alterar a senha: ' +
-          updateError.message
+          error.message
         )
 
         return
       }
 
       /*
-       * Senha alterada com sucesso.
+       * ==========================================================
+       * SUCESSO
+       * ==========================================================
        */
 
       setMensagemSucesso(
@@ -222,19 +300,22 @@ export default function RedefinirSenhaPage() {
       )
 
       /*
-       * Faz logout para que a pessoa entre novamente
-       * utilizando a nova senha.
+       * Dá um pequeno tempo para a usuária
+       * visualizar a confirmação.
        */
 
-      await supabase.auth.signOut()
+      setTimeout(async () => {
 
-      setTimeout(() => {
+        await supabase.auth.signOut()
+
         router.replace('/login')
+
       }, 1500)
 
     } catch (error: any) {
+
       console.error(
-        'Erro ao redefinir senha:',
+        '[RECUPERAÇÃO] Erro ao redefinir senha:',
         error
       )
 
@@ -247,6 +328,7 @@ export default function RedefinirSenhaPage() {
       setCarregando(false)
     }
   }
+
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gray-50">
@@ -261,50 +343,122 @@ export default function RedefinirSenhaPage() {
           Digite uma nova senha para acessar sua conta do Organiza.
         </p>
 
-        {/* VERIFICANDO LINK */}
+
+        {/* =====================================================
+            VALIDANDO LINK
+        ====================================================== */}
 
         {verificandoSessao && (
+
           <div className="bg-gray-50 border border-gray-100 text-gray-600 text-xs p-3 rounded-xl mb-4 flex items-center gap-2">
-            <div className="w-4 h-4 border-2 border-gray-300 border-t-pink-500 rounded-full animate-spin shrink-0" />
+
+            <div
+              className="
+                w-4 h-4
+                border-2
+                border-gray-300
+                border-t-pink-500
+                rounded-full
+                animate-spin
+                shrink-0
+              "
+            />
 
             <span>
               Validando seu link de recuperação...
             </span>
+
           </div>
+
         )}
 
-        {/* ERRO */}
+
+        {/* =====================================================
+            ERRO
+        ====================================================== */}
 
         {mensagemErro && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-xs p-3 rounded-xl mb-4 leading-relaxed">
+
+          <div className="
+            bg-red-50
+            border
+            border-red-200
+            text-red-600
+            text-xs
+            p-3
+            rounded-xl
+            mb-4
+            leading-relaxed
+          ">
+
             {mensagemErro}
+
           </div>
+
         )}
 
-        {/* SUCESSO */}
+
+        {/* =====================================================
+            SUCESSO
+        ====================================================== */}
 
         {mensagemSucesso && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs p-3 rounded-xl mb-4 leading-relaxed">
+
+          <div className="
+            bg-emerald-50
+            border
+            border-emerald-200
+            text-emerald-700
+            text-xs
+            p-3
+            rounded-xl
+            mb-4
+            leading-relaxed
+          ">
+
             {mensagemSucesso}
+
           </div>
+
         )}
+
 
         <form
           onSubmit={handleSalvarSenha}
-          className="space-y-3"
+          className="space-y-4"
         >
 
-          {/* NOVA SENHA */}
+          {/* ===================================================
+              NOVA SENHA
+          ==================================================== */}
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+
+            <label className="
+              block
+              text-xs
+              font-semibold
+              text-gray-700
+              mb-1.5
+            ">
               Nova senha
             </label>
 
             <input
               type="password"
               placeholder="Digite a nova senha"
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-pink-500"
+              className="
+                w-full
+                px-4
+                py-3
+                rounded-xl
+                border
+                border-gray-200
+                text-sm
+                focus:outline-none
+                focus:border-pink-500
+                disabled:bg-gray-100
+              "
               value={novaSenha}
               onChange={e =>
                 setNovaSenha(e.target.value)
@@ -318,19 +472,41 @@ export default function RedefinirSenhaPage() {
                 !temSessao
               }
             />
+
           </div>
 
-          {/* CONFIRMAR SENHA */}
+
+          {/* ===================================================
+              CONFIRMAR SENHA
+          ==================================================== */}
 
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+
+            <label className="
+              block
+              text-xs
+              font-semibold
+              text-gray-700
+              mb-1.5
+            ">
               Confirmar nova senha
             </label>
 
             <input
               type="password"
               placeholder="Digite novamente a senha"
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-pink-500"
+              className="
+                w-full
+                px-4
+                py-3
+                rounded-xl
+                border
+                border-gray-200
+                text-sm
+                focus:outline-none
+                focus:border-pink-500
+                disabled:bg-gray-100
+              "
               value={confirmarSenha}
               onChange={e =>
                 setConfirmarSenha(e.target.value)
@@ -344,9 +520,13 @@ export default function RedefinirSenhaPage() {
                 !temSessao
               }
             />
+
           </div>
 
-          {/* BOTÃO */}
+
+          {/* ===================================================
+              BOTÃO
+          ==================================================== */}
 
           <button
             type="submit"
@@ -357,34 +537,60 @@ export default function RedefinirSenhaPage() {
               !novaSenha ||
               !confirmarSenha
             }
-            className="w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-50 transition"
+            className="
+              w-full
+              py-3
+              rounded-xl
+              text-white
+              font-semibold
+              text-sm
+              disabled:opacity-50
+              transition
+            "
             style={{
               backgroundColor: '#E91E8C'
             }}
           >
+
             {verificandoSessao
               ? 'Validando link...'
               : carregando
                 ? 'Salvando...'
                 : 'Salvar nova senha'}
+
           </button>
 
         </form>
 
-        {/* LINK INVÁLIDO */}
+
+        {/* =====================================================
+            VOLTAR PARA LOGIN
+        ====================================================== */}
 
         {!verificandoSessao &&
           !temSessao && (
-            <button
-              type="button"
-              onClick={() =>
-                router.push('/login')
-              }
-              className="w-full mt-3 py-3 rounded-xl border border-gray-200 text-gray-600 font-medium text-sm"
-            >
-              Voltar para o login
-            </button>
-          )}
+
+          <button
+            type="button"
+            onClick={() =>
+              router.replace('/login')
+            }
+            className="
+              w-full
+              mt-3
+              py-3
+              rounded-xl
+              border
+              border-gray-200
+              text-gray-600
+              font-medium
+              text-sm
+            "
+          >
+            Voltar para o login
+          </button>
+
+        )}
 
       </div>
 
