@@ -971,4 +971,3 @@ export default function SalaoHorariosPage() {
       </div>
     </main>
   )
-}
