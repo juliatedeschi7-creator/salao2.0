@@ -32,6 +32,9 @@ const CATEGORIAS_SUGERIDAS = [
   'Limpeza / Organização'
 ]
 
+const BUCKET_GUIAS = 'guias'
+const TAMANHO_MAXIMO_IMAGEM = 6 * 1024 * 1024 // 6 MB
+
 export default function GuiaPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
@@ -39,7 +42,6 @@ export default function GuiaPage() {
   const [salao, setSalao] = useState<any>(null)
   const [guias, setGuias] = useState<any[]>([])
   const [categorias, setCategorias] = useState<any[]>([])
-
   const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
   const [catFiltro, setCatFiltro] = useState('Todas')
@@ -49,9 +51,10 @@ export default function GuiaPage() {
   const [modalCategoriasAberto, setModalCategoriasAberto] = useState(false)
   const [guiaLeitura, setGuiaLeitura] = useState<any | null>(null)
 
+  // Edição de guia
   const [idEditando, setIdEditando] = useState<string | null>(null)
 
-  // Categoria sendo editada
+  // Categoria
   const [categoriaEditando, setCategoriaEditando] = useState<any | null>(null)
   const [nomeNovaCategoria, setNomeNovaCategoria] = useState('')
   const [salvandoCategoria, setSalvandoCategoria] = useState(false)
@@ -61,7 +64,6 @@ export default function GuiaPage() {
   const [categoria, setCategoria] = useState('Geral')
   const [conteudo, setConteudo] = useState('')
   const [imagemUrl, setImagemUrl] = useState('')
-
   const [enviandoFoto, setEnviandoFoto] = useState(false)
   const [salvando, setSalvando] = useState(false)
 
@@ -77,6 +79,10 @@ export default function GuiaPage() {
 
     carregarDados()
   }, [loading, profile])
+
+  // ============================================================
+  // CARREGAR DADOS
+  // ============================================================
 
   async function carregarDados() {
     if (!profile?.salao_id) return
@@ -119,7 +125,6 @@ export default function GuiaPage() {
       setSalao(salRes.data)
       setGuias(guiasRes.data || [])
       setCategorias(categoriasRes.data || [])
-
     } catch (error) {
       console.error('Erro ao carregar dados:', error)
     } finally {
@@ -151,6 +156,8 @@ export default function GuiaPage() {
 
     try {
       if (categoriaEditando) {
+        const nomeAntigo = categoriaEditando.nome
+
         const { error } = await supabase
           .from('guias_categorias')
           .update({
@@ -160,9 +167,6 @@ export default function GuiaPage() {
           .eq('salao_id', profile.salao_id)
 
         if (error) throw error
-
-        // Atualiza também os guias que usavam a categoria antiga
-        const nomeAntigo = categoriaEditando.nome
 
         const { error: guiasError } = await supabase
           .from('guias')
@@ -187,7 +191,9 @@ export default function GuiaPage() {
 
         if (error) {
           if (error.code === '23505') {
-            throw new Error('Já existe uma categoria com esse nome.')
+            throw new Error(
+              'Já existe uma categoria com esse nome.'
+            )
           }
 
           throw error
@@ -198,12 +204,12 @@ export default function GuiaPage() {
 
       setCategoriaEditando(null)
       setNomeNovaCategoria('')
-      await carregarDados()
 
+      await carregarDados()
     } catch (err: any) {
       alert(
         'Erro ao salvar categoria: ' +
-        (err.message || 'Tente novamente.')
+          (err.message || 'Tente novamente.')
       )
     } finally {
       setSalvandoCategoria(false)
@@ -254,11 +260,10 @@ export default function GuiaPage() {
       }
 
       await carregarDados()
-
     } catch (err: any) {
       alert(
         'Erro ao excluir categoria: ' +
-        (err.message || 'Tente novamente.')
+          (err.message || 'Tente novamente.')
       )
     }
   }
@@ -270,11 +275,13 @@ export default function GuiaPage() {
   function abrirModalCriar() {
     setIdEditando(null)
     setTitulo('')
+
     setCategoria(
       categorias.length > 0
         ? categorias[0].nome
         : 'Geral'
     )
+
     setConteudo('')
     setImagemUrl('')
     setModalFormAberto(true)
@@ -282,15 +289,15 @@ export default function GuiaPage() {
 
   function abrirModalEditar(g: any) {
     setIdEditando(g.id)
-    setTitulo(g.titulo)
+    setTitulo(g.titulo || '')
     setCategoria(g.categoria || 'Geral')
-    setConteudo(g.conteudo)
+    setConteudo(g.conteudo || '')
     setImagemUrl(g.imagem_url || '')
     setModalFormAberto(true)
   }
 
   // ============================================================
-  // UPLOAD
+  // UPLOAD DE IMAGEM
   // ============================================================
 
   async function handleUploadImagem(
@@ -298,50 +305,142 @@ export default function GuiaPage() {
   ) {
     const arquivo = e.target.files?.[0]
 
+    // Permite selecionar novamente o mesmo arquivo depois
+    e.target.value = ''
+
     if (!arquivo) return
 
     if (!arquivo.type.startsWith('image/')) {
-      alert('Por favor, selecione um arquivo de imagem válido.')
+      alert(
+        'Por favor, selecione um arquivo de imagem válido.'
+      )
       return
     }
 
-    if (!profile?.salao_id) return
+    if (arquivo.size > TAMANHO_MAXIMO_IMAGEM) {
+      alert(
+        'A imagem é muito grande.\n\nEscolha uma imagem de até 6 MB.'
+      )
+      return
+    }
+
+    if (!profile?.salao_id) {
+      alert(
+        'Não foi possível identificar o salão. Faça login novamente.'
+      )
+      return
+    }
 
     setEnviandoFoto(true)
 
     try {
-      const extensao =
-        arquivo.name.split('.').pop()?.toLowerCase() || 'jpg'
+      /*
+       * A imagem fica organizada dentro de uma pasta
+       * correspondente ao salão:
+       *
+       * guias/
+       *   SALAO_ID/
+       *      arquivo.jpg
+       *
+       * Isso também permite criar uma política de Storage
+       * para cada salão.
+       */
+
+      const extensaoOriginal =
+        arquivo.name
+          .split('.')
+          .pop()
+          ?.toLowerCase() || 'jpg'
+
+      const extensoesPermitidas = [
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'gif'
+      ]
+
+      const extensao = extensoesPermitidas.includes(
+        extensaoOriginal
+      )
+        ? extensaoOriginal
+        : 'jpg'
 
       const nomeArquivo =
-        `${profile.salao_id}/${Date.now()}.${extensao}`
+        `${profile.salao_id}/` +
+        `${Date.now()}-` +
+        `${crypto.randomUUID()}.` +
+        extensao
 
       const { error: uploadError } =
         await supabase.storage
-          .from('guias')
+          .from(BUCKET_GUIAS)
           .upload(
             nomeArquivo,
             arquivo,
             {
-              upsert: true
+              cacheControl: '3600',
+              contentType: arquivo.type,
+              upsert: false
             }
           )
 
-      if (uploadError) throw uploadError
+      if (uploadError) {
+        console.error(
+          'Erro detalhado do Storage:',
+          uploadError
+        )
 
-      const { data } =
-        supabase.storage
-          .from('guias')
-          .getPublicUrl(nomeArquivo)
+        if (
+          uploadError.message
+            ?.toLowerCase()
+            .includes('bucket not found')
+        ) {
+          throw new Error(
+            'O armazenamento de imagens "guias" ainda não foi criado no Supabase. Crie o bucket "guias" no Storage.'
+          )
+        }
 
-      if (data?.publicUrl) {
-        setImagemUrl(data.publicUrl)
+        if (
+          uploadError.message
+            ?.toLowerCase()
+            .includes('row-level security')
+        ) {
+          throw new Error(
+            'O bucket existe, mas as permissões de upload ainda não foram configuradas no Supabase.'
+          )
+        }
+
+        throw uploadError
       }
 
+      const {
+        data: publicUrlData
+      } = supabase.storage
+        .from(BUCKET_GUIAS)
+        .getPublicUrl(nomeArquivo)
+
+      const publicUrl =
+        publicUrlData?.publicUrl
+
+      if (!publicUrl) {
+        throw new Error(
+          'A imagem foi enviada, mas não foi possível obter a URL pública.'
+        )
+      }
+
+      setImagemUrl(publicUrl)
+
     } catch (err: any) {
+      console.error(
+        'Erro ao enviar imagem:',
+        err
+      )
+
       alert(
-        'Erro ao enviar imagem: ' +
-        (err.message || 'Tente novamente.')
+        'Erro ao enviar imagem:\n\n' +
+          (err.message ||
+            'Tente novamente.')
       )
     } finally {
       setEnviandoFoto(false)
@@ -366,30 +465,39 @@ export default function GuiaPage() {
 
     if (!profile?.salao_id) return
 
+    if (enviandoFoto) {
+      alert(
+        'Aguarde o término do envio da imagem.'
+      )
+      return
+    }
+
     setSalvando(true)
 
     try {
       const dadosGuia = {
         salao_id: profile.salao_id,
         titulo: titulo.trim(),
-        categoria: categoria.trim() || 'Geral',
+        categoria:
+          categoria.trim() || 'Geral',
         conteudo: conteudo.trim(),
-        imagem_url: imagemUrl.trim() || null
+        imagem_url:
+          imagemUrl.trim() || null
       }
 
       if (idEditando) {
-
         const { error } =
           await supabase
             .from('guias')
             .update(dadosGuia)
             .eq('id', idEditando)
-            .eq('salao_id', profile.salao_id)
+            .eq(
+              'salao_id',
+              profile.salao_id
+            )
 
         if (error) throw error
-
       } else {
-
         const { error } =
           await supabase
             .from('guias')
@@ -403,11 +511,11 @@ export default function GuiaPage() {
       setModalFormAberto(false)
 
       await carregarDados()
-
     } catch (err: any) {
       alert(
         'Erro ao salvar o guia: ' +
-        (err.message || 'Tente novamente.')
+          (err.message ||
+            'Tente novamente.')
       )
     } finally {
       setSalvando(false)
@@ -437,20 +545,25 @@ export default function GuiaPage() {
           .from('guias')
           .delete()
           .eq('id', id)
-          .eq('salao_id', profile.salao_id)
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
 
       if (error) throw error
 
-      if (guiaLeitura?.id === id) {
+      if (
+        guiaLeitura?.id === id
+      ) {
         setGuiaLeitura(null)
       }
 
       await carregarDados()
-
     } catch (err: any) {
       alert(
         'Erro ao excluir: ' +
-        (err.message || 'Tente novamente.')
+          (err.message ||
+            'Tente novamente.')
       )
     }
   }
@@ -472,10 +585,12 @@ export default function GuiaPage() {
             {
               guia_id: guiaId,
               profile_id: profile.id,
-              visualizado_em: new Date().toISOString()
+              visualizado_em:
+                new Date().toISOString()
             },
             {
-              onConflict: 'guia_id,profile_id'
+              onConflict:
+                'guia_id,profile_id'
             }
           )
 
@@ -485,7 +600,6 @@ export default function GuiaPage() {
           error
         )
       }
-
     } catch (error) {
       console.error(
         'Erro ao registrar visualização:',
@@ -505,13 +619,18 @@ export default function GuiaPage() {
 
   const nomesCategorias = [
     ...CATEGORIAS_SUGERIDAS,
-    ...categorias.map(c => c.nome),
-    ...guias.map(g => g.categoria).filter(Boolean)
+    ...categorias.map(
+      c => c.nome
+    ),
+    ...guias
+      .map(g => g.categoria)
+      .filter(Boolean)
   ]
 
-  const categoriasUnicas = Array.from(
-    new Set(nomesCategorias)
-  )
+  const categoriasUnicas =
+    Array.from(
+      new Set(nomesCategorias)
+    )
 
   const categoriasDisponiveis = [
     'Todas',
@@ -522,29 +641,28 @@ export default function GuiaPage() {
   // FILTRO
   // ============================================================
 
-  const guiasFiltrados = guias.filter(g => {
+  const guiasFiltrados =
+    guias.filter(g => {
+      const textoBusca =
+        busca.toLowerCase()
 
-    const textoBusca =
-      busca.toLowerCase()
+      const atendeBusca =
+        (g.titulo || '')
+          .toLowerCase()
+          .includes(textoBusca) ||
+        (g.conteudo || '')
+          .toLowerCase()
+          .includes(textoBusca)
 
-    const atendeBusca =
-      (g.titulo || '')
-        .toLowerCase()
-        .includes(textoBusca) ||
+      const atendeCategoria =
+        catFiltro === 'Todas' ||
+        g.categoria === catFiltro
 
-      (g.conteudo || '')
-        .toLowerCase()
-        .includes(textoBusca)
-
-    const atendeCategoria =
-      catFiltro === 'Todas' ||
-      g.categoria === catFiltro
-
-    return (
-      atendeBusca &&
-      atendeCategoria
-    )
-  })
+      return (
+        atendeBusca &&
+        atendeCategoria
+      )
+    })
 
   const cor =
     salao?.cor_primaria ||
@@ -574,7 +692,9 @@ export default function GuiaPage() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-12">
 
-      {/* HEADER */}
+      {/* ======================================================
+          HEADER
+      ====================================================== */}
 
       <div className="bg-white px-4 py-4 flex items-center justify-between shadow-sm sticky top-0 z-10">
 
@@ -582,6 +702,7 @@ export default function GuiaPage() {
 
           <button
             onClick={() => router.back()}
+            className="p-1"
           >
             <ArrowLeft
               size={22}
@@ -608,17 +729,15 @@ export default function GuiaPage() {
 
         <div className="flex items-center gap-2">
 
-          {/* GERENCIAR CATEGORIAS */}
-
           <button
-            onClick={abrirModalCategorias}
+            onClick={
+              abrirModalCategorias
+            }
             className="w-9 h-9 rounded-full flex items-center justify-center bg-gray-100 text-gray-600 hover:bg-gray-200"
             title="Gerenciar categorias"
           >
             <Settings2 size={17} />
           </button>
-
-          {/* NOVO GUIA */}
 
           <button
             onClick={abrirModalCriar}
@@ -634,6 +753,10 @@ export default function GuiaPage() {
         </div>
 
       </div>
+
+      {/* ======================================================
+          CONTEÚDO
+      ====================================================== */}
 
       <div className="p-4 space-y-4 max-w-4xl mx-auto">
 
@@ -662,29 +785,29 @@ export default function GuiaPage() {
 
         <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
 
-          {categoriasDisponiveis.map(cat => (
-
-            <button
-              key={cat}
-              onClick={() =>
-                setCatFiltro(cat)
-              }
-              className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
-                catFiltro === cat
-                  ? 'text-white shadow-sm'
-                  : 'bg-white text-gray-600 border border-gray-100'
-              }`}
-              style={{
-                backgroundColor:
+          {categoriasDisponiveis.map(
+            cat => (
+              <button
+                key={cat}
+                onClick={() =>
+                  setCatFiltro(cat)
+                }
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
                   catFiltro === cat
-                    ? cor
-                    : undefined
-              }}
-            >
-              {cat}
-            </button>
-
-          ))}
+                    ? 'text-white shadow-sm'
+                    : 'bg-white text-gray-600 border border-gray-100'
+                }`}
+                style={{
+                  backgroundColor:
+                    catFiltro === cat
+                      ? cor
+                      : undefined
+                }}
+              >
+                {cat}
+              </button>
+            )
+          )}
 
         </div>
 
@@ -708,12 +831,10 @@ export default function GuiaPage() {
             </h3>
 
             <p className="text-xs text-gray-400 max-w-xs mx-auto">
-
               {busca ||
               catFiltro !== 'Todas'
                 ? 'Tente mudar a busca ou os filtros acima.'
                 : 'Cadastre o primeiro guia de instrução para sua equipe.'}
-
             </p>
 
             <button
@@ -746,7 +867,6 @@ export default function GuiaPage() {
                 {/* FOTO */}
 
                 {g.imagem_url && (
-
                   <div className="h-44 w-full bg-gray-100 relative overflow-hidden">
 
                     <img
@@ -756,7 +876,6 @@ export default function GuiaPage() {
                     />
 
                   </div>
-
                 )}
 
                 <div className="p-4 flex-1 flex flex-col justify-between">
@@ -766,10 +885,9 @@ export default function GuiaPage() {
                     <div className="flex items-center justify-between gap-2 mb-2">
 
                       <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-50 text-pink-700 border border-pink-100">
-                        {g.categoria || 'Geral'}
+                        {g.categoria ||
+                          'Geral'}
                       </span>
-
-                      {/* AÇÕES */}
 
                       <div
                         className="flex items-center gap-1"
@@ -789,7 +907,9 @@ export default function GuiaPage() {
 
                         <button
                           onClick={() =>
-                            handleExcluirGuia(g.id)
+                            handleExcluirGuia(
+                              g.id
+                            )
                           }
                           className="p-1.5 text-red-400 hover:text-red-600 rounded-lg hover:bg-red-50"
                         >
@@ -846,9 +966,9 @@ export default function GuiaPage() {
 
       </div>
 
-      {/* ============================================================
+      {/* ======================================================
           MODAL CATEGORIAS
-      ============================================================ */}
+      ====================================================== */}
 
       {modalCategoriasAberto && (
 
@@ -886,7 +1006,9 @@ export default function GuiaPage() {
 
               <button
                 onClick={() =>
-                  setModalCategoriasAberto(false)
+                  setModalCategoriasAberto(
+                    false
+                  )
                 }
               >
                 <X
@@ -902,25 +1024,28 @@ export default function GuiaPage() {
             <div className="mt-5">
 
               <label className="block text-xs font-bold text-gray-700 mb-1.5">
-
                 {categoriaEditando
                   ? 'Editar categoria'
                   : 'Nova categoria'}
-
               </label>
 
               <div className="flex gap-2">
 
                 <input
                   type="text"
-                  value={nomeNovaCategoria}
+                  value={
+                    nomeNovaCategoria
+                  }
                   onChange={e =>
                     setNomeNovaCategoria(
                       e.target.value
                     )
                   }
                   onKeyDown={e => {
-                    if (e.key === 'Enter') {
+                    if (
+                      e.key ===
+                      'Enter'
+                    ) {
                       e.preventDefault()
                       salvarCategoria()
                     }
@@ -930,8 +1055,12 @@ export default function GuiaPage() {
                 />
 
                 <button
-                  onClick={salvarCategoria}
-                  disabled={salvandoCategoria}
+                  onClick={
+                    salvarCategoria
+                  }
+                  disabled={
+                    salvandoCategoria
+                  }
                   className="px-4 rounded-xl text-white text-xs font-bold disabled:opacity-50"
                   style={{
                     backgroundColor: cor
@@ -950,7 +1079,6 @@ export default function GuiaPage() {
               </div>
 
               {categoriaEditando && (
-
                 <button
                   onClick={
                     cancelarEdicaoCategoria
@@ -959,7 +1087,6 @@ export default function GuiaPage() {
                 >
                   Cancelar edição
                 </button>
-
               )}
 
             </div>
@@ -991,68 +1118,72 @@ export default function GuiaPage() {
 
                 <div className="space-y-2 max-h-64 overflow-y-auto">
 
-                  {categorias.map(cat => {
+                  {categorias.map(
+                    cat => {
 
-                    const quantidade =
-                      guias.filter(
-                        g =>
-                          g.categoria ===
-                          cat.nome
-                      ).length
+                      const quantidade =
+                        guias.filter(
+                          g =>
+                            g.categoria ===
+                            cat.nome
+                        ).length
 
-                    return (
+                      return (
+                        <div
+                          key={cat.id}
+                          className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100"
+                        >
 
-                      <div
-                        key={cat.id}
-                        className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100"
-                      >
+                          <div>
 
-                        <div>
+                            <p className="text-sm font-semibold text-gray-800">
+                              {cat.nome}
+                            </p>
 
-                          <p className="text-sm font-semibold text-gray-800">
-                            {cat.nome}
-                          </p>
+                            <p className="text-[10px] text-gray-400">
+                              {quantidade}{' '}
+                              {quantidade ===
+                              1
+                                ? 'guia'
+                                : 'guias'}
+                            </p>
 
-                          <p className="text-[10px] text-gray-400">
-                            {quantidade}{' '}
-                            {quantidade === 1
-                              ? 'guia'
-                              : 'guias'}
-                          </p>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+
+                            <button
+                              onClick={() =>
+                                iniciarEdicaoCategoria(
+                                  cat
+                                )
+                              }
+                              className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white"
+                            >
+                              <Edit2
+                                size={15}
+                              />
+                            </button>
+
+                            <button
+                              onClick={() =>
+                                excluirCategoria(
+                                  cat
+                                )
+                              }
+                              className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2
+                                size={15}
+                              />
+                            </button>
+
+                          </div>
 
                         </div>
-
-                        <div className="flex items-center gap-1">
-
-                          <button
-                            onClick={() =>
-                              iniciarEdicaoCategoria(
-                                cat
-                              )
-                            }
-                            className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white"
-                          >
-                            <Edit2 size={15} />
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              excluirCategoria(
-                                cat
-                              )
-                            }
-                            className="p-2 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-
-                        </div>
-
-                      </div>
-
-                    )
-
-                  })}
+                      )
+                    }
+                  )}
 
                 </div>
 
@@ -1062,7 +1193,9 @@ export default function GuiaPage() {
 
             <button
               onClick={() =>
-                setModalCategoriasAberto(false)
+                setModalCategoriasAberto(
+                  false
+                )
               }
               className="w-full mt-5 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium"
             >
@@ -1075,9 +1208,9 @@ export default function GuiaPage() {
 
       )}
 
-      {/* ============================================================
+      {/* ======================================================
           MODAL LEITURA
-      ============================================================ */}
+      ====================================================== */}
 
       {guiaLeitura && (
 
@@ -1090,8 +1223,12 @@ export default function GuiaPage() {
               <div className="w-full max-h-72 bg-gray-900 relative">
 
                 <img
-                  src={guiaLeitura.imagem_url}
-                  alt={guiaLeitura.titulo}
+                  src={
+                    guiaLeitura.imagem_url
+                  }
+                  alt={
+                    guiaLeitura.titulo
+                  }
                   className="w-full h-full object-contain"
                 />
 
@@ -1157,14 +1294,14 @@ export default function GuiaPage() {
 
                 <button
                   onClick={() => {
-
                     const g =
                       guiaLeitura
 
-                    setGuiaLeitura(null)
+                    setGuiaLeitura(
+                      null
+                    )
 
                     abrirModalEditar(g)
-
                   }}
                   className="flex items-center gap-1.5 text-xs font-bold text-gray-600 hover:text-gray-900"
                 >
@@ -1194,16 +1331,18 @@ export default function GuiaPage() {
 
       )}
 
-      {/* ============================================================
+      {/* ======================================================
           MODAL CRIAR / EDITAR GUIA
-      ============================================================ */}
+      ====================================================== */}
 
       {modalFormAberto && (
 
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 overflow-y-auto">
 
           <form
-            onSubmit={handleSalvarGuia}
+            onSubmit={
+              handleSalvarGuia
+            }
             className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-xl space-y-4 my-auto"
           >
 
@@ -1227,7 +1366,9 @@ export default function GuiaPage() {
               <button
                 type="button"
                 onClick={() =>
-                  setModalFormAberto(false)
+                  setModalFormAberto(
+                    false
+                  )
                 }
               >
                 <X
@@ -1251,7 +1392,9 @@ export default function GuiaPage() {
                 placeholder="Ex: Passo a Passo de Morena Iluminada"
                 value={titulo}
                 onChange={e =>
-                  setTitulo(e.target.value)
+                  setTitulo(
+                    e.target.value
+                  )
                 }
                 required
                 className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-pink-500"
@@ -1272,11 +1415,11 @@ export default function GuiaPage() {
                 <button
                   type="button"
                   onClick={() => {
-
-                    setModalFormAberto(false)
+                    setModalFormAberto(
+                      false
+                    )
 
                     abrirModalCategorias()
-
                   }}
                   className="text-[10px] font-bold"
                   style={{
@@ -1291,21 +1434,23 @@ export default function GuiaPage() {
               <select
                 value={categoria}
                 onChange={e =>
-                  setCategoria(e.target.value)
+                  setCategoria(
+                    e.target.value
+                  )
                 }
                 className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none bg-white"
               >
 
-                {categoriasUnicas.map(c => (
-
-                  <option
-                    key={c}
-                    value={c}
-                  >
-                    {c}
-                  </option>
-
-                ))}
+                {categoriasUnicas.map(
+                  c => (
+                    <option
+                      key={c}
+                      value={c}
+                    >
+                      {c}
+                    </option>
+                  )
+                )}
 
               </select>
 
@@ -1373,7 +1518,7 @@ export default function GuiaPage() {
                         </p>
 
                         <p className="text-[10px] text-gray-400 mt-0.5">
-                          PNG, JPG ou WEBP
+                          PNG, JPG ou WEBP • até 6 MB
                         </p>
                       </>
 
@@ -1383,7 +1528,7 @@ export default function GuiaPage() {
 
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
                     onChange={
                       handleUploadImagem
                     }
@@ -1396,6 +1541,20 @@ export default function GuiaPage() {
                 </label>
 
               )}
+
+              <div className="flex items-start gap-1.5 mt-2">
+
+                <AlertTriangle
+                  size={12}
+                  className="text-gray-400 mt-0.5 shrink-0"
+                />
+
+                <p className="text-[10px] text-gray-400 leading-relaxed">
+                  A imagem será armazenada
+                  no espaço do seu salão.
+                </p>
+
+              </div>
 
             </div>
 
@@ -1412,7 +1571,9 @@ export default function GuiaPage() {
                 placeholder="Descreva detalhadamente o processo, produtos utilizados, tempo de pausa e recomendações..."
                 value={conteudo}
                 onChange={e =>
-                  setConteudo(e.target.value)
+                  setConteudo(
+                    e.target.value
+                  )
                 }
                 required
                 className="w-full p-3 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-pink-500"
@@ -1427,7 +1588,9 @@ export default function GuiaPage() {
               <button
                 type="button"
                 onClick={() =>
-                  setModalFormAberto(false)
+                  setModalFormAberto(
+                    false
+                  )
                 }
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium"
               >
@@ -1445,11 +1608,11 @@ export default function GuiaPage() {
                   backgroundColor: cor
                 }}
               >
-
                 {salvando
                   ? 'Salvando...'
-                  : 'Salvar Guia'}
-
+                  : enviandoFoto
+                    ? 'Enviando imagem...'
+                    : 'Salvar Guia'}
               </button>
 
             </div>
