@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
@@ -17,474 +17,509 @@ import {
   Download,
   Sparkles,
   Calendar,
-  CheckCircle2,
-  Circle,
   X,
-  Eye,
-  EyeOff,
-  RotateCcw
+  RotateCcw,
 } from 'lucide-react'
 import { toPng } from 'html-to-image'
 
 const DIAS = [
-  { key: 'segunda', label: 'Segunda-feira' },
-  { key: 'terca', label: 'Terça-feira' },
-  { key: 'quarta', label: 'Quarta-feira' },
-  { key: 'quinta', label: 'Quinta-feira' },
-  { key: 'sexta', label: 'Sexta-feira' },
-  { key: 'sabado', label: 'Sábado' },
-  { key: 'domingo', label: 'Domingo' },
+  'Domingo',
+  'Segunda-feira',
+  'Terça-feira',
+  'Quarta-feira',
+  'Quinta-feira',
+  'Sexta-feira',
+  'Sábado',
 ]
 
-type HorarioDia = {
-  ativo: boolean
-  manha_inicio: string | null
-  manha_fim: string | null
-  tarde_inicio: string | null
-  tarde_fim: string | null
-  tem_tarde: boolean
+const PADRAO = {
+  Domingo: false,
+  'Segunda-feira': true,
+  'Terça-feira': true,
+  'Quarta-feira': true,
+  'Quinta-feira': true,
+  'Sexta-feira': true,
+  'Sábado': true,
 }
 
-type LayoutStory =
-  | 'elegante'
-  | 'clean'
-  | 'destaque'
-  | 'romantico'
-  | 'moderno'
-  | 'minimal'
-
-const PADRAO: HorarioDia = {
-  ativo: false,
-  manha_inicio: '08:00',
-  manha_fim: '12:00',
-  tarde_inicio: '13:00',
-  tarde_fim: '18:00',
-  tem_tarde: true,
-}
+const estilosStory = [
+  {
+    id: 'elegante',
+    nome: 'Elegante',
+    descricao: 'Delicado e sofisticado',
+  },
+  {
+    id: 'clean',
+    nome: 'Clean',
+    descricao: 'Leve e minimalista',
+  },
+  {
+    id: 'destaque',
+    nome: 'Destaque',
+    descricao: 'Forte e chamativo',
+  },
+  {
+    id: 'romantico',
+    nome: 'Romântico',
+    descricao: 'Feminino e delicado',
+  },
+  {
+    id: 'moderno',
+    nome: 'Moderno',
+    descricao: 'Atual e marcante',
+  },
+  {
+    id: 'minimal',
+    nome: 'Minimal',
+    descricao: 'Poucos elementos',
+  },
+]
 
 export default function SalaoHorariosPage() {
-  const { profile, loading } = useAuth()
+  const { profile, loading: authLoading } = useAuth()
   const router = useRouter()
 
+  const [carregando, setCarregando] = useState(true)
+
   const [salao, setSalao] = useState<any>(null)
-
-  // ============================================================
-  // HORÁRIOS VAGOS
-  // ============================================================
-
-  const [vagos, setVagos] = useState<any[]>([])
-  const [funcionarios, setFuncionarios] = useState<any[]>([])
+  const [funcionamento, setFuncionamento] = useState<any>(PADRAO)
+  const [horarios, setHorarios] = useState<any[]>([])
+  const [profissionais, setProfissionais] = useState<any[]>([])
   const [servicos, setServicos] = useState<any[]>([])
 
-  const [modalVago, setModalVago] = useState(false)
-  const [salvandoVago, setSalvandoVago] = useState(false)
+  const [mostrarFormulario, setMostrarFormulario] = useState(false)
 
   const [formVago, setFormVago] = useState({
     data: '',
     hora: '',
-    servico_id: '',
     duracao_minutos: 60,
     profissional_id: '',
-    observacao: ''
+    servico_id: '',
+    observacao: '',
   })
 
-  // ============================================================
-  // MODAL PEDIDO DE ENCAIXE
-  // ============================================================
+  const [salvandoHorario, setSalvandoHorario] = useState(false)
 
-  const [modalPedido, setModalPedido] = useState(false)
-  const [enviandoPedido, setEnviandoPedido] = useState(false)
+  /*
+   * STORY
+   */
+  const [mostrarStory, setMostrarStory] = useState(false)
 
-  const [formPedido, setFormPedido] = useState({
-    data: '',
-    periodo: 'manha',
-    observacao: ''
-  })
-
-  // ============================================================
-  // GERADOR DE STORY
-  // ============================================================
-
-  const [modalStory, setModalStory] = useState(false)
-
-  const [layoutStory, setLayoutStory] =
-    useState<LayoutStory>('elegante')
-
-  const [dataSelecionadaStory, setDataSelecionadaStory] =
-    useState(new Date().toISOString().slice(0, 10))
-
+  const [dataStory, setDataStory] = useState('')
   const [horariosSelecionadosStory, setHorariosSelecionadosStory] =
     useState<string[]>([])
 
-  const [tituloStory, setTituloStory] =
-    useState('Horários Vagos')
+  const [estiloStory, setEstiloStory] = useState('elegante')
 
-  const [subtituloStory, setSubtituloStory] =
-    useState('Ainda temos alguns horários disponíveis')
+  const [tituloStory, setTituloStory] = useState('Horários Vagos')
+  const [subtituloStory, setSubtituloStory] = useState(
+    'Ainda temos alguns horários disponíveis'
+  )
+  const [ctaStory, setCtaStory] = useState(
+    'Garanta o seu horário!'
+  )
 
-  const [ctaStory, setCtaStory] =
-    useState('Garanta o seu horário!')
-
-  const [mostrarDataStory, setMostrarDataStory] =
-    useState(true)
-
+  const [mostrarDataStory, setMostrarDataStory] = useState(true)
   const [mostrarProfissionalStory, setMostrarProfissionalStory] =
     useState(true)
+  const [mostrarLogoStory, setMostrarLogoStory] = useState(true)
 
-  const [mostrarLogoStory, setMostrarLogoStory] =
-    useState(true)
+  const [gerandoStory, setGerandoStory] = useState(false)
 
-  const [gerandoImagem, setGerandoImagem] =
-    useState(false)
+  const storyRef = useRef<HTMLDivElement>(null)
 
-  const cardRef = useRef<HTMLDivElement>(null)
+  /*
+   * COR PRINCIPAL
+   *
+   * IMPORTANTE:
+   * esta variável precisa existir ANTES de obterConfigLayout().
+   * Isso corrige o ReferenceError do build da Vercel.
+   */
+  const cor =
+    salao?.cor_primaria ||
+    salao?.cor_principal ||
+    salao?.cor ||
+    '#D98FA5'
 
-  // ============================================================
-  // FUNCIONAMENTO
-  // ============================================================
+  const nomeSalao =
+    salao?.nome ||
+    salao?.nome_fantasia ||
+    'Organiza Salão'
 
-  const [horarios, setHorarios] =
-    useState<Record<string, HorarioDia>>({})
+  const logoSalao =
+    salao?.logo_url ||
+    salao?.logo ||
+    '/icon.png'
 
-  const [salvandoFunc, setSalvandoFunc] =
-    useState(false)
+  const dataStorySelecionada = useMemo(() => {
+    if (!dataStory) return null
 
-  const [salvouFunc, setSalvouFunc] =
-    useState(false)
+    const [ano, mes, dia] = dataStory.split('-').map(Number)
 
-  const [secaoAberta, setSecaoAberta] =
-    useState<'vagos' | 'funcionamento'>('vagos')
+    if (!ano || !mes || !dia) return null
 
-  // ============================================================
-  // CARREGAMENTO
-  // ============================================================
+    return new Date(ano, mes - 1, dia)
+  }, [dataStory])
 
-  useEffect(() => {
-    if (!loading && profile?.salao_id) {
-      carregarDados()
-    }
-  }, [loading, profile])
+  const horariosDoStory = useMemo(() => {
+    if (!dataStory) return []
 
-  async function carregarDados() {
-    if (!profile?.salao_id) return
+    return horarios
+      .filter((h) => {
+        if (!h?.data_hora) return false
 
-    try {
-      const salaoId = profile.salao_id
+        const data = new Date(h.data_hora)
 
-      // --------------------------------------------------------
-      // SALÃO
-      // --------------------------------------------------------
+        const ano = data.getFullYear()
+        const mes = String(data.getMonth() + 1).padStart(2, '0')
+        const dia = String(data.getDate()).padStart(2, '0')
 
-      const { data: sal } = await supabase
-        .from('saloes')
-        .select('*')
-        .eq('id', salaoId)
-        .single()
-
-      setSalao(sal)
-
-      // --------------------------------------------------------
-      // FUNCIONAMENTO
-      // --------------------------------------------------------
-
-      const base: Record<string, HorarioDia> = {}
-
-      DIAS.forEach(d => {
-        const s = sal?.horarios_funcionamento?.[d.key]
-
-        base[d.key] = s
-          ? {
-              ...PADRAO,
-              ...s,
-              tem_tarde: !!s.tarde_inicio
-            }
-          : {
-              ...PADRAO
-            }
+        return `${ano}-${mes}-${dia}` === dataStory
       })
-
-      setHorarios(base)
-
-      // --------------------------------------------------------
-      // HORÁRIOS VAGOS
-      // --------------------------------------------------------
-
-      const agora = new Date().toISOString()
-
-      const { data: hrs, error: erroHorarios } =
-        await supabase
-          .from('horarios_vagos')
-          .select('*, profiles(nome), clientes(nome)')
-          .eq('salao_id', salaoId)
-          .gte('data_hora', agora)
-          .order('data_hora')
-
-      if (erroHorarios) {
-        console.error(
-          'Erro ao carregar horários vagos:',
-          erroHorarios.message
-        )
-      }
-
-      setVagos(hrs || [])
-
-      // --------------------------------------------------------
-      // PROFISSIONAIS
-      // --------------------------------------------------------
-
-      const { data: funcs, error: erroFuncs } =
-        await supabase
-          .from('profiles')
-          .select('id, nome')
-          .eq('salao_id', salaoId)
-          .in('role', ['funcionario', 'dono_salao'])
-
-      if (erroFuncs) {
-        console.error(
-          'Erro ao carregar profissionais:',
-          erroFuncs.message
-        )
-      }
-
-      setFuncionarios(funcs || [])
-
-      // --------------------------------------------------------
-      // SERVIÇOS
-      // --------------------------------------------------------
-
-      const { data: listaServicos, error: erroServicos } =
-        await supabase
-          .from('servicos')
-          .select('*')
-          .eq('salao_id', salaoId)
-          .order('nome', { ascending: true })
-
-      if (erroServicos) {
-        console.error(
-          'Erro ao carregar serviços:',
-          erroServicos.message
-        )
-      }
-
-      setServicos(listaServicos || [])
-
-    } catch (error) {
-      console.error(
-        'Erro ao carregar dados da página:',
-        error
+      .sort(
+        (a, b) =>
+          new Date(a.data_hora).getTime() -
+          new Date(b.data_hora).getTime()
       )
+  }, [horarios, dataStory])
+
+  /*
+   * CONFIGURAÇÃO DOS LAYOUTS
+   *
+   * 'cor' já foi declarada acima.
+   */
+  const obterConfigLayout = () => {
+    switch (estiloStory) {
+      case 'clean':
+        return {
+          fundo: '#FFFDFC',
+          texto: '#343434',
+          textoSecundario: '#777777',
+          destaque: cor,
+          borda: cor,
+        }
+
+      case 'destaque':
+        return {
+          fundo: cor,
+          texto: '#FFFFFF',
+          textoSecundario: '#FFFFFF',
+          destaque: '#FFFFFF',
+          borda: '#FFFFFF',
+        }
+
+      case 'romantico':
+        return {
+          fundo: '#FCECEF',
+          texto: '#7D4D5B',
+          textoSecundario: '#A66F7F',
+          destaque: cor,
+          borda: '#E9B8C5',
+        }
+
+      case 'moderno':
+        return {
+          fundo: '#222222',
+          texto: '#FFFFFF',
+          textoSecundario: '#D6D6D6',
+          destaque: cor,
+          borda: cor,
+        }
+
+      case 'minimal':
+        return {
+          fundo: '#FFFFFF',
+          texto: '#222222',
+          textoSecundario: '#666666',
+          destaque: cor,
+          borda: '#EEEEEE',
+        }
+
+      case 'elegante':
+      default:
+        return {
+          fundo: '#F8F2F4',
+          texto: '#51363F',
+          textoSecundario: '#8A6972',
+          destaque: cor,
+          borda: '#E4C5CE',
+        }
     }
   }
 
-  // ============================================================
-  // DURAÇÃO DO SERVIÇO
-  // ============================================================
+  const configLayout = obterConfigLayout()
 
-  function obterDuracaoServico(servico: any) {
+  useEffect(() => {
+    if (authLoading) return
+
+    if (!profile) {
+      router.push('/login')
+      return
+    }
+
+    carregarDados()
+  }, [profile, authLoading])
+
+  useEffect(() => {
+    if (!dataStory && horarios.length > 0) {
+      const primeiro = horarios
+        .filter((h) => h?.data_hora)
+        .sort(
+          (a, b) =>
+            new Date(a.data_hora).getTime() -
+            new Date(b.data_hora).getTime()
+        )[0]
+
+      if (primeiro?.data_hora) {
+        const data = new Date(primeiro.data_hora)
+
+        const ano = data.getFullYear()
+        const mes = String(data.getMonth() + 1).padStart(2, '0')
+        const dia = String(data.getDate()).padStart(2, '0')
+
+        setDataStory(`${ano}-${mes}-${dia}`)
+      }
+    }
+  }, [horarios, dataStory])
+
+  useEffect(() => {
+    if (!dataStory) return
+
+    const disponiveis = horariosDoStory.map((h) => h.id)
+
+    setHorariosSelecionadosStory((anteriores) =>
+      anteriores.filter((id) => disponiveis.includes(id))
+    )
+  }, [dataStory, horariosDoStory])
+
+  const carregarDados = async () => {
+    if (!profile?.salao_id) return
+
+    try {
+      setCarregando(true)
+
+      const [
+        salaoResponse,
+        funcionamentoResponse,
+        horariosResponse,
+        profissionaisResponse,
+        servicosResponse,
+      ] = await Promise.all([
+        supabase
+          .from('saloes')
+          .select('*')
+          .eq('id', profile.salao_id)
+          .maybeSingle(),
+
+        supabase
+          .from('saloes')
+          .select('horarios_funcionamento')
+          .eq('id', profile.salao_id)
+          .maybeSingle(),
+
+        supabase
+          .from('horarios_vagos')
+          .select(`
+            *,
+            profiles:profissional_id(nome),
+            clientes:cliente_id(nome)
+          `)
+          .eq('salao_id', profile.salao_id)
+          .order('data_hora', { ascending: true }),
+
+        supabase
+          .from('profiles')
+          .select('id, nome')
+          .eq('salao_id', profile.salao_id)
+          .order('nome'),
+
+        supabase
+          .from('servicos')
+          .select('*')
+          .eq('salao_id', profile.salao_id)
+          .order('nome'),
+      ])
+
+      if (salaoResponse.error) {
+        console.error(
+          'Erro ao carregar salão:',
+          salaoResponse.error
+        )
+      }
+
+      if (horariosResponse.error) {
+        console.error(
+          'Erro ao carregar horários:',
+          horariosResponse.error
+        )
+      }
+
+      if (profissionaisResponse.error) {
+        console.error(
+          'Erro ao carregar profissionais:',
+          profissionaisResponse.error
+        )
+      }
+
+      if (servicosResponse.error) {
+        console.error(
+          'Erro ao carregar serviços:',
+          servicosResponse.error
+        )
+      }
+
+      setSalao(salaoResponse.data || null)
+
+      const funcionamentoSalvo =
+        funcionamentoResponse.data?.horarios_funcionamento
+
+      if (funcionamentoSalvo) {
+        try {
+          const valor =
+            typeof funcionamentoSalvo === 'string'
+              ? JSON.parse(funcionamentoSalvo)
+              : funcionamentoSalvo
+
+          setFuncionamento({
+            ...PADRAO,
+            ...valor,
+          })
+        } catch {
+          setFuncionamento(PADRAO)
+        }
+      }
+
+      setHorarios(horariosResponse.data || [])
+      setProfissionais(profissionaisResponse.data || [])
+      setServicos(servicosResponse.data || [])
+    } catch (error) {
+      console.error('Erro ao carregar página:', error)
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  const obterDuracaoServico = (servico: any) => {
     if (!servico) return 60
 
-    const valor =
-      servico.duracao_minutos ??
-      servico.duracao ??
-      servico.tempo_minutos ??
-      servico.tempo ??
-      servico.duracao_estimada ??
-      servico.tempo_estimado
+    const campos = [
+      'duracao_minutos',
+      'duracao',
+      'tempo_minutos',
+      'tempo',
+      'duracao_estimada',
+      'tempo_estimado',
+    ]
 
-    const numero = Number(valor)
+    for (const campo of campos) {
+      const valor = Number(servico?.[campo])
 
-    if (Number.isFinite(numero) && numero > 0) {
-      return numero
+      if (Number.isFinite(valor) && valor > 0) {
+        return valor
+      }
     }
 
     return 60
   }
 
-  function obterNomeServico(servico: any) {
-    return servico?.nome || 'Serviço'
-  }
+  const selecionarServico = (servicoId: string) => {
+    const servico = servicos.find((s) => s.id === servicoId)
 
-  function selecionarServico(servicoId: string) {
-    const servico = servicos.find(
-      s => s.id === servicoId
-    )
-
-    const duracao = obterDuracaoServico(servico)
-
-    setFormVago(prev => ({
-      ...prev,
+    setFormVago((anterior) => ({
+      ...anterior,
       servico_id: servicoId,
-      duracao_minutos: duracao
+      duracao_minutos: obterDuracaoServico(servico),
     }))
   }
 
-  // ============================================================
-  // ABRIR MODAL HORÁRIO
-  // ============================================================
+  const liberarHorario = async () => {
+    if (!profile?.salao_id) return
 
-  function abrirModalVago() {
-    setFormVago({
-      data: '',
-      hora: '',
-      servico_id: '',
-      duracao_minutos: 60,
-      profissional_id: '',
-      observacao: ''
-    })
-
-    setModalVago(true)
-  }
-
-  // ============================================================
-  // LIBERAR HORÁRIO
-  // ============================================================
-
-  async function liberarHorario() {
-    if (!formVago.data || !formVago.hora) {
-      alert('Selecione a data e o horário.')
+    if (!formVago.data) {
+      alert('Selecione a data do horário.')
       return
     }
 
-    if (!formVago.servico_id) {
-      alert('Selecione o serviço disponível neste horário.')
+    if (!formVago.hora) {
+      alert('Selecione o horário.')
       return
     }
 
-    const servicoSelecionado = servicos.find(
-      s => s.id === formVago.servico_id
-    )
-
-    if (!servicoSelecionado) {
-      alert('O serviço selecionado não foi encontrado.')
-      return
-    }
-
-    const duracao =
-      obterDuracaoServico(servicoSelecionado)
-
-    setSalvandoVago(true)
+    setSalvandoHorario(true)
 
     try {
-      const dataHora = new Date(
+      /*
+       * IMPORTANTE:
+       * A data/hora digitada é horário LOCAL.
+       *
+       * Não colocamos Z manualmente.
+       * O toISOString() faz a conversão para UTC corretamente.
+       */
+      const dataHoraBanco = new Date(
         `${formVago.data}T${formVago.hora}:00`
       ).toISOString()
 
-      const { error } = await supabase
+      const duracao =
+        Number(formVago.duracao_minutos) > 0
+          ? Number(formVago.duracao_minutos)
+          : 60
+
+      const { data, error } = await supabase
         .from('horarios_vagos')
         .insert({
-          salao_id: profile!.salao_id,
-          data_hora: dataHora,
+          salao_id: profile.salao_id,
+          data_hora: dataHoraBanco,
           duracao_minutos: duracao,
           profissional_id:
             formVago.profissional_id || null,
           observacao:
             formVago.observacao || null,
         })
+        .select()
+        .single()
 
       if (error) {
-        throw error
+        console.error('Erro ao liberar horário:', error)
+        alert(error.message)
+        return
       }
 
-      setModalVago(false)
+      setHorarios((anteriores) =>
+        [...anteriores, data].sort(
+          (a, b) =>
+            new Date(a.data_hora).getTime() -
+            new Date(b.data_hora).getTime()
+        )
+      )
 
       setFormVago({
         data: '',
         hora: '',
-        servico_id: '',
         duracao_minutos: 60,
         profissional_id: '',
-        observacao: ''
+        servico_id: '',
+        observacao: '',
       })
 
-      await carregarDados()
-
+      setMostrarFormulario(false)
     } catch (error: any) {
-      console.error(
-        'Erro ao liberar horário:',
-        error
-      )
+      console.error('Erro ao liberar horário:', error)
 
       alert(
-        'Erro ao liberar horário: ' +
-        (error?.message || 'Tente novamente.')
+        error?.message ||
+          'Não foi possível liberar o horário.'
       )
     } finally {
-      setSalvandoVago(false)
+      setSalvandoHorario(false)
     }
   }
 
-  // ============================================================
-  // PEDIDO DE HORÁRIO
-  // ============================================================
-
-  async function enviarPedidoHorario() {
-    if (!formPedido.data) {
-      alert('Selecione uma data preferida.')
-      return
-    }
-
-    setEnviandoPedido(true)
-
-    const periodoLabels: Record<string, string> = {
-      manha: 'Manhã',
-      tarde: 'Tarde',
-      noite: 'Noite'
-    }
-
-    const mensagemNotif =
-      `📅 Pedido de Horário: Cliente deseja agendar para o dia ` +
-      `${new Date(
-        formPedido.data + 'T00:00:00'
-      ).toLocaleDateString('pt-BR')} ` +
-      `no período da *${periodoLabels[formPedido.periodo]}*. ` +
-      `${
-        formPedido.observacao
-          ? `Obs: ${formPedido.observacao}`
-          : ''
-      }`
-
-    const { error } = await supabase
-      .from('notificacoes')
-      .insert({
-        salao_id: profile!.salao_id,
-        titulo: 'Novo Pedido de Agendamento',
-        mensagem: mensagemNotif,
-        lida: false
-      })
-
-    if (error) {
-      console.warn(
-        'Erro ao inserir notificação:',
-        error.message
-      )
-    }
-
-    setEnviandoPedido(false)
-    setModalPedido(false)
-
-    setFormPedido({
-      data: '',
-      periodo: 'manha',
-      observacao: ''
-    })
-
-    alert(
-      'Pedido enviado com sucesso para o salão! Entraremos em contato em breve.'
+  const excluirHorario = async (id: string) => {
+    const confirmar = window.confirm(
+      'Deseja realmente excluir este horário?'
     )
-  }
 
-  // ============================================================
-  // EXCLUIR HORÁRIO
-  // ============================================================
-
-  async function excluirVago(id: string) {
-    if (
-      !confirm(
-        'Deseja realmente excluir este horário?'
-      )
-    ) {
-      return
-    }
+    if (!confirmar) return
 
     const { error } = await supabase
       .from('horarios_vagos')
@@ -492,2496 +527,1257 @@ export default function SalaoHorariosPage() {
       .eq('id', id)
 
     if (error) {
-      alert(
-        'Erro ao excluir horário: ' +
-        error.message
-      )
+      console.error('Erro ao excluir horário:', error)
+      alert(error.message)
       return
     }
 
-    await carregarDados()
+    setHorarios((anteriores) =>
+      anteriores.filter((h) => h.id !== id)
+    )
+
+    setHorariosSelecionadosStory((anteriores) =>
+      anteriores.filter((item) => item !== id)
+    )
   }
 
-  // ============================================================
-  // FUNCIONAMENTO
-  // ============================================================
+  const enviarPedidoHorario = async () => {
+    if (!profile?.salao_id) return
 
-  function atualizarDia(
-    dia: string,
-    campo: keyof HorarioDia,
-    valor: any
-  ) {
-    setHorarios(prev => ({
-      ...prev,
-      [dia]: {
-        ...prev[dia],
-        [campo]: valor
-      }
-    }))
-  }
+    const data = formVago.data
+      ? new Date(`${formVago.data}T12:00:00`)
+      : null
 
-  async function salvarFuncionamento() {
-    setSalvandoFunc(true)
+    const dataFormatada = data
+      ? data.toLocaleDateString('pt-BR', {
+          weekday: 'long',
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+        })
+      : ''
 
-    try {
-      const payload: Record<string, any> = {}
+    const mensagem = `Novo horário disponível para agendamento${dataFormatada ? ` em ${dataFormatada}` : ''}${formVago.hora ? ` às ${formVago.hora}` : ''}.`
 
-      DIAS.forEach(d => {
-        const h = horarios[d.key]
-
-        payload[d.key] = {
-          ativo: h.ativo,
-          manha_inicio:
-            h.ativo ? h.manha_inicio : null,
-          manha_fim:
-            h.ativo ? h.manha_fim : null,
-          tarde_inicio:
-            h.ativo && h.tem_tarde
-              ? h.tarde_inicio
-              : null,
-          tarde_fim:
-            h.ativo && h.tem_tarde
-              ? h.tarde_fim
-              : null,
-        }
+    const { error } = await supabase
+      .from('notificacoes')
+      .insert({
+        salao_id: profile.salao_id,
+        titulo: 'Novo Pedido de Agendamento',
+        mensagem,
+        tipo: 'agendamento',
       })
 
-      const { error } = await supabase
-        .from('saloes')
-        .update({
-          horarios_funcionamento: payload
-        })
-        .eq('id', profile!.salao_id!)
+    if (error) {
+      console.error(
+        'Erro ao criar notificação:',
+        error
+      )
 
-      if (error) {
-        throw error
-      }
+      return
+    }
+  }
 
-      setSalvouFunc(true)
+  const salvarFuncionamento = async (
+    novoFuncionamento: any
+  ) => {
+    if (!profile?.salao_id) return
 
-      setTimeout(() => {
-        setSalvouFunc(false)
-      }, 2500)
+    setFuncionamento(novoFuncionamento)
 
-    } catch (error: any) {
+    const { error } = await supabase
+      .from('saloes')
+      .update({
+        horarios_funcionamento: novoFuncionamento,
+      })
+      .eq('id', profile.salao_id)
+
+    if (error) {
       console.error(
         'Erro ao salvar funcionamento:',
         error
       )
-
-      alert(
-        'Erro ao salvar horários: ' +
-        (error?.message || 'Tente novamente.')
-      )
-    } finally {
-      setSalvandoFunc(false)
     }
   }
 
-  // ============================================================
-  // STORY — ABRIR
-  // ============================================================
+  const formatarData = (valor: string) => {
+    if (!valor) return ''
 
-  function abrirModalStory() {
-    const dataHoje = new Date()
-      .toISOString()
-      .slice(0, 10)
+    const [ano, mes, dia] = valor.split('-').map(Number)
 
-    setDataSelecionadaStory(dataHoje)
+    if (!ano || !mes || !dia) return valor
 
+    return new Date(
+      ano,
+      mes - 1,
+      dia
+    ).toLocaleDateString('pt-BR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    })
+  }
+
+  const formatarHora = (valor: string | Date) => {
+    const data =
+      valor instanceof Date
+        ? valor
+        : new Date(valor)
+
+    return data.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
+
+  const dataDoHorario = (valor: string) => {
+    const data = new Date(valor)
+
+    const ano = data.getFullYear()
+    const mes = String(data.getMonth() + 1).padStart(2, '0')
+    const dia = String(data.getDate()).padStart(2, '0')
+
+    return `${ano}-${mes}-${dia}`
+  }
+
+  const toggleHorarioStory = (id: string) => {
+    setHorariosSelecionadosStory((anteriores) => {
+      if (anteriores.includes(id)) {
+        return anteriores.filter((item) => item !== id)
+      }
+
+      return [...anteriores, id]
+    })
+  }
+
+  const selecionarTodosStory = () => {
+    setHorariosSelecionadosStory(
+      horariosDoStory.map((h) => h.id)
+    )
+  }
+
+  const desmarcarTodosStory = () => {
+    setHorariosSelecionadosStory([])
+  }
+
+  const horariosEscolhidosStory = horariosDoStory.filter(
+    (h) => horariosSelecionadosStory.includes(h.id)
+  )
+
+  const resetarStory = () => {
     setTituloStory('Horários Vagos')
 
     setSubtituloStory(
       'Ainda temos alguns horários disponíveis'
     )
 
-    setCtaStory(
-      'Garanta o seu horário!'
-    )
+    setCtaStory('Garanta o seu horário!')
 
-    setLayoutStory('elegante')
+    setEstiloStory('elegante')
 
     setMostrarDataStory(true)
-
     setMostrarProfissionalStory(true)
-
     setMostrarLogoStory(true)
 
     setHorariosSelecionadosStory([])
-
-    setModalStory(true)
   }
 
-  // ============================================================
-  // HORÁRIOS DO STORY
-  // ============================================================
+  const baixarStory = async () => {
+    if (!storyRef.current) return
 
-  const vagosLivres =
-    vagos.filter(h => !h.reservado)
-
-  const vagosReservados =
-    vagos.filter(h => h.reservado)
-
-  const vagosDoDiaStory =
-    vagosLivres
-      .filter(h =>
-        h.data_hora.slice(0, 10) ===
-        dataSelecionadaStory
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.data_hora).getTime() -
-          new Date(b.data_hora).getTime()
-      )
-
-  function alternarHorarioStory(id: string) {
-    setHorariosSelecionadosStory(prev => {
-      if (prev.includes(id)) {
-        return prev.filter(item => item !== id)
-      }
-
-      return [...prev, id]
-    })
-  }
-
-  function selecionarTodosStory() {
-    if (
-      horariosSelecionadosStory.length ===
-      vagosDoDiaStory.length
-    ) {
-      setHorariosSelecionadosStory([])
+    if (horariosEscolhidosStory.length === 0) {
+      alert('Selecione pelo menos um horário para criar a arte.')
       return
     }
 
-    setHorariosSelecionadosStory(
-      vagosDoDiaStory.map(h => h.id)
-    )
-  }
-
-  function obterHorariosParaArte() {
-    if (horariosSelecionadosStory.length === 0) {
-      return vagosDoDiaStory
-    }
-
-    return vagosDoDiaStory.filter(h =>
-      horariosSelecionadosStory.includes(h.id)
-    )
-  }
-
-  // ============================================================
-  // STORY — FORMATAÇÕES
-  // ============================================================
-
-  function formatarDuracao(min: number) {
-    if (min < 60) {
-      return `${min} min`
-    }
-
-    const horas = Math.floor(min / 60)
-    const minutos = min % 60
-
-    return minutos === 0
-      ? `${horas}h`
-      : `${horas}h${minutos}min`
-  }
-
-  function formatarDataHora(iso: string) {
-    return (
-      new Date(iso).toLocaleDateString(
-        'pt-BR',
-        {
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short'
-        }
-      ) +
-      ' · ' +
-      new Date(iso).toLocaleTimeString(
-        'pt-BR',
-        {
-          hour: '2-digit',
-          minute: '2-digit'
-        }
-      )
-    )
-  }
-
-  function formatarDataStory(data: string) {
-    return new Date(
-      data + 'T00:00:00'
-    ).toLocaleDateString(
-      'pt-BR',
-      {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long'
-      }
-    )
-  }
-
-  // ============================================================
-  // STORY — ESTILO
-  // ============================================================
-
-  function obterConfigLayout() {
-    switch (layoutStory) {
-      case 'clean':
-        return {
-          fundo: '#ffffff',
-          texto: '#111827',
-          textoSecundario: '#6b7280',
-          card: '#f8fafc',
-          borda: '#e5e7eb',
-          destaque: cor,
-          sombra: '0 15px 40px rgba(0,0,0,0.08)',
-        }
-
-      case 'destaque':
-        return {
-          fundo: '#111111',
-          texto: '#ffffff',
-          textoSecundario: 'rgba(255,255,255,0.65)',
-          card: 'rgba(255,255,255,0.09)',
-          borda: `${cor}80`,
-          destaque: cor,
-          sombra: `0 15px 50px ${cor}40`,
-        }
-
-      case 'romantico':
-        return {
-          fundo: `linear-gradient(145deg, ${cor}18, #fff7fb, #ffffff)`,
-          texto: '#3f2937',
-          textoSecundario: '#8b6575',
-          card: 'rgba(255,255,255,0.82)',
-          borda: `${cor}25`,
-          destaque: cor,
-          sombra: '0 15px 40px rgba(120,50,90,0.10)',
-        }
-
-      case 'moderno':
-        return {
-          fundo: '#f4f4f5',
-          texto: '#18181b',
-          textoSecundario: '#71717a',
-          card: '#ffffff',
-          borda: '#d4d4d8',
-          destaque: '#18181b',
-          sombra: '0 15px 40px rgba(0,0,0,0.12)',
-        }
-
-      case 'minimal':
-        return {
-          fundo: '#fafafa',
-          texto: '#171717',
-          textoSecundario: '#737373',
-          card: '#ffffff',
-          borda: '#e5e5e5',
-          destaque: cor,
-          sombra: '0 12px 30px rgba(0,0,0,0.06)',
-        }
-
-      case 'elegante':
-      default:
-        return {
-          fundo:
-            'linear-gradient(145deg, #18181b 0%, #09090b 55%, #000000 100%)',
-          texto: '#ffffff',
-          textoSecundario: 'rgba(255,255,255,0.68)',
-          card: 'rgba(255,255,255,0.08)',
-          borda: 'rgba(255,255,255,0.12)',
-          destaque: cor,
-          sombra: `0 20px 60px ${cor}25`,
-        }
-    }
-  }
-
-  // ============================================================
-  // STORY — DOWNLOAD
-  // ============================================================
-
-  async function baixarImagemStory() {
-    if (!cardRef.current) return
+    setGerandoStory(true)
 
     try {
-      setGerandoImagem(true)
+      const imagem = await toPng(storyRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        quality: 1,
+      })
 
-      const dataUrl = await toPng(
-        cardRef.current,
-        {
-          cacheBust: true,
-          pixelRatio: 3,
-          backgroundColor:
-            layoutStory === 'clean'
-              ? '#ffffff'
-              : layoutStory === 'minimal'
-                ? '#fafafa'
-                : undefined
-        }
-      )
+      const link = document.createElement('a')
 
-      const link =
-        document.createElement('a')
+      link.download = `story-horarios-${dataStory || 'disponiveis'}.png`
 
-      link.download =
-        `story-horarios-${dataSelecionadaStory}.png`
-
-      link.href = dataUrl
+      link.href = imagem
 
       link.click()
-
     } catch (error) {
       console.error(
-        'Erro ao gerar imagem:',
+        'Erro ao gerar Story:',
         error
       )
 
       alert(
-        'Não foi possível gerar a imagem.'
+        'Não foi possível gerar a imagem. Tente novamente.'
       )
     } finally {
-      setGerandoImagem(false)
+      setGerandoStory(false)
     }
   }
 
-  // ============================================================
-  // LOADING
-  // ============================================================
+  const renderHorarioStory = (horario: any) => {
+    const profissional =
+      horario?.profiles?.nome ||
+      ''
 
-  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div
-          className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-          style={{
-            borderColor: cor
-          }}
-        />
+      <div
+        key={horario.id}
+        className="flex items-center justify-center gap-2"
+      >
+        <span className="font-semibold">
+          {formatarHora(horario.data_hora)}
+        </span>
+
+        {mostrarProfissionalStory &&
+          profissional && (
+            <span className="opacity-80">
+              • {profissional}
+            </span>
+          )}
       </div>
     )
   }
 
-  // ============================================================
-  // DADOS ATUAIS
-  // ============================================================
+  const renderStory = () => {
+    const estilo = configLayout
 
-  const servicoAtual =
-    servicos.find(
-      s => s.id === formVago.servico_id
+    const fonteTitulo =
+      estiloStory === 'romantico'
+        ? 'Georgia, serif'
+        : 'Arial, sans-serif'
+
+    const dataFormatadaStory =
+      dataStorySelecionada
+        ? dataStorySelecionada.toLocaleDateString(
+            'pt-BR',
+            {
+              weekday: 'long',
+              day: '2-digit',
+              month: 'long',
+            }
+          )
+        : ''
+
+    return (
+      <div
+        ref={storyRef}
+        style={{
+          width: '270px',
+          height: '480px',
+          background: estilo.fundo,
+          color: estilo.texto,
+          position: 'relative',
+          overflow: 'hidden',
+          fontFamily: 'Arial, sans-serif',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: '30px 22px',
+          boxSizing: 'border-box',
+        }}
+      >
+        {estiloStory === 'romantico' && (
+          <>
+            <div
+              style={{
+                position: 'absolute',
+                width: '150px',
+                height: '150px',
+                borderRadius: '999px',
+                background: estilo.destaque,
+                opacity: 0.08,
+                top: '-60px',
+                right: '-50px',
+              }}
+            />
+
+            <div
+              style={{
+                position: 'absolute',
+                width: '100px',
+                height: '100px',
+                borderRadius: '999px',
+                background: estilo.destaque,
+                opacity: 0.06,
+                bottom: '40px',
+                left: '-50px',
+              }}
+            />
+          </>
+        )}
+
+        {estiloStory === 'moderno' && (
+          <div
+            style={{
+              position: 'absolute',
+              width: '100%',
+              height: '8px',
+              background: estilo.destaque,
+              top: 0,
+              left: 0,
+            }}
+          />
+        )}
+
+        {estiloStory === 'minimal' && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: '12px',
+              border: `1px solid ${estilo.borda}`,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            textAlign: 'center',
+          }}
+        >
+          {mostrarLogoStory && (
+            <div
+              style={{
+                width: '58px',
+                height: '58px',
+                margin: '0 auto 16px',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                background: '#FFFFFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: `2px solid ${estilo.borda}`,
+              }}
+            >
+              <img
+                src={logoSalao}
+                alt=""
+                crossOrigin="anonymous"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                }}
+              />
+            </div>
+          )}
+
+          <div
+            style={{
+              fontFamily: fonteTitulo,
+              fontSize: '27px',
+              lineHeight: 1.1,
+              fontWeight: 700,
+              marginBottom: '10px',
+            }}
+          >
+            {tituloStory}
+          </div>
+
+          <div
+            style={{
+              fontSize: '13px',
+              lineHeight: 1.4,
+              color: estilo.textoSecundario,
+            }}
+          >
+            {subtituloStory}
+          </div>
+
+          {mostrarDataStory && dataFormatadaStory && (
+            <div
+              style={{
+                marginTop: '14px',
+                fontSize: '12px',
+                fontWeight: 600,
+                color: estilo.destaque,
+              }}
+            >
+              {dataFormatadaStory}
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '9px',
+            textAlign: 'center',
+          }}
+        >
+          {horariosEscolhidosStory.length === 0 ? (
+            <div
+              style={{
+                border: `1px solid ${estilo.borda}`,
+                borderRadius: '14px',
+                padding: '16px 10px',
+                fontSize: '12px',
+                color: estilo.textoSecundario,
+              }}
+            >
+              Selecione os horários disponíveis
+            </div>
+          ) : (
+            horariosEscolhidosStory.map(
+              renderHorarioStory
+            )
+          )}
+        </div>
+
+        <div
+          style={{
+            position: 'relative',
+            zIndex: 2,
+            textAlign: 'center',
+          }}
+        >
+          <div
+            style={{
+              display: 'inline-block',
+              background: estilo.destaque,
+              color:
+                estiloStory === 'destaque'
+                  ? cor
+                  : '#FFFFFF',
+              borderRadius: '999px',
+              padding: '10px 18px',
+              fontSize: '12px',
+              fontWeight: 700,
+              maxWidth: '100%',
+            }}
+          >
+            {ctaStory}
+          </div>
+
+          <div
+            style={{
+              marginTop: '12px',
+              fontSize: '10px',
+              opacity: 0.65,
+            }}
+          >
+            {nomeSalao}
+          </div>
+        </div>
+      </div>
     )
+  }
 
-  const duracaoAtual =
-    servicoAtual
-      ? obterDuracaoServico(servicoAtual)
-      : formVago.duracao_minutos
+  if (authLoading || carregando) {
+    return (
+      <main className="min-h-screen bg-[#faf7f8] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-full border-4 border-pink-100 border-t-pink-500 animate-spin mx-auto mb-4" />
 
-  const cor =
-    salao?.cor_primaria || '#E91E8C'
-
-  const configLayout =
-    obterConfigLayout()
-
-  const horariosParaArte =
-    obterHorariosParaArte()
+          <p className="text-sm text-gray-500">
+            Carregando horários...
+          </p>
+        </div>
+      </main>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-10">
-
-      {/* ====================================================== */}
-      {/* HEADER */}
-      {/* ====================================================== */}
-
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm sticky top-0 z-10">
-
-        <button
-          onClick={() => router.back()}
-        >
-          <ArrowLeft
-            size={22}
-            className="text-gray-700"
-          />
-        </button>
-
-        <h1 className="font-bold text-gray-900 text-lg flex-1">
-          Horários
-        </h1>
-
-      </div>
-
-      <div className="px-4 py-4 flex flex-col gap-3">
-
-        {/* ====================================================== */}
-        {/* HORÁRIOS VAGOS */}
-        {/* ====================================================== */}
-
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-
+    <main className="min-h-screen bg-[#faf7f8] pb-10">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-5">
+        <header className="flex items-center gap-3 mb-6">
           <button
-            onClick={() =>
-              setSecaoAberta(
-                secaoAberta === 'vagos'
-                  ? 'funcionamento'
-                  : 'vagos'
-              )
-            }
-            className="w-full flex items-center justify-between px-4 py-4"
+            type="button"
+            onClick={() => router.back()}
+            className="w-10 h-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-600 shadow-sm"
           >
-
-            <div className="flex items-center gap-3">
-
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{
-                  backgroundColor: `${cor}15`
-                }}
-              >
-                <Clock
-                  size={18}
-                  style={{ color: cor }}
-                />
-              </div>
-
-              <div className="text-left">
-
-                <p className="font-bold text-gray-900 text-sm">
-                  Horários Vagos
-                </p>
-
-                <p className="text-xs text-gray-400">
-                  {vagosLivres.length} disponível(is)
-                  {' · '}
-                  {vagosReservados.length} reservado(s)
-                </p>
-
-              </div>
-
-            </div>
-
-            {secaoAberta === 'vagos'
-              ? (
-                <ChevronUp
-                  size={18}
-                  className="text-gray-400"
-                />
-              )
-              : (
-                <ChevronDown
-                  size={18}
-                  className="text-gray-400"
-                />
-              )}
-
+            <ArrowLeft className="w-5 h-5" />
           </button>
 
-          {secaoAberta === 'vagos' && (
-
-            <div className="px-4 pb-4 flex flex-col gap-3 border-t border-gray-50 pt-3">
-
-              <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-500 leading-relaxed">
-                Libere horários disponíveis ou solicite um horário de preferência caso não encontre vaga.
-              </div>
-
-              <div className="grid grid-cols-1 gap-2">
-
-                <button
-                  onClick={() =>
-                    setModalPedido(true)
-                  }
-                  className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-white text-xs font-semibold shadow-sm"
-                  style={{
-                    backgroundColor: cor
-                  }}
-                >
-                  <Calendar size={14} />
-                  Quero agendar um horário
-                </button>
-
-                <div className="grid grid-cols-2 gap-2">
-
-                  <button
-                    onClick={abrirModalVago}
-                    className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs font-semibold border-2"
-                    style={{
-                      borderColor: cor,
-                      color: cor
-                    }}
-                  >
-                    <Plus size={14} />
-                    Liberar horário
-                  </button>
-
-                  <button
-                    onClick={abrirModalStory}
-                    className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-xs font-semibold border border-gray-200 text-gray-700 bg-gray-50"
-                  >
-                    <ImageIcon
-                      size={14}
-                      className="text-gray-500"
-                    />
-                    Criar Arte Story
-                  </button>
-
-                </div>
-
-              </div>
-
-              {/* DISPONÍVEIS */}
-
-              {vagosLivres.length > 0 && (
-
-                <div>
-
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
-                    Disponíveis ({vagosLivres.length})
-                  </p>
-
-                  <div className="flex flex-col gap-2">
-
-                    {vagosLivres.map(h => (
-
-                      <div
-                        key={h.id}
-                        className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3"
-                      >
-
-                        <div className="flex-1 min-w-0">
-
-                          <p className="text-sm font-semibold text-gray-900">
-                            {formatarDataHora(
-                              h.data_hora
-                            )}
-                          </p>
-
-                          <p className="text-xs text-gray-400">
-
-                            {formatarDuracao(
-                              Number(
-                                h.duracao_minutos || 60
-                              )
-                            )}
-
-                            {h.profiles?.nome
-                              ? ` · ${h.profiles.nome}`
-                              : ''}
-
-                            {h.observacao
-                              ? ` · ${h.observacao}`
-                              : ''}
-
-                          </p>
-
-                        </div>
-
-                        <button
-                          onClick={() =>
-                            excluirVago(h.id)
-                          }
-                          className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0"
-                        >
-                          <Trash2
-                            size={13}
-                            className="text-red-400"
-                          />
-                        </button>
-
-                      </div>
-
-                    ))}
-
-                  </div>
-
-                </div>
-
-              )}
-
-              {/* RESERVADOS */}
-
-              {vagosReservados.length > 0 && (
-
-                <div>
-
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
-                    Reservados ({vagosReservados.length})
-                  </p>
-
-                  <div className="flex flex-col gap-2">
-
-                    {vagosReservados.map(h => (
-
-                      <div
-                        key={h.id}
-                        className="flex items-center gap-3 bg-green-50 rounded-xl px-3 py-3"
-                      >
-
-                        <div className="w-8 h-8 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
-
-                          <Check
-                            size={14}
-                            className="text-green-600"
-                          />
-
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-
-                          <p className="text-sm font-semibold text-gray-900">
-                            {formatarDataHora(
-                              h.data_hora
-                            )}
-                          </p>
-
-                          <p className="text-xs text-green-600 font-medium">
-                            Reservado por{' '}
-                            {h.clientes?.nome ||
-                              'cliente'}
-                          </p>
-
-                        </div>
-
-                        <button
-                          onClick={() =>
-                            excluirVago(h.id)
-                          }
-                          className="w-8 h-8 rounded-xl bg-red-50 flex items-center justify-center shrink-0"
-                        >
-                          <Trash2
-                            size={13}
-                            className="text-red-400"
-                          />
-                        </button>
-
-                      </div>
-
-                    ))}
-
-                  </div>
-
-                </div>
-
-              )}
-
-              {vagos.length === 0 && (
-
-                <div className="text-center py-6">
-
-                  <p className="text-gray-400 text-sm">
-                    Nenhum horário liberado ainda
-                  </p>
-
-                </div>
-
-              )}
-
-            </div>
-
-          )}
-
-        </div>
-
-        {/* ====================================================== */}
-        {/* FUNCIONAMENTO */}
-        {/* ====================================================== */}
-
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-
-          <button
-            onClick={() =>
-              setSecaoAberta(
-                secaoAberta === 'funcionamento'
-                  ? 'vagos'
-                  : 'funcionamento'
-              )
-            }
-            className="w-full flex items-center justify-between px-4 py-4"
-          >
-
-            <div className="flex items-center gap-3">
-
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
-                style={{
-                  backgroundColor: `${cor}15`
-                }}
-              >
-                <Clock
-                  size={18}
-                  style={{ color: cor }}
-                />
-              </div>
-
-              <div className="text-left">
-
-                <p className="font-bold text-gray-900 text-sm">
-                  Horários de Funcionamento
-                </p>
-
-                <p className="text-xs text-gray-400">
-                  Dias e horários que o salão atende
-                </p>
-
-              </div>
-
-            </div>
-
-            {secaoAberta === 'funcionamento'
-              ? (
-                <ChevronUp
-                  size={18}
-                  className="text-gray-400"
-                />
-              )
-              : (
-                <ChevronDown
-                  size={18}
-                  className="text-gray-400"
-                />
-              )}
-
-          </button>
-
-          {secaoAberta === 'funcionamento' && (
-
-            <div className="px-4 pb-4 flex flex-col gap-3 border-t border-gray-50 pt-3">
-
-              <p className="text-xs text-gray-400">
-                Ative os dias e defina os períodos. Ative "Intervalo de almoço" para separar manhã e tarde.
-              </p>
-
-              {DIAS.map(({ key, label }) => {
-
-                const h = horarios[key]
-
-                if (!h) return null
-
-                return (
-
-                  <div
-                    key={key}
-                    className="bg-gray-50 rounded-xl overflow-hidden"
-                  >
-
-                    <div className="flex items-center justify-between px-4 py-3">
-
-                      <div className="flex items-center gap-3">
-
-                        <Clock
-                          size={15}
-                          style={{
-                            color: h.ativo
-                              ? cor
-                              : '#d1d5db'
-                          }}
-                        />
-
-                        <span
-                          className={
-                            'text-sm font-semibold ' +
-                            (h.ativo
-                              ? 'text-gray-900'
-                              : 'text-gray-400')
-                          }
-                        >
-                          {label}
-                        </span>
-
-                      </div>
-
-                      <button
-                        onClick={() =>
-                          atualizarDia(
-                            key,
-                            'ativo',
-                            !h.ativo
-                          )
-                        }
-                        className={
-                          'relative w-11 h-6 rounded-full transition-colors ' +
-                          (h.ativo
-                            ? ''
-                            : 'bg-gray-200')
-                        }
-                        style={
-                          h.ativo
-                            ? {
-                                backgroundColor:
-                                  cor
-                              }
-                            : {}
-                        }
-                      >
-
-                        <div
-                          className={
-                            'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' +
-                            (h.ativo
-                              ? 'left-5'
-                              : 'left-0.5')
-                          }
-                        />
-
-                      </button>
-
-                    </div>
-
-                    {h.ativo && (
-
-                      <div className="px-4 pb-3 flex flex-col gap-3">
-
-                        <div>
-
-                          <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
-                            {h.tem_tarde
-                              ? 'Período da manhã'
-                              : 'Funcionamento'}
-                          </p>
-
-                          <div className="flex items-center gap-2">
-
-                            <input
-                              type="time"
-                              className="input-field flex-1 text-sm py-2"
-                              value={
-                                h.manha_inicio || ''
-                              }
-                              onChange={e =>
-                                atualizarDia(
-                                  key,
-                                  'manha_inicio',
-                                  e.target.value
-                                )
-                              }
-                            />
-
-                            <span className="text-gray-300 text-xs">
-                              até
-                            </span>
-
-                            <input
-                              type="time"
-                              className="input-field flex-1 text-sm py-2"
-                              value={
-                                h.manha_fim || ''
-                              }
-                              onChange={e =>
-                                atualizarDia(
-                                  key,
-                                  'manha_fim',
-                                  e.target.value
-                                )
-                              }
-                            />
-
-                          </div>
-
-                        </div>
-
-                        <div className="flex items-center justify-between">
-
-                          <div>
-
-                            <p className="text-sm font-medium text-gray-700">
-                              Intervalo de almoço
-                            </p>
-
-                            <p className="text-xs text-gray-400">
-                              Período da tarde separado
-                            </p>
-
-                          </div>
-
-                          <button
-                            onClick={() =>
-                              atualizarDia(
-                                key,
-                                'tem_tarde',
-                                !h.tem_tarde
-                              )
-                            }
-                            className={
-                              'relative w-11 h-6 rounded-full transition-colors ' +
-                              (h.tem_tarde
-                                ? ''
-                                : 'bg-gray-200')
-                            }
-                            style={
-                              h.tem_tarde
-                                ? {
-                                    backgroundColor:
-                                      cor
-                                  }
-                                : {}
-                            }
-                          >
-
-                            <div
-                              className={
-                                'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' +
-                                (h.tem_tarde
-                                  ? 'left-5'
-                                  : 'left-0.5')
-                              }
-                            />
-
-                          </button>
-
-                        </div>
-
-                        {h.tem_tarde && (
-
-                          <div>
-
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">
-                              Período da tarde
-                            </p>
-
-                            <div className="flex items-center gap-2">
-
-                              <input
-                                type="time"
-                                className="input-field flex-1 text-sm py-2"
-                                value={
-                                  h.tarde_inicio || ''
-                                }
-                                onChange={e =>
-                                  atualizarDia(
-                                    key,
-                                    'tarde_inicio',
-                                    e.target.value
-                                  )
-                                }
-                              />
-
-                              <span className="text-gray-300 text-xs">
-                                até
-                              </span>
-
-                              <input
-                                type="time"
-                                className="input-field flex-1 text-sm py-2"
-                                value={
-                                  h.tarde_fim || ''
-                                }
-                                onChange={e =>
-                                  atualizarDia(
-                                    key,
-                                    'tarde_fim',
-                                    e.target.value
-                                  )
-                                }
-                              />
-
-                            </div>
-
-                          </div>
-
-                        )}
-
-                      </div>
-
-                    )}
-
-                    {!h.ativo && (
-
-                      <div className="px-4 pb-2">
-
-                        <p className="text-xs text-gray-300">
-                          Fechado
-                        </p>
-
-                      </div>
-
-                    )}
-
-                  </div>
-
-                )
-              })}
-
-              <button
-                onClick={salvarFuncionamento}
-                disabled={salvandoFunc}
-                className="w-full py-3 rounded-xl text-white font-semibold text-sm"
-                style={{
-                  backgroundColor: cor
-                }}
-              >
-                {salvouFunc
-                  ? '✓ Salvo!'
-                  : salvandoFunc
-                    ? 'Salvando...'
-                    : 'Salvar horários'}
-              </button>
-
-            </div>
-
-          )}
-
-        </div>
-
-      </div>
-
-      {/* ======================================================== */}
-      {/* MODAL PEDIDO DE HORÁRIO */}
-      {/* ======================================================== */}
-
-      {modalPedido && (
-
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
-
-            <div className="flex items-center justify-between border-b pb-3">
-
-              <h3 className="font-bold text-gray-900 text-lg">
-                Quero agendar um horário
-              </h3>
-
-              <button
-                onClick={() =>
-                  setModalPedido(false)
-                }
-                className="text-gray-400 font-bold"
-              >
-                ✕
-              </button>
-
-            </div>
-
-            <p className="text-xs text-gray-500">
-              Não encontrou um horário vago? Escolha a data e o período de sua preferência para enviar o pedido de encaixe diretamente ao salão.
+          <div>
+            <h1 className="text-xl sm:text-2xl font-semibold text-gray-800">
+              Horários vagos
+            </h1>
+
+            <p className="text-sm text-gray-500">
+              Libere horários e divulgue sua disponibilidade.
             </p>
+          </div>
+        </header>
 
+        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mb-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
+              <h2 className="font-semibold text-gray-800">
+                Horários disponíveis
+              </h2>
 
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
-                Data Desejada *
-              </label>
-
-              <input
-                className="input-field"
-                type="date"
-                value={formPedido.data}
-                onChange={e =>
-                  setFormPedido(p => ({
-                    ...p,
-                    data: e.target.value
-                  }))
-                }
-              />
-
+              <p className="text-sm text-gray-500 mt-1">
+                Cadastre horários que ainda podem ser agendados.
+              </p>
             </div>
 
-            <div>
+            <button
+              type="button"
+              onClick={() =>
+                setMostrarFormulario(
+                  (valor) => !valor
+                )
+              }
+              className="rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] text-white px-4 py-3 font-medium flex items-center justify-center gap-2"
+            >
+              {mostrarFormulario ? (
+                <>
+                  <ChevronUp className="w-5 h-5" />
+                  Fechar
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5" />
+                  Liberar horário
+                </>
+              )}
+            </button>
+          </div>
 
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
-                Período preferido *
-              </label>
+          {mostrarFormulario && (
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Data
+                  </label>
 
-              <div className="grid grid-cols-3 gap-2">
-
-                {[
-                  {
-                    key: 'manha',
-                    label: '☀️ Manhã'
-                  },
-                  {
-                    key: 'tarde',
-                    label: '🌤️ Tarde'
-                  },
-                  {
-                    key: 'noite',
-                    label: '🌙 Noite'
-                  },
-                ].map(p => (
-
-                  <button
-                    key={p.key}
-                    type="button"
-                    onClick={() =>
-                      setFormPedido(prev => ({
-                        ...prev,
-                        periodo: p.key
+                  <input
+                    type="date"
+                    value={formVago.data}
+                    onChange={(e) =>
+                      setFormVago((anterior) => ({
+                        ...anterior,
+                        data: e.target.value,
                       }))
                     }
-                    className={
-                      'py-2.5 text-xs font-semibold rounded-xl border transition-all ' +
-                      (formPedido.periodo === p.key
-                        ? 'border-2 shadow-sm'
-                        : 'border-gray-200 text-gray-500 bg-white')
-                    }
-                    style={
-                      formPedido.periodo === p.key
-                        ? {
-                            borderColor: cor,
-                            color: cor,
-                            backgroundColor: `${cor}10`
-                          }
-                        : {}
-                    }
-                  >
-                    {p.label}
-                  </button>
-
-                ))}
-
-              </div>
-
-            </div>
-
-            <div>
-
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
-                Observação ou Serviço desejado (opcional)
-              </label>
-
-              <textarea
-                className="input-field resize-none text-sm"
-                rows={3}
-                placeholder="Ex: Gostaria de fazer unha e cabelo..."
-                value={formPedido.observacao}
-                onChange={e =>
-                  setFormPedido(p => ({
-                    ...p,
-                    observacao: e.target.value
-                  }))
-                }
-              />
-
-            </div>
-
-            <div className="flex gap-3 mt-2">
-
-              <button
-                onClick={() =>
-                  setModalPedido(false)
-                }
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm"
-              >
-                Cancelar
-              </button>
-
-              <button
-                onClick={enviarPedidoHorario}
-                disabled={
-                  enviandoPedido ||
-                  !formPedido.data
-                }
-                className="flex-1 py-3 rounded-2xl text-white font-medium text-sm disabled:opacity-40 shadow-md"
-                style={{
-                  backgroundColor: cor
-                }}
-              >
-                {enviandoPedido
-                  ? 'Enviando...'
-                  : 'Enviar Pedido'}
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
-      {/* ======================================================== */}
-      {/* MODAL LIBERAR HORÁRIO */}
-      {/* ======================================================== */}
-
-      {modalVago && (
-
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-
-            <div className="flex items-center justify-between">
-
-              <h3 className="font-bold text-gray-900 text-lg">
-                Liberar horário vago
-              </h3>
-
-              <button
-                onClick={() =>
-                  setModalVago(false)
-                }
-                className="text-gray-400 font-bold text-xl"
-              >
-                ✕
-              </button>
-
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-
-              <div>
-
-                <label className="text-xs font-semibold text-gray-500 block mb-1">
-                  Data *
-                </label>
-
-                <input
-                  className="input-field"
-                  type="date"
-                  value={formVago.data}
-                  onChange={e =>
-                    setFormVago(p => ({
-                      ...p,
-                      data: e.target.value
-                    }))
-                  }
-                />
-
-              </div>
-
-              <div>
-
-                <label className="text-xs font-semibold text-gray-500 block mb-1">
-                  Horário *
-                </label>
-
-                <input
-                  className="input-field"
-                  type="time"
-                  value={formVago.hora}
-                  onChange={e =>
-                    setFormVago(p => ({
-                      ...p,
-                      hora: e.target.value
-                    }))
-                  }
-                />
-
-              </div>
-
-            </div>
-
-            <div>
-
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
-                Serviço disponível *
-              </label>
-
-              {servicos.length === 0 ? (
-
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-
-                  <p className="text-xs text-amber-700 leading-relaxed">
-                    Nenhum serviço cadastrado foi encontrado. Cadastre um serviço antes de liberar este horário.
-                  </p>
-
-                </div>
-
-              ) : (
-
-                <select
-                  className="input-field"
-                  value={formVago.servico_id}
-                  onChange={e =>
-                    selecionarServico(
-                      e.target.value
-                    )
-                  }
-                >
-
-                  <option value="">
-                    Selecione o serviço...
-                  </option>
-
-                  {servicos.map(servico => {
-
-                    const duracao =
-                      obterDuracaoServico(
-                        servico
-                      )
-
-                    return (
-
-                      <option
-                        key={servico.id}
-                        value={servico.id}
-                      >
-                        {obterNomeServico(
-                          servico
-                        )}{' '}
-                        ({formatarDuracao(
-                          duracao
-                        )})
-                      </option>
-
-                    )
-
-                  })}
-
-                </select>
-
-              )}
-
-            </div>
-
-            <div>
-
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
-                Duração
-              </label>
-
-              <div className="input-field bg-gray-50 flex items-center justify-between">
-
-                <span
-                  className={
-                    formVago.servico_id
-                      ? 'text-gray-900 font-semibold'
-                      : 'text-gray-400'
-                  }
-                >
-                  {formVago.servico_id
-                    ? formatarDuracao(
-                        duracaoAtual
-                      )
-                    : 'Selecione um serviço'}
-                </span>
-
-                {formVago.servico_id && (
-
-                  <span className="text-[10px] text-gray-400">
-                    definida pelo serviço
-                  </span>
-
-                )}
-
-              </div>
-
-              <p className="text-[10px] text-gray-400 mt-1">
-                A duração é definida automaticamente de acordo com o serviço selecionado.
-              </p>
-
-            </div>
-
-            <div>
-
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
-                Profissional (opcional)
-              </label>
-
-              <select
-                className="input-field"
-                value={
-                  formVago.profissional_id
-                }
-                onChange={e =>
-                  setFormVago(p => ({
-                    ...p,
-                    profissional_id:
-                      e.target.value
-                  }))
-                }
-              >
-
-                <option value="">
-                  Qualquer profissional
-                </option>
-
-                {funcionarios.map(f => (
-
-                  <option
-                    key={f.id}
-                    value={f.id}
-                  >
-                    {f.nome}
-                  </option>
-
-                ))}
-
-              </select>
-
-              <p className="text-[10px] text-gray-400 mt-1">
-                Deixe em "Qualquer profissional" para não vincular a uma profissional específica.
-              </p>
-
-            </div>
-
-            <div>
-
-              <label className="text-xs font-semibold text-gray-500 block mb-1">
-                Observação (opcional)
-              </label>
-
-              <input
-                className="input-field"
-                placeholder="Ex: Disponível para manicure"
-                value={
-                  formVago.observacao
-                }
-                onChange={e =>
-                  setFormVago(p => ({
-                    ...p,
-                    observacao:
-                      e.target.value
-                  }))
-                }
-              />
-
-            </div>
-
-            <div className="flex gap-3 pt-1">
-
-              <button
-                onClick={() =>
-                  setModalVago(false)
-                }
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
-              >
-                Cancelar
-              </button>
-
-              <button
-                onClick={liberarHorario}
-                disabled={
-                  salvandoVago ||
-                  !formVago.data ||
-                  !formVago.hora ||
-                  !formVago.servico_id ||
-                  servicos.length === 0
-                }
-                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40"
-                style={{
-                  backgroundColor: cor
-                }}
-              >
-                {salvandoVago
-                  ? 'Salvando...'
-                  : 'Liberar horário'}
-              </button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
-      {/* ======================================================== */}
-      {/* MODAL STORY — NOVA VERSÃO */}
-      {/* ======================================================== */}
-
-      {modalStory && (
-
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-2 sm:p-4">
-
-          <div className="bg-white w-full max-w-5xl rounded-3xl overflow-hidden max-h-[96vh] flex flex-col">
-
-            {/* ------------------------------------------------ */}
-            {/* CABEÇALHO */}
-            {/* ------------------------------------------------ */}
-
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-
-              <div className="flex items-center gap-3">
-
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{
-                    backgroundColor: `${cor}12`
-                  }}
-                >
-                  <Sparkles
-                    size={19}
-                    style={{
-                      color: cor
-                    }}
+                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
                   />
                 </div>
 
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Horário
+                  </label>
 
-                  <h3 className="font-bold text-gray-900 text-base">
-                    Criar Arte para Story
-                  </h3>
-
-                  <p className="text-xs text-gray-400">
-                    Monte sua divulgação em poucos segundos
-                  </p>
-
+                  <input
+                    type="time"
+                    value={formVago.hora}
+                    onChange={(e) =>
+                      setFormVago((anterior) => ({
+                        ...anterior,
+                        hora: e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                  />
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Serviço
+                  </label>
+
+                  <select
+                    value={formVago.servico_id}
+                    onChange={(e) =>
+                      selecionarServico(
+                        e.target.value
+                      )
+                    }
+                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 bg-white outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                  >
+                    <option value="">
+                      Selecionar serviço
+                    </option>
+
+                    {servicos.map((servico) => (
+                      <option
+                        key={servico.id}
+                        value={servico.id}
+                      >
+                        {servico.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Profissional
+                  </label>
+
+                  <select
+                    value={formVago.profissional_id}
+                    onChange={(e) =>
+                      setFormVago((anterior) => ({
+                        ...anterior,
+                        profissional_id:
+                          e.target.value,
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 bg-white outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                  >
+                    <option value="">
+                      Qualquer profissional
+                    </option>
+
+                    {profissionais.map(
+                      (profissional) => (
+                        <option
+                          key={profissional.id}
+                          value={profissional.id}
+                        >
+                          {profissional.nome}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Duração
+                  </label>
+
+                  <input
+                    type="number"
+                    min="5"
+                    step="5"
+                    value={formVago.duracao_minutos}
+                    onChange={(e) =>
+                      setFormVago((anterior) => ({
+                        ...anterior,
+                        duracao_minutos:
+                          Number(e.target.value),
+                      }))
+                    }
+                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Observação
+                  </label>
+
+                  <input
+                    type="text"
+                    value={formVago.observacao}
+                    onChange={(e) =>
+                      setFormVago((anterior) => ({
+                        ...anterior,
+                        observacao:
+                          e.target.value,
+                      }))
+                    }
+                    placeholder="Ex.: encaixe, última vaga..."
+                    className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 mt-5">
+                <button
+                  type="button"
+                  onClick={liberarHorario}
+                  disabled={salvandoHorario}
+                  className="flex-1 rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] disabled:opacity-60 text-white py-3.5 font-medium flex items-center justify-center gap-2"
+                >
+                  <Check className="w-5 h-5" />
+
+                  {salvandoHorario
+                    ? 'Salvando...'
+                    : 'Liberar horário'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={enviarPedidoHorario}
+                  className="rounded-2xl border border-pink-200 text-pink-600 px-5 py-3.5 font-medium"
+                >
+                  Notificar
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-2xl bg-pink-50 flex items-center justify-center">
+              <Clock className="w-5 h-5 text-pink-500" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold text-gray-800">
+                Horários cadastrados
+              </h2>
+
+              <p className="text-sm text-gray-500">
+                {horarios.length}{' '}
+                {horarios.length === 1
+                  ? 'horário disponível'
+                  : 'horários disponíveis'}
+              </p>
+            </div>
+          </div>
+
+          {horarios.length === 0 ? (
+            <div className="py-12 text-center">
+              <Calendar className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+
+              <p className="text-gray-500">
+                Nenhum horário vago cadastrado.
+              </p>
+
+              <p className="text-sm text-gray-400 mt-1">
+                Libere seu primeiro horário acima.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {horarios.map((horario) => {
+                const data = new Date(
+                  horario.data_hora
+                )
+
+                const profissional =
+                  horario?.profiles?.nome
+
+                return (
+                  <div
+                    key={horario.id}
+                    className="rounded-2xl border border-gray-100 p-4 flex items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-11 h-11 rounded-2xl bg-pink-50 flex items-center justify-center flex-shrink-0">
+                        <Clock className="w-5 h-5 text-pink-500" />
+                      </div>
+
+                      <div className="min-w-0">
+                        <p className="font-semibold text-gray-800">
+                          {data.toLocaleDateString(
+                            'pt-BR'
+                          )}{' '}
+                          às{' '}
+                          {formatarHora(
+                            horario.data_hora
+                          )}
+                        </p>
+
+                        <div className="text-sm text-gray-500 mt-1 space-y-0.5">
+                          {profissional && (
+                            <p>
+                              Profissional:{' '}
+                              {profissional}
+                            </p>
+                          )}
+
+                          {horario.duracao_minutos && (
+                            <p>
+                              Duração:{' '}
+                              {
+                                horario.duracao_minutos
+                              }{' '}
+                              minutos
+                            </p>
+                          )}
+
+                          {horario.observacao && (
+                            <p>
+                              {horario.observacao}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        excluirHorario(
+                          horario.id
+                        )
+                      }
+                      className="w-10 h-10 rounded-xl bg-red-50 text-red-500 flex items-center justify-center flex-shrink-0"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* GERADOR DE STORY */}
+        <section className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 mt-5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-pink-50 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-pink-500" />
+              </div>
+
+              <div>
+                <h2 className="font-semibold text-gray-800">
+                  Divulgar horários
+                </h2>
+
+                <p className="text-sm text-gray-500">
+                  Crie uma arte pronta para o Story.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMostrarStory(true)
+
+                if (!dataStory && horarios.length) {
+                  const primeiro = horarios
+                    .filter((h) => h?.data_hora)
+                    .sort(
+                      (a, b) =>
+                        new Date(
+                          a.data_hora
+                        ).getTime() -
+                        new Date(
+                          b.data_hora
+                        ).getTime()
+                    )[0]
+
+                  if (primeiro?.data_hora) {
+                    const data = new Date(
+                      primeiro.data_hora
+                    )
+
+                    const ano =
+                      data.getFullYear()
+
+                    const mes = String(
+                      data.getMonth() + 1
+                    ).padStart(2, '0')
+
+                    const dia = String(
+                      data.getDate()
+                    ).padStart(2, '0')
+
+                    setDataStory(
+                      `${ano}-${mes}-${dia}`
+                    )
+                  }
+                }
+              }}
+              className="rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] text-white px-5 py-3 font-medium flex items-center justify-center gap-2"
+            >
+              <ImageIcon className="w-5 h-5" />
+              Criar arte para Story
+            </button>
+          </div>
+        </section>
+      </div>
+
+      {/* MODAL STORY */}
+      {mostrarStory && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center">
+          <div className="bg-[#faf7f8] w-full sm:max-w-6xl sm:max-h-[95vh] rounded-t-3xl sm:rounded-3xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 bg-white border-b border-gray-100">
+              <div>
+                <h2 className="font-semibold text-gray-800">
+                  Criar Arte para Story
+                </h2>
+
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Personalize a arte e baixe a imagem.
+                </p>
               </div>
 
               <button
+                type="button"
                 onClick={() =>
-                  setModalStory(false)
+                  setMostrarStory(false)
                 }
-                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+                className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"
               >
-                <X
-                  size={17}
-                  className="text-gray-500"
-                />
+                <X className="w-5 h-5" />
               </button>
-
             </div>
 
-            {/* ------------------------------------------------ */}
-            {/* CORPO */}
-            {/* ------------------------------------------------ */}
-
-            <div className="flex-1 overflow-y-auto">
-
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-0">
-
-                {/* ============================================ */}
-                {/* ESQUERDA — CONFIGURAÇÕES */}
-                {/* ============================================ */}
-
-                <div className="p-5 flex flex-col gap-5">
-
-                  {/* DATA */}
-
-                  <div>
-
-                    <div className="flex items-center justify-between mb-2">
-
-                      <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                        1. Data
-                      </label>
-
-                    </div>
+            <div className="overflow-y-auto max-h-[calc(95vh-72px)]">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 p-5">
+                {/* CONFIGURAÇÃO */}
+                <div className="space-y-5">
+                  <div className="bg-white rounded-3xl border border-gray-100 p-5">
+                    <h3 className="font-semibold text-gray-800 mb-4">
+                      1. Escolha a data
+                    </h3>
 
                     <input
-                      className="input-field text-sm"
                       type="date"
-                      value={
-                        dataSelecionadaStory
-                      }
-                      onChange={e => {
-
-                        setDataSelecionadaStory(
+                      value={dataStory}
+                      onChange={(e) =>
+                        setDataStory(
                           e.target.value
                         )
-
-                        setHorariosSelecionadosStory(
-                          []
-                        )
-
-                      }}
+                      }
+                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
                     />
 
+                    {dataStory && (
+                      <p className="text-sm text-gray-500 mt-3">
+                        {formatarData(dataStory)}
+                      </p>
+                    )}
                   </div>
 
-                  {/* HORÁRIOS */}
-
-                  <div>
-
-                    <div className="flex items-center justify-between mb-2">
-
+                  <div className="bg-white rounded-3xl border border-gray-100 p-5">
+                    <div className="flex items-center justify-between gap-3 mb-4">
                       <div>
+                        <h3 className="font-semibold text-gray-800">
+                          2. Escolha os horários
+                        </h3>
 
-                        <label className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                          2. Horários
-                        </label>
-
-                        <p className="text-[11px] text-gray-400 mt-0.5">
-                          Escolha quais horários aparecerão na arte
+                        <p className="text-xs text-gray-500 mt-1">
+                          Selecione exatamente os horários que deseja divulgar.
                         </p>
-
                       </div>
 
-                      {vagosDoDiaStory.length > 0 && (
-
+                      {horariosDoStory.length > 0 && (
                         <button
-                          onClick={
-                            selecionarTodosStory
-                          }
-                          className="text-xs font-semibold"
-                          style={{
-                            color: cor
+                          type="button"
+                          onClick={() => {
+                            if (
+                              horariosSelecionadosStory.length ===
+                              horariosDoStory.length
+                            ) {
+                              desmarcarTodosStory()
+                            } else {
+                              selecionarTodosStory()
+                            }
                           }}
+                          className="text-xs font-medium text-pink-600"
                         >
                           {horariosSelecionadosStory.length ===
-                          vagosDoDiaStory.length
+                          horariosDoStory.length
                             ? 'Desmarcar todos'
                             : 'Selecionar todos'}
                         </button>
-
                       )}
-
                     </div>
 
-                    {vagosDoDiaStory.length === 0 ? (
+                    {horariosDoStory.length === 0 ? (
+                      <div className="rounded-2xl bg-gray-50 p-5 text-center">
+                        <Clock className="w-8 h-8 text-gray-300 mx-auto mb-2" />
 
-                      <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center">
-
-                        <Clock
-                          size={25}
-                          className="text-gray-300 mx-auto mb-2"
-                        />
-
-                        <p className="text-sm font-medium text-gray-500">
-                          Nenhum horário disponível
+                        <p className="text-sm text-gray-500">
+                          Nenhum horário encontrado para esta data.
                         </p>
-
-                        <p className="text-xs text-gray-400 mt-1">
-                          Libere um horário para esta data primeiro.
-                        </p>
-
                       </div>
-
                     ) : (
+                      <div className="space-y-2">
+                        {horariosDoStory.map(
+                          (horario) => {
+                            const selecionado =
+                              horariosSelecionadosStory.includes(
+                                horario.id
+                              )
 
-                      <div className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1">
+                            return (
+                              <button
+                                type="button"
+                                key={horario.id}
+                                onClick={() =>
+                                  toggleHorarioStory(
+                                    horario.id
+                                  )
+                                }
+                                className={`w-full rounded-2xl border p-3 flex items-center justify-between transition ${
+                                  selecionado
+                                    ? 'border-pink-300 bg-pink-50'
+                                    : 'border-gray-100 bg-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                                      selecionado
+                                        ? 'bg-[#d98fa5] text-white'
+                                        : 'bg-gray-100 text-gray-400'
+                                    }`}
+                                  >
+                                    {selecionado && (
+                                      <Check className="w-4 h-4" />
+                                    )}
+                                  </div>
 
-                        {vagosDoDiaStory.map(h => {
+                                  <div className="text-left">
+                                    <p className="font-semibold text-gray-800">
+                                      {formatarHora(
+                                        horario.data_hora
+                                      )}
+                                    </p>
 
-                          const selecionado =
-                            horariosSelecionadosStory.includes(
-                              h.id
-                            )
+                                    {horario
+                                      ?.profiles
+                                      ?.nome && (
+                                      <p className="text-xs text-gray-500">
+                                        {
+                                          horario
+                                            .profiles
+                                            .nome
+                                        }
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
 
-                          const hora =
-                            new Date(
-                              h.data_hora
-                            ).toLocaleTimeString(
-                              'pt-BR',
-                              {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              }
-                            )
-
-                          return (
-
-                            <button
-                              key={h.id}
-                              onClick={() =>
-                                alternarHorarioStory(
-                                  h.id
-                                )
-                              }
-                              className="w-full flex items-center gap-3 p-3 rounded-xl border text-left transition-all"
-                              style={
-                                selecionado
-                                  ? {
-                                      borderColor:
-                                        cor,
-                                      backgroundColor:
-                                        `${cor}08`
-                                    }
-                                  : {
-                                      borderColor:
-                                        '#e5e7eb'
-                                    }
-                              }
-                            >
-
-                              {selecionado
-                                ? (
-                                  <CheckCircle2
-                                    size={20}
-                                    style={{
-                                      color: cor
-                                    }}
-                                  />
-                                )
-                                : (
-                                  <Circle
-                                    size={20}
-                                    className="text-gray-300"
-                                  />
-                                )}
-
-                              <div className="flex-1">
-
-                                <p className="font-bold text-gray-900 text-sm">
-                                  {hora}
-                                </p>
-
-                                <p className="text-[11px] text-gray-400">
-
-                                  {h.profiles?.nome
-                                    ? h.profiles.nome
-                                    : 'Horário disponível'}
-
-                                  {h.duracao_minutos
-                                    ? ` · ${formatarDuracao(Number(h.duracao_minutos))}`
+                                <span className="text-xs text-gray-400">
+                                  {horario.duracao_minutos
+                                    ? `${horario.duracao_minutos} min`
                                     : ''}
-
-                                </p>
-
-                              </div>
-
-                              {selecionado && (
-
-                                <span
-                                  className="text-[10px] font-bold"
-                                  style={{
-                                    color: cor
-                                  }}
-                                >
-                                  Selecionado
                                 </span>
-
-                              )}
-
-                            </button>
-
-                          )
-
-                        })}
-
+                              </button>
+                            )
+                          }
+                        )}
                       </div>
-
                     )}
-
-                    {vagosDoDiaStory.length > 0 && (
-
-                      <p className="text-[10px] text-gray-400 mt-2">
-                        Se nenhum horário for selecionado, todos serão exibidos.
-                      </p>
-
-                    )}
-
                   </div>
 
-                  {/* TEXTO */}
+                  <div className="bg-white rounded-3xl border border-gray-100 p-5">
+                    <h3 className="font-semibold text-gray-800 mb-4">
+                      3. Textos
+                    </h3>
 
-                  <div>
-
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-2">
-                      3. Texto da arte
-                    </label>
-
-                    <div className="flex flex-col gap-2">
-
+                    <div className="space-y-4">
                       <div>
-
-                        <label className="text-[11px] text-gray-500 block mb-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-2">
                           Título
                         </label>
 
                         <input
-                          className="input-field text-sm"
-                          maxLength={40}
+                          type="text"
                           value={tituloStory}
-                          onChange={e =>
+                          onChange={(e) =>
                             setTituloStory(
                               e.target.value
                             )
                           }
-                          placeholder="Ex.: Horários Vagos"
+                          className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300"
                         />
-
                       </div>
 
                       <div>
-
-                        <label className="text-[11px] text-gray-500 block mb-1">
-                          Texto auxiliar
+                        <label className="block text-xs font-medium text-gray-600 mb-2">
+                          Subtítulo
                         </label>
 
-                        <input
-                          className="input-field text-sm"
-                          maxLength={70}
+                        <textarea
                           value={subtituloStory}
-                          onChange={e =>
+                          onChange={(e) =>
                             setSubtituloStory(
                               e.target.value
                             )
                           }
-                          placeholder="Ex.: Ainda temos alguns horários disponíveis"
+                          rows={2}
+                          className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300 resize-none"
                         />
-
                       </div>
 
                       <div>
-
-                        <label className="text-[11px] text-gray-500 block mb-1">
-                          Botão / chamada
+                        <label className="block text-xs font-medium text-gray-600 mb-2">
+                          Chamada
                         </label>
 
                         <input
-                          className="input-field text-sm"
-                          maxLength={35}
+                          type="text"
                           value={ctaStory}
-                          onChange={e =>
+                          onChange={(e) =>
                             setCtaStory(
                               e.target.value
                             )
                           }
-                          placeholder="Ex.: Garanta o seu horário!"
+                          className="w-full rounded-2xl border border-gray-200 px-4 py-3 outline-none focus:border-pink-300"
                         />
-
                       </div>
-
                     </div>
-
                   </div>
 
-                  {/* OPÇÕES */}
+                  <div className="bg-white rounded-3xl border border-gray-100 p-5">
+                    <h3 className="font-semibold text-gray-800 mb-4">
+                      4. Estilo
+                    </h3>
 
-                  <div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {estilosStory.map(
+                        (estilo) => {
+                          const ativo =
+                            estiloStory ===
+                            estilo.id
 
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-2">
-                      4. Informações
-                    </label>
+                          return (
+                            <button
+                              type="button"
+                              key={estilo.id}
+                              onClick={() =>
+                                setEstiloStory(
+                                  estilo.id
+                                )
+                              }
+                              className={`rounded-2xl border p-3 text-left transition ${
+                                ativo
+                                  ? 'border-pink-300 bg-pink-50'
+                                  : 'border-gray-100 bg-white'
+                              }`}
+                            >
+                              <p className="text-sm font-semibold text-gray-800">
+                                {estilo.nome}
+                              </p>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-
-                      <button
-                        onClick={() =>
-                          setMostrarDataStory(
-                            !mostrarDataStory
+                              <p className="text-xs text-gray-500 mt-1">
+                                {estilo.descricao}
+                              </p>
+                            </button>
                           )
                         }
-                        className="flex items-center justify-between p-3 rounded-xl border border-gray-200 text-left"
-                      >
-
-                        <div>
-
-                          <p className="text-xs font-semibold text-gray-800">
-                            Data
-                          </p>
-
-                          <p className="text-[10px] text-gray-400">
-                            Mostrar data
-                          </p>
-
-                        </div>
-
-                        {mostrarDataStory
-                          ? (
-                            <Eye
-                              size={16}
-                              style={{
-                                color: cor
-                              }}
-                            />
-                          )
-                          : (
-                            <EyeOff
-                              size={16}
-                              className="text-gray-300"
-                            />
-                          )}
-
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          setMostrarProfissionalStory(
-                            !mostrarProfissionalStory
-                          )
-                        }
-                        className="flex items-center justify-between p-3 rounded-xl border border-gray-200 text-left"
-                      >
-
-                        <div>
-
-                          <p className="text-xs font-semibold text-gray-800">
-                            Profissional
-                          </p>
-
-                          <p className="text-[10px] text-gray-400">
-                            Mostrar nome
-                          </p>
-
-                        </div>
-
-                        {mostrarProfissionalStory
-                          ? (
-                            <Eye
-                              size={16}
-                              style={{
-                                color: cor
-                              }}
-                            />
-                          )
-                          : (
-                            <EyeOff
-                              size={16}
-                              className="text-gray-300"
-                            />
-                          )}
-
-                      </button>
-
-                      <button
-                        onClick={() =>
-                          setMostrarLogoStory(
-                            !mostrarLogoStory
-                          )
-                        }
-                        className="flex items-center justify-between p-3 rounded-xl border border-gray-200 text-left"
-                      >
-
-                        <div>
-
-                          <p className="text-xs font-semibold text-gray-800">
-                            Marca
-                          </p>
-
-                          <p className="text-[10px] text-gray-400">
-                            Nome do salão
-                          </p>
-
-                        </div>
-
-                        {mostrarLogoStory
-                          ? (
-                            <Eye
-                              size={16}
-                              style={{
-                                color: cor
-                              }}
-                            />
-                          )
-                          : (
-                            <EyeOff
-                              size={16}
-                              className="text-gray-300"
-                            />
-                          )}
-
-                      </button>
-
+                      )}
                     </div>
-
                   </div>
 
-                  {/* LAYOUT */}
+                  <div className="bg-white rounded-3xl border border-gray-100 p-5">
+                    <h3 className="font-semibold text-gray-800 mb-4">
+                      5. Elementos
+                    </h3>
 
-                  <div>
+                    <div className="space-y-3">
+                      <label className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-gray-700">
+                          Mostrar data
+                        </span>
 
-                    <label className="text-xs font-bold text-gray-700 uppercase tracking-wide block mb-2">
-                      5. Estilo da arte
-                    </label>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-
-                      {[
-                        {
-                          key: 'elegante',
-                          emoji: '✨',
-                          label: 'Elegante',
-                          desc: 'Escuro e sofisticado'
-                        },
-                        {
-                          key: 'clean',
-                          emoji: '🤍',
-                          label: 'Clean',
-                          desc: 'Claro e delicado'
-                        },
-                        {
-                          key: 'destaque',
-                          emoji: '🔥',
-                          label: 'Destaque',
-                          desc: 'Forte e chamativo'
-                        },
-                        {
-                          key: 'romantico',
-                          emoji: '🌸',
-                          label: 'Romântico',
-                          desc: 'Suave e feminino'
-                        },
-                        {
-                          key: 'moderno',
-                          emoji: '◼️',
-                          label: 'Moderno',
-                          desc: 'Contemporâneo'
-                        },
-                        {
-                          key: 'minimal',
-                          emoji: '○',
-                          label: 'Minimal',
-                          desc: 'Simples e refinado'
-                        },
-                      ].map(l => (
-
-                        <button
-                          key={l.key}
-                          onClick={() =>
-                            setLayoutStory(
-                              l.key as LayoutStory
+                        <input
+                          type="checkbox"
+                          checked={mostrarDataStory}
+                          onChange={(e) =>
+                            setMostrarDataStory(
+                              e.target.checked
                             )
                           }
-                          className="p-3 rounded-xl border text-left transition-all"
-                          style={
-                            layoutStory === l.key
-                              ? {
-                                  borderColor:
-                                    cor,
-                                  backgroundColor:
-                                    `${cor}08`
-                                }
-                              : {
-                                  borderColor:
-                                    '#e5e7eb'
-                                }
+                          className="w-5 h-5 accent-pink-500"
+                        />
+                      </label>
+
+                      <label className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-gray-700">
+                          Mostrar profissional
+                        </span>
+
+                        <input
+                          type="checkbox"
+                          checked={
+                            mostrarProfissionalStory
                           }
-                        >
+                          onChange={(e) =>
+                            setMostrarProfissionalStory(
+                              e.target.checked
+                            )
+                          }
+                          className="w-5 h-5 accent-pink-500"
+                        />
+                      </label>
 
-                          <div className="flex items-center gap-2">
+                      <label className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-gray-700">
+                          Mostrar logo
+                        </span>
 
-                            <span className="text-sm">
-                              {l.emoji}
-                            </span>
-
-                            <span
-                              className="text-xs font-bold"
-                              style={
-                                layoutStory ===
-                                l.key
-                                  ? {
-                                      color: cor
-                                    }
-                                  : {}
-                              }
-                            >
-                              {l.label}
-                            </span>
-
-                          </div>
-
-                          <p className="text-[9px] text-gray-400 mt-1">
-                            {l.desc}
-                          </p>
-
-                        </button>
-
-                      ))}
-
+                        <input
+                          type="checkbox"
+                          checked={mostrarLogoStory}
+                          onChange={(e) =>
+                            setMostrarLogoStory(
+                              e.target.checked
+                            )
+                          }
+                          className="w-5 h-5 accent-pink-500"
+                        />
+                      </label>
                     </div>
-
                   </div>
 
-                </div>
-
-                {/* ============================================ */}
-                {/* DIREITA — PREVIEW */}
-                {/* ============================================ */}
-
-                <div className="bg-gray-100 p-5 flex flex-col items-center justify-center gap-4 border-t lg:border-t-0 lg:border-l border-gray-200">
-
-                  <div className="w-full flex items-center justify-between">
-
-                    <div>
-
-                      <p className="text-xs font-bold text-gray-700">
-                        Prévia
-                      </p>
-
-                      <p className="text-[10px] text-gray-400">
-                        Formato Story · 9:16
-                      </p>
-
-                    </div>
-
+                  <div className="flex gap-3">
                     <button
-                      onClick={() => {
-                        setTituloStory('Horários Vagos')
-                        setSubtituloStory(
-                          'Ainda temos alguns horários disponíveis'
-                        )
-                        setCtaStory(
-                          'Garanta o seu horário!'
-                        )
-                        setMostrarDataStory(true)
-                        setMostrarProfissionalStory(true)
-                        setMostrarLogoStory(true)
-                        setLayoutStory('elegante')
-                        setHorariosSelecionadosStory([])
-                      }}
-                      className="flex items-center gap-1 text-[10px] font-semibold text-gray-500"
+                      type="button"
+                      onClick={resetarStory}
+                      className="flex-1 rounded-2xl border border-gray-200 bg-white py-3.5 text-gray-600 font-medium flex items-center justify-center gap-2"
                     >
-                      <RotateCcw size={12} />
+                      <RotateCcw className="w-4 h-4" />
                       Restaurar
                     </button>
 
-                  </div>
-
-                  {/* STORY */}
-
-                  <div className="bg-gray-900 rounded-3xl p-3 shadow-inner">
-
-                    <div
-                      ref={cardRef}
-                      className="relative overflow-hidden select-none flex flex-col"
-                      style={{
-                        width: '270px',
-                        height: '480px',
-                        background:
-                          configLayout.fundo,
-                        color:
-                          configLayout.texto,
-                        boxShadow:
-                          configLayout.sombra,
-                      }}
+                    <button
+                      type="button"
+                      onClick={baixarStory}
+                      disabled={
+                        gerandoStory ||
+                        horariosEscolhidosStory.length ===
+                          0
+                      }
+                      className="flex-[2] rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] disabled:opacity-50 text-white py-3.5 font-medium flex items-center justify-center gap-2"
                     >
-
-                      {/* DECORAÇÕES */}
-
-                      {layoutStory === 'elegante' && (
-
-                        <>
-                          <div
-                            className="absolute -top-24 -right-24 w-56 h-56 rounded-full blur-3xl opacity-25"
-                            style={{
-                              backgroundColor:
-                                cor
-                            }}
-                          />
-
-                          <div
-                            className="absolute -bottom-24 -left-24 w-56 h-56 rounded-full blur-3xl opacity-15"
-                            style={{
-                              backgroundColor:
-                                cor
-                            }}
-                          />
-                        </>
-
-                      )}
-
-                      {layoutStory === 'romantico' && (
-
-                        <>
-                          <div
-                            className="absolute -top-20 -left-20 w-44 h-44 rounded-full blur-3xl opacity-25"
-                            style={{
-                              backgroundColor:
-                                cor
-                            }}
-                          />
-
-                          <div
-                            className="absolute bottom-0 right-0 text-7xl opacity-10"
-                          >
-                            ✿
-                          </div>
-                        </>
-
-                      )}
-
-                      {layoutStory === 'destaque' && (
-
-                        <div
-                          className="absolute inset-3 rounded-3xl border opacity-40"
-                          style={{
-                            borderColor: cor
-                          }}
-                        />
-
-                      )}
-
-                      {/* CABEÇALHO DA ARTE */}
-
-                      <div className="relative z-10 px-6 pt-7 text-center">
-
-                        {mostrarLogoStory && (
-
-                          <p
-                            className="text-[9px] uppercase tracking-[0.28em] font-bold mb-2"
-                            style={{
-                              color:
-                                configLayout.destaque
-                            }}
-                          >
-                            {salao?.nome ||
-                              'Seu salão'}
-                          </p>
-
-                        )}
-
-                        <h2
-                          className="font-black tracking-tight leading-tight"
-                          style={{
-                            fontSize:
-                              tituloStory.length >
-                              25
-                                ? '19px'
-                                : '23px'
-                          }}
-                        >
-                          {tituloStory ||
-                            'Horários Vagos'}
-                        </h2>
-
-                        {mostrarDataStory && (
-
-                          <p
-                            className="text-[10px] mt-2 capitalize"
-                            style={{
-                              color:
-                                configLayout.textoSecundario
-                            }}
-                          >
-                            {formatarDataStory(
-                              dataSelecionadaStory
-                            )}
-                          </p>
-
-                        )}
-
-                        {subtituloStory && (
-
-                          <p
-                            className="text-[10px] mt-2 leading-relaxed px-3"
-                            style={{
-                              color:
-                                configLayout.textoSecundario
-                            }}
-                          >
-                            {subtituloStory}
-                          </p>
-
-                        )}
-
-                      </div>
-
-                      {/* HORÁRIOS */}
-
-                      <div className="relative z-10 flex-1 px-5 py-4 flex flex-col justify-center">
-
-                        {horariosParaArte.length > 0 ? (
-
-                          <div
-                            className="grid gap-2"
-                            style={{
-                              gridTemplateColumns:
-                                horariosParaArte.length >= 7
-                                  ? 'repeat(2, 1fr)'
-                                  : '1fr'
-                            }}
-                          >
-
-                            {horariosParaArte
-                              .slice(0, 8)
-                              .map((h, index) => {
-
-                                const hora =
-                                  new Date(
-                                    h.data_hora
-                                  ).toLocaleTimeString(
-                                    'pt-BR',
-                                    {
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    }
-                                  )
-
-                                const muitos =
-                                  horariosParaArte.length >=
-                                  7
-
-                                return (
-
-                                  <div
-                                    key={h.id || index}
-                                    className="rounded-2xl px-3 py-3 flex items-center justify-between border backdrop-blur-sm"
-                                    style={{
-                                      background:
-                                        configLayout.card,
-                                      borderColor:
-                                        configLayout.borda
-                                    }}
-                                  >
-
-                                    <div className="flex items-center gap-2">
-
-                                      <Clock
-                                        size={
-                                          muitos
-                                            ? 11
-                                            : 14
-                                        }
-                                        style={{
-                                          color:
-                                            configLayout.destaque
-                                        }}
-                                      />
-
-                                      <span
-                                        className="font-black tracking-wide"
-                                        style={{
-                                          fontSize:
-                                            muitos
-                                              ? '14px'
-                                              : '18px'
-                                        }}
-                                      >
-                                        {hora}
-                                      </span>
-
-                                    </div>
-
-                                    {mostrarProfissionalStory &&
-                                      h.profiles?.nome && (
-
-                                        <span
-                                          className="text-[8px] truncate max-w-[90px]"
-                                          style={{
-                                            color:
-                                              configLayout.textoSecundario
-                                          }}
-                                        >
-                                          {h.profiles.nome}
-                                        </span>
-
-                                      )}
-
-                                  </div>
-
-                                )
-
-                              })}
-
-                          </div>
-
-                        ) : (
-
-                          <div className="text-center">
-
-                            <Clock
-                              size={25}
-                              className="mx-auto mb-2 opacity-30"
-                            />
-
-                            <p
-                              className="text-[10px]"
-                              style={{
-                                color:
-                                  configLayout.textoSecundario
-                              }}
-                            >
-                              Nenhum horário selecionado
-                            </p>
-
-                          </div>
-
-                        )}
-
-                        {horariosParaArte.length > 8 && (
-
-                          <p
-                            className="text-[8px] text-center mt-2"
-                            style={{
-                              color:
-                                configLayout.textoSecundario
-                            }}
-                          >
-                            + {horariosParaArte.length - 8}{' '}
-                            outros horários disponíveis
-                          </p>
-
-                        )}
-
-                      </div>
-
-                      {/* RODAPÉ */}
-
-                      <div className="relative z-10 px-5 pb-6 text-center">
-
-                        {ctaStory && (
-
-                          <div
-                            className="inline-flex items-center justify-center px-5 py-2.5 rounded-full font-bold text-[10px] shadow-lg"
-                            style={{
-                              backgroundColor:
-                                configLayout.destaque,
-                              color:
-                                '#ffffff'
-                            }}
-                          >
-                            {ctaStory} 📲
-                          </div>
-
-                        )}
-
-                        <p
-                          className="text-[7px] mt-2 tracking-wide"
-                          style={{
-                            color:
-                              configLayout.textoSecundario
-                          }}
-                        >
-                          Agende pelo link na bio
-                        </p>
-
-                      </div>
-
-                    </div>
-
+                      <Download className="w-5 h-5" />
+
+                      {gerandoStory
+                        ? 'Gerando...'
+                        : 'Baixar imagem'}
+                    </button>
                   </div>
-
-                  {/* INFO */}
-
-                  <div className="w-full bg-white rounded-xl p-3">
-
-                    <div className="flex items-center gap-2">
-
-                      <Check
-                        size={15}
-                        style={{
-                          color: cor
-                        }}
-                      />
-
-                      <p className="text-[10px] text-gray-500">
-                        {horariosParaArte.length === 0
-                          ? 'Nenhum horário para exibir'
-                          : `${horariosParaArte.length} horário(s) na arte`}
-                      </p>
-
-                    </div>
-
-                  </div>
-
                 </div>
 
+                {/* PREVIEW */}
+                <div className="bg-white rounded-3xl border border-gray-100 p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="font-semibold text-gray-800">
+                        Pré-visualização
+                      </h3>
+
+                      <p className="text-xs text-gray-500 mt-1">
+                        Formato vertical 9:16
+                      </p>
+                    </div>
+
+                    <div className="text-xs text-gray-400">
+                      {horariosEscolhidosStory.length}{' '}
+                      selecionado(s)
+                    </div>
+                  </div>
+
+                  <div className="min-h-[520px] bg-gray-100 rounded-3xl flex items-center justify-center p-5 overflow-auto">
+                    {renderStory()}
+                  </div>
+                </div>
               </div>
-
             </div>
-
-            {/* ------------------------------------------------ */}
-            {/* RODAPÉ */}
-            {/* ------------------------------------------------ */}
-
-            <div className="border-t border-gray-100 px-5 py-4 flex gap-3 shrink-0 bg-white">
-
-              <button
-                onClick={() =>
-                  setModalStory(false)
-                }
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm"
-              >
-                Fechar
-              </button>
-
-              <button
-                onClick={baixarImagemStory}
-                disabled={
-                  gerandoImagem ||
-                  horariosParaArte.length === 0
-                }
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl text-white font-semibold text-sm shadow-md disabled:opacity-40"
-                style={{
-                  backgroundColor: cor
-                }}
-              >
-
-                <Download size={16} />
-
-                {gerandoImagem
-                  ? 'Gerando imagem...'
-                  : 'Baixar imagem'}
-
-              </button>
-
-            </div>
-
           </div>
-
         </div>
-
       )}
-
-    </div>
+    </main>
   )
 }
