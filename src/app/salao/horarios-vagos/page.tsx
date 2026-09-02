@@ -93,10 +93,6 @@ export default function SalaoHorariosPage() {
           .eq('id', profile.salao_id)
           .maybeSingle(),
 
-        /*
-         * Agora buscamos também o serviço relacionado
-         * através do servico_id.
-         */
         supabase
           .from('horarios_vagos')
           .select(`
@@ -257,12 +253,6 @@ export default function SalaoHorariosPage() {
     setSalvandoHorario(true)
 
     try {
-      /*
-       * A data e hora digitadas representam o horário
-       * local do salão.
-       *
-       * Não adicionar "Z" manualmente.
-       */
       const dataHoraBanco = new Date(
         `${formVago.data}T${formVago.hora}:00`
       ).toISOString()
@@ -277,19 +267,10 @@ export default function SalaoHorariosPage() {
         .insert({
           salao_id: profile.salao_id,
           data_hora: dataHoraBanco,
-
-          /*
-           * NOVO:
-           * agora a vaga realmente guarda
-           * qual procedimento será realizado.
-           */
           servico_id: formVago.servico_id,
-
           duracao_minutos: duracao,
-
           profissional_id:
             formVago.profissional_id || null,
-
           observacao:
             formVago.observacao || null,
         })
@@ -430,7 +411,23 @@ export default function SalaoHorariosPage() {
     )
   }
 
-  const abrirStudio = () => {
+  /*
+   * Abre o Organiza Studio.
+   *
+   * Se um horário for informado, enviamos o ID
+   * para que o Studio já saiba qual vaga o usuário
+   * quer divulgar.
+   */
+  const abrirStudio = (
+    horarioId?: string
+  ) => {
+    if (horarioId) {
+      router.push(
+        `/salao/studio?horarioId=${horarioId}`
+      )
+      return
+    }
+
     router.push('/salao/studio')
   }
 
@@ -504,7 +501,7 @@ export default function SalaoHorariosPage() {
 
                 <button
                   type="button"
-                  onClick={abrirStudio}
+                  onClick={() => abrirStudio()}
                   className="mt-4 rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] text-white px-4 py-3 text-sm font-medium inline-flex items-center gap-2 transition"
                 >
                   <Megaphone className="w-4 h-4" />
@@ -954,7 +951,11 @@ export default function SalaoHorariosPage() {
 
                         <button
                           type="button"
-                          onClick={abrirStudio}
+                          onClick={() =>
+                            abrirStudio(
+                              horario.id
+                            )
+                          }
                           className="rounded-xl bg-[#fff2f5] text-[#c87891] px-4 py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:bg-pink-100 transition"
                         >
                           <Megaphone className="w-4 h-4" />
@@ -971,3 +972,4 @@ export default function SalaoHorariosPage() {
       </div>
     </main>
   )
+}
