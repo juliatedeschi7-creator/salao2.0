@@ -153,11 +153,6 @@ export default function ClientePage() {
 
       } else {
 
-        /**
-         * Se a permissão estiver bloqueada,
-         * o modal ainda pode ser mostrado, mas
-         * com uma mensagem específica.
-         */
         setModalPushLembrete(true)
 
       }
@@ -173,11 +168,6 @@ export default function ClientePage() {
         error
       )
 
-      /**
-       * Em caso de erro de verificação,
-       * mostramos o modal para não esconder
-       * completamente a possibilidade de ativação.
-       */
       setModalPushLembrete(true)
     }
   }
@@ -193,6 +183,10 @@ export default function ClientePage() {
     setCarregandoDados(true)
 
     try {
+
+      // ========================================================
+      // CLIENTE
+      // ========================================================
 
       const {
         data: cli,
@@ -215,6 +209,10 @@ export default function ClientePage() {
       }
 
       setCliente(cli)
+
+      // ========================================================
+      // SALÃO
+      // ========================================================
 
       let salaoEncontrado =
         cli?.saloes
@@ -242,6 +240,10 @@ export default function ClientePage() {
         salaoEncontrado
       )
 
+      // ========================================================
+      // DADOS DEPENDENTES DO CLIENTE
+      // ========================================================
+
       if (cli?.id) {
 
         // ======================================================
@@ -251,7 +253,8 @@ export default function ClientePage() {
         try {
 
           const {
-            data: ags
+            data: ags,
+            error: erroAgendamentos
           } = await supabase
             .from('agendamentos')
             .select(
@@ -269,46 +272,91 @@ export default function ClientePage() {
             )
             .limit(10)
 
+          if (erroAgendamentos) {
+
+            console.error(
+              '[CLIENTE] Erro ao buscar agendamentos:',
+              erroAgendamentos
+            )
+
+          }
+
           setAgendamentos(
             ags || []
           )
 
-        } catch {
+        } catch (error) {
+
+          console.error(
+            '[CLIENTE] Erro nos agendamentos:',
+            error
+          )
 
           setAgendamentos([])
         }
 
         // ======================================================
         // PACOTES
+        //
+        // A estrutura atual do sistema usa:
+        // pacotes_clientes_resumo
+        //
+        // O vínculo é feito pelo nome do cliente.
         // ======================================================
 
         try {
 
           const {
-            count: pacs
+            data: pacotesCliente,
+            error: erroPacotes
           } = await supabase
-            .from('cliente_pacotes')
+            .from('pacotes_clientes_resumo')
             .select(
-              '*',
-              {
-                count: 'exact',
-                head: true
-              }
+              'id, cliente_nome, servico, sessoes_total, sessoes_restantes, status'
             )
             .eq(
-              'cliente_id',
-              cli.id
-            )
-            .eq(
-              'status',
-              'ativo'
+              'cliente_nome',
+              cli.nome
             )
 
-          setPacotesAtivos(
-            pacs || 0
+          if (erroPacotes) {
+
+            console.error(
+              '[CLIENTE] Erro ao buscar pacotes:',
+              erroPacotes
+            )
+
+            setPacotesAtivos(0)
+
+          } else {
+
+            const ativos =
+              (pacotesCliente || []).filter(
+                (p: any) =>
+                  p.status === 'ativo'
+              )
+
+            console.log(
+              '[CLIENTE] Pacotes encontrados:',
+              pacotesCliente?.length || 0
+            )
+
+            console.log(
+              '[CLIENTE] Pacotes ativos:',
+              ativos.length
+            )
+
+            setPacotesAtivos(
+              ativos.length
+            )
+          }
+
+        } catch (error) {
+
+          console.error(
+            '[CLIENTE] Erro ao carregar pacotes:',
+            error
           )
-
-        } catch {
 
           setPacotesAtivos(0)
         }
@@ -320,7 +368,8 @@ export default function ClientePage() {
         try {
 
           const {
-            count: notifs
+            count: notifs,
+            error: erroNotificacoes
           } = await supabase
             .from('notificacoes')
             .select(
@@ -339,6 +388,15 @@ export default function ClientePage() {
               false
             )
 
+          if (erroNotificacoes) {
+
+            console.error(
+              '[CLIENTE] Erro ao buscar notificações:',
+              erroNotificacoes
+            )
+
+          }
+
           setNotifCount(
             notifs || 0
           )
@@ -355,7 +413,8 @@ export default function ClientePage() {
         try {
 
           const {
-            count: contratos
+            count: contratos,
+            error: erroContratos
           } = await supabase
             .from('contratos')
             .select(
@@ -369,6 +428,15 @@ export default function ClientePage() {
               'cliente_id',
               cli.id
             )
+
+          if (erroContratos) {
+
+            console.error(
+              '[CLIENTE] Erro ao buscar contratos:',
+              erroContratos
+            )
+
+          }
 
           setContratosCount(
             contratos || 0
@@ -386,7 +454,8 @@ export default function ClientePage() {
         try {
 
           const {
-            count: contas
+            count: contas,
+            error: erroContas
           } = await supabase
             .from('contas_clientes')
             .select(
@@ -401,6 +470,15 @@ export default function ClientePage() {
               cli.id
             )
 
+          if (erroContas) {
+
+            console.error(
+              '[CLIENTE] Erro ao buscar contas:',
+              erroContas
+            )
+
+          }
+
           setContasCount(
             contas || 0
           )
@@ -414,14 +492,6 @@ export default function ClientePage() {
         // PUSH
         // ======================================================
 
-        /**
-         * Verifica DEPOIS que os dados do cliente
-         * foram carregados.
-         *
-         * A existência de um registro no banco não
-         * significa automaticamente que este dispositivo
-         * possui uma subscription.
-         */
         await verificarStatusPush()
       }
 
@@ -530,9 +600,6 @@ export default function ClientePage() {
 
         setErroPush('')
 
-        /**
-         * Confirma novamente depois de salvar.
-         */
         const ativo =
           await verificarPushAtivo(
             profile.id
@@ -714,6 +781,18 @@ export default function ClientePage() {
               : null
         }
       : null,
+
+    // ========================================================
+    // MINHA EVOLUÇÃO
+    // ========================================================
+
+    {
+      icon: Sparkles,
+      label: 'Minha evolução',
+      sub: 'Acompanhe seus procedimentos',
+      href: '/cliente/evolucao',
+      badge: null
+    },
 
     mostrarQuestionarios
       ? {
@@ -980,7 +1059,9 @@ export default function ClientePage() {
           <div className="h-5" />
         )}
 
+        {/* ==================================================== */}
         {/* MENU */}
+        {/* ==================================================== */}
 
         <div className="grid grid-cols-2 gap-3">
 
@@ -1054,7 +1135,9 @@ export default function ClientePage() {
 
         </div>
 
+        {/* ==================================================== */}
         {/* QUEM SOMOS */}
+        {/* ==================================================== */}
 
         {mostrarQuemSomos && (
 
@@ -1104,7 +1187,9 @@ export default function ClientePage() {
           </button>
         )}
 
+        {/* ==================================================== */}
         {/* CONTRATOS */}
+        {/* ==================================================== */}
 
         {contratosCount > 0 && (
 
@@ -1153,7 +1238,9 @@ export default function ClientePage() {
           </button>
         )}
 
+        {/* ==================================================== */}
         {/* CONTAS */}
+        {/* ==================================================== */}
 
         {contasCount > 0 && (
 
@@ -1202,7 +1289,9 @@ export default function ClientePage() {
           </button>
         )}
 
+        {/* ==================================================== */}
         {/* HISTÓRICO */}
+        {/* ==================================================== */}
 
         {historico.length > 0 && (
 
@@ -1304,7 +1393,9 @@ export default function ClientePage() {
           </div>
         )}
 
+        {/* ==================================================== */}
         {/* AVALIAÇÃO */}
+        {/* ==================================================== */}
 
         {mostrarAvaliacoes && (
 
@@ -1352,7 +1443,9 @@ export default function ClientePage() {
           </button>
         )}
 
+        {/* ==================================================== */}
         {/* SAIR */}
+        {/* ==================================================== */}
 
         <button
           onClick={signOut}
@@ -1484,8 +1577,6 @@ export default function ClientePage() {
                 }
                 className="w-full py-3 text-gray-400 text-sm font-medium"
               >
-
-                Agora não
 
               </button>
 
