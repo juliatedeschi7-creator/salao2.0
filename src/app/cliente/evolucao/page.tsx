@@ -40,10 +40,7 @@ export default function EvolucaoClientePage() {
 
   const [indexAtivo, setIndexAtivo] = useState(0)
 
-  const [
-    ladoAtivo,
-    setLadoAtivo
-  ] = useState<
+  const [ladoAtivo, setLadoAtivo] = useState<
     Record<string, 'antes' | 'depois'>
   >({})
 
@@ -176,6 +173,7 @@ export default function EvolucaoClientePage() {
       setEvolucoes(
         (registros || []) as EvolucaoRegistro[]
       )
+
       setIndexAtivo(0)
     } catch (error) {
       console.error(
@@ -201,7 +199,6 @@ export default function EvolucaoClientePage() {
   if (loading || carregando) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-4">
-
         <div
           className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
           style={{
@@ -209,7 +206,6 @@ export default function EvolucaoClientePage() {
             borderTopColor: 'transparent'
           }}
         />
-
       </div>
     )
   }
@@ -221,7 +217,6 @@ export default function EvolucaoClientePage() {
   if (!cliente) {
     return (
       <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-5">
-
         <div className="bg-white rounded-3xl p-8 text-center shadow-sm border border-gray-100 max-w-sm w-full">
 
           <div
@@ -258,10 +253,13 @@ export default function EvolucaoClientePage() {
           </button>
 
         </div>
-
       </div>
     )
   }
+
+  // =========================================================
+  // REGISTRO ATUAL
+  // =========================================================
 
   const registroAtual =
     evolucoes[indexAtivo]
@@ -361,11 +359,8 @@ export default function EvolucaoClientePage() {
         >
 
           <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider opacity-90">
-
             <Heart size={14} />
-
             Seus Resultados
-
           </div>
 
           <h2 className="text-lg font-bold">
@@ -485,7 +480,6 @@ export default function EvolucaoClientePage() {
                           </div>
 
                           <span className="text-[10px] text-gray-400">
-
                             {data
                               ? new Date(
                                   data
@@ -497,7 +491,6 @@ export default function EvolucaoClientePage() {
                                   }
                                 )
                               : ''}
-
                           </span>
 
                         </button>
@@ -556,24 +549,18 @@ export default function EvolucaoClientePage() {
                     <div className="pt-1">
 
                       <p className="font-bold text-gray-800 text-base">
-
                         {registroAtual.subcategoria ||
                           registroAtual.servico_nome ||
                           registroAtual.categoria}
-
                       </p>
 
                       {registroAtual.categoria &&
                         registroAtual.subcategoria && (
 
                           <p className="text-xs text-gray-400 mt-0.5">
-
                             {registroAtual.categoria}
-
                             {' • '}
-
                             {registroAtual.subcategoria}
-
                           </p>
 
                         )}
@@ -649,27 +636,21 @@ export default function EvolucaoClientePage() {
 
                     <button
                       onClick={() =>
-                        setLadoAtivo(
-                          prev => ({
-                            ...prev,
-                            [registroAtual.id]:
-                              'antes'
-                          })
+                        setLadoAtivo(prev => ({
+                          ...prev,
+                          [registroAtual.id]: 'antes'
+                        }))
                       }
                       className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm"
                       style={
                         lado === 'antes'
                           ? {
-                              backgroundColor:
-                                '#6b7280',
-                              color:
-                                'white'
+                              backgroundColor: '#6b7280',
+                              color: 'white'
                             }
                           : {
-                              backgroundColor:
-                                'white',
-                              color:
-                                '#9ca3af'
+                              backgroundColor: 'white',
+                              color: '#9ca3af'
                             }
                       }
                     >
@@ -678,27 +659,21 @@ export default function EvolucaoClientePage() {
 
                     <button
                       onClick={() =>
-                        setLadoAtivo(
-                          prev => ({
-                            ...prev,
-                            [registroAtual.id]:
-                              'depois'
-                          })
+                        setLadoAtivo(prev => ({
+                          ...prev,
+                          [registroAtual.id]: 'depois'
+                        }))
                       }
                       className="flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm"
                       style={
                         lado === 'depois'
                           ? {
-                              backgroundColor:
-                                cor,
-                              color:
-                                'white'
+                              backgroundColor: cor,
+                              color: 'white'
                             }
                           : {
-                              backgroundColor:
-                                'white',
-                              color:
-                                '#9ca3af'
+                              backgroundColor: 'white',
+                              color: '#9ca3af'
                             }
                       }
                     >
@@ -718,15 +693,11 @@ export default function EvolucaoClientePage() {
                   <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
 
                     <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">
-
                       Observação do Profissional
-
                     </p>
 
                     <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
-
                       {registroAtual.observacoes}
-
                     </p>
 
                   </div>
@@ -775,11 +746,8 @@ export default function EvolucaoClientePage() {
                       }
                       className="flex-1 py-2.5 rounded-xl bg-white text-xs font-bold text-gray-600 flex items-center justify-center gap-1 disabled:opacity-30 shadow-sm border border-gray-100"
                     >
-
                       <ChevronLeft size={16} />
-
                       Anterior
-
                     </button>
 
                     <button
@@ -797,13 +765,8 @@ export default function EvolucaoClientePage() {
                       }
                       className="flex-1 py-2.5 rounded-xl bg-white text-xs font-bold text-gray-600 flex items-center justify-center gap-1 disabled:opacity-30 shadow-sm border border-gray-100"
                     >
-
                       Próximo
-
-                      <ChevronRight
-                        size={16}
-                      />
-
+                      <ChevronRight size={16} />
                     </button>
 
                   </div>
