@@ -84,7 +84,7 @@ export default function ServicosPage() {
       ))
 
     if (!temPermissao) {
-      alert('VocÃª nÃ£o tem permissÃ£o para acessar esta pÃ¡gina.')
+      alert('Você não tem permissão para acessar esta página.')
       router.push('/salao/dashboard')
       return
     }
@@ -141,11 +141,11 @@ export default function ServicosPage() {
     ])
 
     if (salRes.error) {
-      console.error('Erro ao carregar salÃ£o:', salRes.error)
+      console.error('Erro ao carregar salão:', salRes.error)
     }
 
     if (srvsRes.error) {
-      console.error('Erro ao carregar serviÃ§os:', srvsRes.error)
+      console.error('Erro ao carregar serviços:', srvsRes.error)
     }
 
     if (catsRes.error) {
@@ -153,7 +153,7 @@ export default function ServicosPage() {
     }
 
     if (relRes.error) {
-      console.error('Erro ao carregar relaÃ§Ãµes serviÃ§o/categoria:', relRes.error)
+      console.error('Erro ao carregar relações serviço/categoria:', relRes.error)
     }
 
     const cats = catsRes.data || []
@@ -172,8 +172,8 @@ export default function ServicosPage() {
         .map((id: string) => cats.find((c: any) => c.id === id)?.nome)
         .filter(Boolean)
 
-      // Compatibilidade com serviÃ§os antigos:
-      // se por algum motivo nÃ£o houver relaÃ§Ã£o, usa a categoria
+      // Compatibilidade com serviços antigos:
+      // se por algum motivo não houver relação, usa a categoria
       // antiga armazenada em servicos.categoria.
       if (categoriaIds.length === 0 && servico.categoria) {
         const categoriaAntiga = cats.find(
@@ -247,17 +247,17 @@ export default function ServicosPage() {
         ? `A partir de R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}`
         : `R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}`
 
-      corpoServicos += `ð¹ *${servico.nome}*\n`
-      corpoServicos += `ð° ${preco} | â±ï¸ ${formatarDuracao(servico.duracao_minutos)}\n`
+      corpoServicos += `🔹 *${servico.nome}*\n`
+      corpoServicos += `💰 ${preco} | ⏱️ ${formatarDuracao(servico.duracao_minutos)}\n`
 
       const categoriasServico = obterNomesCategoriasDoServico(servico)
 
       if (categoriasServico.length > 0) {
-        corpoServicos += `ð·ï¸ ${categoriasServico.join(' â¢ ')}\n`
+        corpoServicos += `🏷️ ${categoriasServico.join(' • ')}\n`
       }
 
       if (servico.descricao) {
-        corpoServicos += `ð _${servico.descricao}_\n`
+        corpoServicos += `📝 _${servico.descricao}_\n`
       }
 
       corpoServicos += `\n`
@@ -265,20 +265,20 @@ export default function ServicosPage() {
 
     if (templateCustomizado.trim()) {
       let textoFinal = templateCustomizado
-        .replace('{nome_salao}', salao?.nome || 'Nosso SalÃ£o')
+        .replace('{nome_salao}', salao?.nome || 'Nosso Salão')
         .replace('{categoria}', categoriaCompartilhar)
         .replace('{servicos}', corpoServicos)
 
       setTextoMensagemEditavel(textoFinal)
     } else {
-      let textoPadrao = `â¨ *CatÃ¡logo de ServiÃ§os - ${salao?.nome || 'Nosso SalÃ£o'}* â¨\n\n`
+      let textoPadrao = `✨ *Catálogo de Serviços - ${salao?.nome || 'Nosso Salão'}* ✨\n\n`
 
       if (categoriaCompartilhar !== 'Todos') {
-        textoPadrao += `ð *Categoria: ${categoriaCompartilhar}*\n\n`
+        textoPadrao += `📌 *Categoria: ${categoriaCompartilhar}*\n\n`
       }
 
       textoPadrao += corpoServicos
-      textoPadrao += `ð² Agende seu horÃ¡rio conosco!`
+      textoPadrao += `📲 Agende seu horário conosco!`
 
       setTextoMensagemEditavel(textoPadrao)
     }
@@ -387,7 +387,7 @@ export default function ServicosPage() {
 
     if (deleteError) {
       throw new Error(
-        'NÃ£o foi possÃ­vel atualizar as categorias: ' +
+        'Não foi possível atualizar as categorias: ' +
         deleteError.message
       )
     }
@@ -406,7 +406,7 @@ export default function ServicosPage() {
 
     if (insertError) {
       throw new Error(
-        'O serviÃ§o foi salvo, mas nÃ£o foi possÃ­vel vincular as categorias: ' +
+        'O serviço foi salvo, mas não foi possível vincular as categorias: ' +
         insertError.message
       )
     }
@@ -416,12 +416,12 @@ export default function ServicosPage() {
     setErroSalvar('')
 
     if (!form.nome.trim()) {
-      setErroSalvar('Preencha o nome do serviÃ§o.')
+      setErroSalvar('Preencha o nome do serviço.')
       return
     }
 
     if (!form.preco) {
-      setErroSalvar('Preencha o preÃ§o.')
+      setErroSalvar('Preencha o preço.')
       return
     }
 
@@ -431,7 +431,7 @@ export default function ServicosPage() {
     }
 
     if (!salaoId) {
-      setErroSalvar('SalÃ£o nÃ£o identificado.')
+      setErroSalvar('Salão não identificado.')
       return
     }
 
@@ -451,7 +451,7 @@ export default function ServicosPage() {
         descricao: form.descricao || null,
 
         // Mantemos este campo por compatibilidade com o restante
-        // do sistema. A fonte real das mÃºltiplas categorias Ã©
+        // do sistema. A fonte real das múltiplas categorias é
         // servicos_categorias.
         categoria: categoriaPrincipal,
 
@@ -503,7 +503,7 @@ export default function ServicosPage() {
       }
 
       if (!servicoSalvo?.id) {
-        throw new Error('O serviÃ§o foi salvo, mas nÃ£o foi possÃ­vel identificar o serviÃ§o criado.')
+        throw new Error('O serviço foi salvo, mas não foi possível identificar o serviço criado.')
       }
 
       await sincronizarCategoriasServico(
@@ -522,7 +522,7 @@ export default function ServicosPage() {
   }
 
   async function excluir(id: string) {
-    if (!confirm('Deseja realmente desativar este serviÃ§o?')) return
+    if (!confirm('Deseja realmente desativar este serviço?')) return
 
     const { error } = await supabase
       .from('servicos')
@@ -530,7 +530,7 @@ export default function ServicosPage() {
       .eq('id', id)
 
     if (error) {
-      alert('Erro ao excluir serviÃ§o: ' + error.message)
+      alert('Erro ao excluir serviço: ' + error.message)
       return
     }
 
@@ -593,7 +593,7 @@ export default function ServicosPage() {
     )
 
     if (existe) {
-      alert('JÃ¡ existe uma categoria com esse nome.')
+      alert('Já existe uma categoria com esse nome.')
       return
     }
 
@@ -625,7 +625,7 @@ export default function ServicosPage() {
           c.nome.toLowerCase() === nome.toLowerCase()
       )
     ) {
-      alert('JÃ¡ existe uma categoria com esse nome.')
+      alert('Já existe uma categoria com esse nome.')
       return
     }
 
@@ -639,8 +639,8 @@ export default function ServicosPage() {
       return
     }
 
-    // MantÃ©m o campo legado "categoria" sincronizado para os
-    // serviÃ§os cuja categoria principal era esta.
+    // Mantém o campo legado "categoria" sincronizado para os
+    // serviços cuja categoria principal era esta.
     await supabase
       .from('servicos')
       .update({ categoria: nome })
@@ -659,8 +659,8 @@ export default function ServicosPage() {
 
     if (emUso) {
       alert(
-        'Esta categoria estÃ¡ vinculada a um ou mais serviÃ§os. ' +
-        'Retire a categoria desses serviÃ§os antes de excluÃ­-la.'
+        'Esta categoria está vinculada a um ou mais serviços. ' +
+        'Retire a categoria desses serviços antes de excluí-la.'
       )
       return
     }
@@ -697,7 +697,7 @@ export default function ServicosPage() {
       .eq('id', modalOrcamento.id)
 
     if (error) {
-      alert('Erro ao responder orÃ§amento: ' + error.message)
+      alert('Erro ao responder orçamento: ' + error.message)
       setSalvandoOrcamento(false)
       return
     }
@@ -748,7 +748,7 @@ export default function ServicosPage() {
           </button>
 
           <h1 className="font-bold text-gray-900 text-lg flex-1">
-            CatÃ¡logo de ServiÃ§os
+            Catálogo de Serviços
           </h1>
         </div>
 
@@ -770,14 +770,14 @@ export default function ServicosPage() {
   return (
     <div className="min-h-screen pb-8 bg-[#f8f9fa]">
 
-      {/* CABEÃALHO */}
+      {/* CABEÇALHO */}
       <div className="bg-white px-4 py-4 flex items-center gap-2 shadow-sm">
         <button onClick={() => router.back()}>
           <ArrowLeft size={22} className="text-gray-700" />
         </button>
 
         <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">
-          CatÃ¡logo de ServiÃ§os
+          Catálogo de Serviços
         </h1>
 
         <button
@@ -790,7 +790,7 @@ export default function ServicosPage() {
 
         <button
           onClick={() => setModalCompartilhar(true)}
-          title="Compartilhar CatÃ¡logo"
+          title="Compartilhar Catálogo"
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
         >
           <Share2 size={16} className="text-gray-600" />
@@ -798,7 +798,7 @@ export default function ServicosPage() {
 
         <button
           onClick={() => router.push('/salao/catalogo')}
-          title="Gerar CatÃ¡logo PDF"
+          title="Gerar Catálogo PDF"
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
         >
           <FileText size={16} className="text-gray-600" />
@@ -825,7 +825,7 @@ export default function ServicosPage() {
 
         <button
           onClick={() => abrirModal()}
-          title="Novo serviÃ§o"
+          title="Novo serviço"
           className="w-9 h-9 rounded-full flex items-center justify-center text-white"
           style={{ backgroundColor: cor }}
         >
@@ -838,8 +838,8 @@ export default function ServicosPage() {
         {categorias.length === 0 && (
           <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-2xl">
             <p className="text-sm text-yellow-700">
-              Crie uma categoria antes de adicionar serviÃ§os.
-              Toque no Ã­cone de etiqueta no topo.
+              Crie uma categoria antes de adicionar serviços.
+              Toque no ícone de etiqueta no topo.
             </p>
           </div>
         )}
@@ -868,11 +868,11 @@ export default function ServicosPage() {
           ))}
         </div>
 
-        {/* SERVIÃOS */}
+        {/* SERVIÇOS */}
         {filtrados.length === 0 && categorias.length > 0 ? (
           <div className="text-center py-10 bg-white rounded-2xl">
             <p className="text-gray-400">
-              Nenhum serviÃ§o nesta categoria
+              Nenhum serviço nesta categoria
             </p>
 
             <button
@@ -880,7 +880,7 @@ export default function ServicosPage() {
               className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white"
               style={{ backgroundColor: cor }}
             >
-              + Adicionar serviÃ§o
+              + Adicionar serviço
             </button>
           </div>
         ) : (
@@ -946,7 +946,7 @@ export default function ServicosPage() {
                           className="text-xs px-2 py-0.5 rounded-full text-white"
                           style={{ backgroundColor: cor }}
                         >
-                          PreÃ§o variÃ¡vel
+                          Preço variável
                         </span>
                       )}
                     </div>
@@ -982,7 +982,7 @@ export default function ServicosPage() {
                           className="text-xs px-2 py-0.5 rounded-full text-white"
                           style={{ backgroundColor: cor }}
                         >
-                          {s.sessoes} sessÃµes
+                          {s.sessoes} sessões
                         </span>
                       )}
                     </div>
@@ -1045,8 +1045,8 @@ export default function ServicosPage() {
                       style={{ color: cor }}
                     >
                       {aberto
-                        ? 'Ocultar descriÃ§Ã£o'
-                        : 'Ver descriÃ§Ã£o'}
+                        ? 'Ocultar descrição'
+                        : 'Ver descrição'}
                     </button>
 
                     {aberto && (
@@ -1078,7 +1078,7 @@ export default function ServicosPage() {
 
                 {s.comissao_percentual > 0 && (
                   <p className="text-xs text-gray-400">
-                    ComissÃ£o: {s.comissao_percentual}%
+                    Comissão: {s.comissao_percentual}%
                   </p>
                 )}
 
@@ -1107,7 +1107,7 @@ export default function ServicosPage() {
                   size={20}
                   style={{ color: cor }}
                 />
-                Modelo de Mensagem do SalÃ£o
+                Modelo de Mensagem do Salão
               </h3>
 
               <button
@@ -1121,8 +1121,8 @@ export default function ServicosPage() {
             </div>
 
             <p className="text-xs text-gray-500">
-              Personalize como o salÃ£o gosta de enviar mensagens.
-              VocÃª pode usar as tags:
+              Personalize como o salão gosta de enviar mensagens.
+              Você pode usar as tags:
               {' '}
               <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">
                 {'{nome_salao}'}
@@ -1141,7 +1141,7 @@ export default function ServicosPage() {
               className="w-full border border-gray-200 rounded-xl p-3.5 text-sm outline-none resize-none font-mono"
               rows={8}
               placeholder={
-                'Ex: OlÃ¡! Aqui Ã© do {nome_salao}. Confira nossos serviÃ§os da categoria {categoria}:\n\n{servicos}\nQualquer dÃºvida estamos Ã  disposiÃ§Ã£o!'
+                'Ex: Olá! Aqui é do {nome_salao}. Confira nossos serviços da categoria {categoria}:\n\n{servicos}\nQualquer dúvida estamos à disposição!'
               }
               value={templateCustomizado}
               onChange={e =>
@@ -1182,7 +1182,7 @@ export default function ServicosPage() {
                   size={20}
                   style={{ color: cor }}
                 />
-                Compartilhar CatÃ¡logo
+                Compartilhar Catálogo
               </h3>
 
               <button
@@ -1229,7 +1229,7 @@ export default function ServicosPage() {
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
               >
                 <MessageSquare size={18} />
-                PrÃ©-visualizar e Editar WhatsApp
+                Pré-visualizar e Editar WhatsApp
               </button>
 
               <button
@@ -1306,14 +1306,14 @@ export default function ServicosPage() {
         </div>
       )}
 
-      {/* MODAL ORÃAMENTO */}
+      {/* MODAL ORÇAMENTO */}
       {modalOrcamento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
 
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-lg">
-                Responder orÃ§amento
+                Responder orçamento
               </h3>
 
               <button
@@ -1354,7 +1354,7 @@ export default function ServicosPage() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
-                Valor do orÃ§amento (R$)
+                Valor do orçamento (R$)
               </label>
 
               <input
@@ -1379,7 +1379,7 @@ export default function ServicosPage() {
               <textarea
                 className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
                 rows={3}
-                placeholder="Ex: Com base na foto, ficarÃ¡ R$ 250. Posso atender na quinta Ã s 14h."
+                placeholder="Ex: Com base na foto, ficará R$ 250. Posso atender na quinta às 14h."
                 value={respostaOrcamento.texto}
                 onChange={e =>
                   setRespostaOrcamento(p => ({
@@ -1438,7 +1438,7 @@ export default function ServicosPage() {
             </div>
 
             <p className="text-xs text-gray-500">
-              Um serviÃ§o pode pertencer a vÃ¡rias categorias.
+              Um serviço pode pertencer a várias categorias.
               Por exemplo: <strong>Manicure + Massagem</strong>.
             </p>
 
@@ -1503,7 +1503,7 @@ export default function ServicosPage() {
                           Array.isArray(s.categoria_ids) &&
                           s.categoria_ids.includes(cat.id)
                         ).length}{' '}
-                        serviÃ§os
+                        serviços
                       </span>
                     </div>
                   )}
@@ -1538,7 +1538,7 @@ export default function ServicosPage() {
         </div>
       )}
 
-      {/* MODAL SERVIÃO */}
+      {/* MODAL SERVIÇO */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
@@ -1546,8 +1546,8 @@ export default function ServicosPage() {
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-lg">
                 {editando
-                  ? 'Editar ServiÃ§o'
-                  : 'Novo ServiÃ§o'}
+                  ? 'Editar Serviço'
+                  : 'Novo Serviço'}
               </h3>
 
               <button onClick={() => setModal(false)}>
@@ -1568,7 +1568,7 @@ export default function ServicosPage() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
-                Nome do serviÃ§o *
+                Nome do serviço *
               </label>
 
               <input
@@ -1591,7 +1591,7 @@ export default function ServicosPage() {
               </label>
 
               <p className="text-xs text-gray-400 mb-2">
-                Selecione uma ou mais categorias para este serviÃ§o.
+                Selecione uma ou mais categorias para este serviço.
               </p>
 
               {categorias.length === 0 ? (
@@ -1683,13 +1683,13 @@ export default function ServicosPage() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
-                DescriÃ§Ã£o
+                Descrição
               </label>
 
               <textarea
                 className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
                 rows={3}
-                placeholder="Descreva o serviÃ§o, cuidados, contraindicaÃ§Ãµes..."
+                placeholder="Descreva o serviço, cuidados, contraindicações..."
                 value={form.descricao}
                 onChange={e =>
                   setForm(p => ({
@@ -1702,7 +1702,7 @@ export default function ServicosPage() {
 
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Tipo de preÃ§o
+                Tipo de preço
               </label>
 
               <div className="flex gap-2">
@@ -1727,7 +1727,7 @@ export default function ServicosPage() {
                         }
                   }
                 >
-                  ð° PreÃ§o fixo
+                  💰 Preço fixo
                 </button>
 
                 <button
@@ -1751,7 +1751,7 @@ export default function ServicosPage() {
                         }
                   }
                 >
-                  ð PreÃ§o variÃ¡vel
+                  📊 Preço variável
                 </button>
               </div>
             </div>
@@ -1759,7 +1759,7 @@ export default function ServicosPage() {
             {form.tipo_preco === 'fixo' ? (
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
-                  PreÃ§o (R$) *
+                  Preço (R$) *
                 </label>
 
                 <input
@@ -1801,7 +1801,7 @@ export default function ServicosPage() {
 
                   <div className="flex-1">
                     <label className="text-sm font-medium text-gray-700 mb-1 block">
-                      AtÃ© (R$) opcional
+                      Até (R$) opcional
                     </label>
 
                     <input
@@ -1823,13 +1823,13 @@ export default function ServicosPage() {
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block flex items-center gap-1">
                     <Camera size={14} />
-                    Regras da foto para orÃ§amento
+                    Regras da foto para orçamento
                   </label>
 
                   <textarea
                     className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
                     rows={3}
-                    placeholder="Ex: Tire uma foto com boa iluminaÃ§Ã£o, de costas, com o cabelo solto e para frente."
+                    placeholder="Ex: Tire uma foto com boa iluminação, de costas, com o cabelo solto e para frente."
                     value={form.regras_foto_orcamento}
                     onChange={e =>
                       setForm(p => ({
@@ -1840,7 +1840,7 @@ export default function ServicosPage() {
                   />
 
                   <p className="text-xs text-gray-400 mt-1">
-                    Este texto aparece para a cliente ao solicitar orÃ§amento.
+                    Este texto aparece para a cliente ao solicitar orçamento.
                   </p>
                 </div>
               </>
@@ -1849,7 +1849,7 @@ export default function ServicosPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
-                  DuraÃ§Ã£o (min)
+                  Duração (min)
                 </label>
 
                 <input
@@ -1869,7 +1869,7 @@ export default function ServicosPage() {
 
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
-                  SessÃµes
+                  Sessões
                 </label>
 
                 <input
@@ -1891,7 +1891,7 @@ export default function ServicosPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
-                  ComissÃ£o %
+                  Comissão %
                 </label>
 
                 <input
@@ -1946,13 +1946,4 @@ export default function ServicosPage() {
                 style={{ backgroundColor: cor }}
               >
                 {salvando
-                  ? 'Salvando...'
-                  : 'Salvar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+                  ? 'Salv
