@@ -172,9 +172,6 @@ export default function ServicosPage() {
         .map((id: string) => cats.find((c: any) => c.id === id)?.nome)
         .filter(Boolean)
 
-      // Compatibilidade com serviços antigos:
-      // se por algum motivo não houver relação, usa a categoria
-      // antiga armazenada em servicos.categoria.
       if (categoriaIds.length === 0 && servico.categoria) {
         const categoriaAntiga = cats.find(
           (c: any) => c.nome === servico.categoria
@@ -449,30 +446,21 @@ export default function ServicosPage() {
         salao_id: salaoId,
         nome: form.nome.trim(),
         descricao: form.descricao || null,
-
-        // Mantemos este campo por compatibilidade com o restante
-        // do sistema. A fonte real das múltiplas categorias é
-        // servicos_categorias.
         categoria: categoriaPrincipal,
-
         duracao_minutos: form.duracao_minutos,
         sessoes: form.sessoes,
         preco: parseFloat(form.preco),
-
         preco_minimo:
           form.tipo_preco === 'variavel' && form.preco_minimo
             ? parseFloat(form.preco_minimo)
             : null,
-
         custo_material: parseFloat(form.custo_material || '0'),
         comissao_percentual: parseFloat(form.comissao_percentual || '0'),
         tipo_preco: form.tipo_preco,
-
         regras_foto_orcamento:
           form.tipo_preco === 'variavel'
             ? (form.regras_foto_orcamento || null)
             : null,
-
         criado_por: p.id,
       }
 
@@ -503,7 +491,9 @@ export default function ServicosPage() {
       }
 
       if (!servicoSalvo?.id) {
-        throw new Error('O serviço foi salvo, mas não foi possível identificar o serviço criado.')
+        throw new Error(
+          'O serviço foi salvo, mas não foi possível identificar o serviço criado.'
+        )
       }
 
       await sincronizarCategoriasServico(
@@ -639,8 +629,6 @@ export default function ServicosPage() {
       return
     }
 
-    // Mantém o campo legado "categoria" sincronizado para os
-    // serviços cuja categoria principal era esta.
     await supabase
       .from('servicos')
       .update({ categoria: nome })
@@ -738,7 +726,6 @@ export default function ServicosPage() {
     return obterNomesCategoriasDoServico(s)
       .includes(categoriaFiltro)
   })
-
   if (loading || carregando) {
     return (
       <div className="min-h-screen pb-8 bg-[#f8f9fa]">
@@ -844,7 +831,7 @@ export default function ServicosPage() {
           </div>
         )}
 
-        {/* FILTRO */}
+        {/* FILTRO DE CATEGORIAS */}
         <div className="flex gap-2 overflow-x-auto pb-1">
           {nomesCategorias.map(c => (
             <button
@@ -868,7 +855,7 @@ export default function ServicosPage() {
           ))}
         </div>
 
-        {/* SERVIÇOS */}
+        {/* LISTA DE SERVIÇOS */}
         {filtrados.length === 0 && categorias.length > 0 ? (
           <div className="text-center py-10 bg-white rounded-2xl">
             <p className="text-gray-400">
@@ -900,6 +887,7 @@ export default function ServicosPage() {
                 className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-3"
               >
 
+                {/* FOTOS */}
                 {fotosServico.length > 0 && (
                   <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
                     {fotosServico.map(f => (
@@ -924,6 +912,7 @@ export default function ServicosPage() {
                   </div>
                 )}
 
+                {/* INFORMAÇÕES PRINCIPAIS */}
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
 
@@ -932,6 +921,7 @@ export default function ServicosPage() {
                         {s.nome}
                       </p>
 
+                      {/* TODAS AS CATEGORIAS */}
                       {categoriasServico.map((nome: string) => (
                         <span
                           key={nome}
@@ -972,6 +962,7 @@ export default function ServicosPage() {
 
                       <div className="flex items-center gap-1 text-gray-400">
                         <Clock size={13} />
+
                         <span className="text-xs">
                           {formatarDuracao(s.duracao_minutos)}
                         </span>
@@ -988,6 +979,7 @@ export default function ServicosPage() {
                     </div>
                   </div>
 
+                  {/* AÇÕES */}
                   <div className="flex gap-1.5 ml-2">
 
                     <label className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center cursor-pointer">
@@ -1033,6 +1025,7 @@ export default function ServicosPage() {
                   </div>
                 </div>
 
+                {/* DESCRIÇÃO */}
                 {s.descricao && (
                   <div>
                     <button
@@ -1057,6 +1050,7 @@ export default function ServicosPage() {
                   </div>
                 )}
 
+                {/* REGRAS DA FOTO */}
                 {variavel &&
                   s.regras_foto_orcamento && (
                     <div className="bg-blue-50 rounded-xl px-3 py-2">
@@ -1076,6 +1070,7 @@ export default function ServicosPage() {
                     </div>
                   )}
 
+                {/* COMISSÃO */}
                 {s.comissao_percentual > 0 && (
                   <p className="text-xs text-gray-400">
                     Comissão: {s.comissao_percentual}%
@@ -1096,7 +1091,7 @@ export default function ServicosPage() {
         )}
       </div>
 
-      {/* MODAL TEMPLATE WHATSAPP */}
+      {/* MODAL MODELO DE MENSAGEM */}
       {modalConfigTemplate && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
@@ -1170,7 +1165,6 @@ export default function ServicosPage() {
           </div>
         </div>
       )}
-
       {/* MODAL COMPARTILHAR */}
       {modalCompartilhar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
@@ -1272,7 +1266,9 @@ export default function ServicosPage() {
             </div>
 
             <p className="text-xs text-gray-500">
-              Ajuste o texto livremente abaixo antes de enviar.
+              Ajuste o texto livremente abaixo.
+              Você pode apagar itens, alterar informações
+              ou acrescentar observações antes de enviar.
             </p>
 
             <textarea
@@ -1360,6 +1356,7 @@ export default function ServicosPage() {
               <input
                 className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
                 type="number"
+                step="0.01"
                 placeholder="Ex: 250,00"
                 value={respostaOrcamento.valor}
                 onChange={e =>
@@ -1437,10 +1434,14 @@ export default function ServicosPage() {
               </button>
             </div>
 
-            <p className="text-xs text-gray-500">
-              Um serviço pode pertencer a várias categorias.
-              Por exemplo: <strong>Manicure + Massagem</strong>.
-            </p>
+            <div className="bg-pink-50 border border-pink-100 rounded-xl p-3">
+              <p className="text-xs text-pink-700 leading-relaxed">
+                Um serviço pode pertencer a várias categorias.
+                Por exemplo: <strong>Manicure + Massagem</strong>.
+                Você poderá selecionar quantas categorias quiser
+                ao cadastrar ou editar um serviço.
+              </p>
+            </div>
 
             <div className="flex gap-2">
               <input
@@ -1472,6 +1473,7 @@ export default function ServicosPage() {
                   key={cat.id}
                   className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2"
                 >
+
                   {editandoCategoria?.id === cat.id ? (
                     <input
                       className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none"
@@ -1481,7 +1483,7 @@ export default function ServicosPage() {
                         if (e.key === 'Enter') {
                           editarCategoria(
                             cat,
-                            (e.target as HTMLInputElement).value
+                            e.currentTarget.value
                           )
                         }
                       }}
@@ -1499,10 +1501,12 @@ export default function ServicosPage() {
                       </p>
 
                       <span className="text-[10px] bg-white border border-gray-200 rounded-full px-2 py-0.5 text-gray-400">
-                        {servicos.filter(s =>
-                          Array.isArray(s.categoria_ids) &&
-                          s.categoria_ids.includes(cat.id)
-                        ).length}{' '}
+                        {
+                          servicos.filter(s =>
+                            Array.isArray(s.categoria_ids) &&
+                            s.categoria_ids.includes(cat.id)
+                          ).length
+                        }{' '}
                         serviços
                       </span>
                     </div>
@@ -1533,21 +1537,24 @@ export default function ServicosPage() {
                   </button>
                 </div>
               ))}
+
+              {categorias.length === 0 && (
+                <p className="text-center text-sm text-gray-400 py-6">
+                  Nenhuma categoria cadastrada.
+                </p>
+              )}
             </div>
           </div>
         </div>
       )}
-
-      {/* MODAL SERVIÇO */}
+      {/* MODAL NOVO / EDITAR SERVIÇO */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
 
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-gray-900 text-lg">
-                {editando
-                  ? 'Editar Serviço'
-                  : 'Novo Serviço'}
+                {editando ? 'Editar Serviço' : 'Novo Serviço'}
               </h3>
 
               <button onClick={() => setModal(false)}>
@@ -1566,6 +1573,7 @@ export default function ServicosPage() {
               </div>
             )}
 
+            {/* NOME */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Nome do serviço *
@@ -1573,7 +1581,7 @@ export default function ServicosPage() {
 
               <input
                 className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
-                placeholder="Ex: Corte Feminino"
+                placeholder="Ex: Manicure, Massagem relaxante..."
                 value={form.nome}
                 onChange={e =>
                   setForm(p => ({
@@ -1584,20 +1592,20 @@ export default function ServicosPage() {
               />
             </div>
 
-            {/* MULTICATEGORIA */}
+            {/* CATEGORIAS MÚLTIPLAS */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Categorias *
               </label>
 
-              <p className="text-xs text-gray-400 mb-2">
-                Selecione uma ou mais categorias para este serviço.
+              <p className="text-xs text-gray-400 mb-3">
+                Selecione todas as categorias às quais este serviço pertence.
               </p>
 
               {categorias.length === 0 ? (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                   <p className="text-xs text-yellow-700">
-                    Crie uma categoria primeiro.
+                    Crie uma categoria primeiro usando o botão de categorias.
                   </p>
                 </div>
               ) : (
@@ -1613,7 +1621,7 @@ export default function ServicosPage() {
                         onClick={() =>
                           toggleCategoria(cat.id)
                         }
-                        className="flex items-center gap-2 text-left px-3 py-2.5 rounded-xl border-2 transition-all"
+                        className="flex items-center gap-2 text-left px-3 py-3 rounded-xl border-2 transition-all"
                         style={
                           selecionada
                             ? {
@@ -1659,28 +1667,36 @@ export default function ServicosPage() {
                 </div>
               )}
 
+              {/* RESUMO DAS CATEGORIAS SELECIONADAS */}
               {form.categoria_ids.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {categorias
-                    .filter(c =>
-                      form.categoria_ids.includes(c.id)
-                    )
-                    .map(c => (
-                      <span
-                        key={c.id}
-                        className="text-xs px-2.5 py-1 rounded-full"
-                        style={{
-                          backgroundColor: `${cor}15`,
-                          color: cor
-                        }}
-                      >
-                        {c.nome}
-                      </span>
-                    ))}
+                <div className="mt-3 bg-gray-50 rounded-xl p-3">
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase mb-2">
+                    Categorias selecionadas
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {categorias
+                      .filter(c =>
+                        form.categoria_ids.includes(c.id)
+                      )
+                      .map(c => (
+                        <span
+                          key={c.id}
+                          className="text-xs px-2.5 py-1 rounded-full"
+                          style={{
+                            backgroundColor: `${cor}15`,
+                            color: cor
+                          }}
+                        >
+                          {c.nome}
+                        </span>
+                      ))}
+                  </div>
                 </div>
               )}
             </div>
 
+            {/* DESCRIÇÃO */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Descrição
@@ -1700,6 +1716,7 @@ export default function ServicosPage() {
               />
             </div>
 
+            {/* TIPO DE PREÇO */}
             <div>
               <label className="text-sm font-medium text-gray-700 mb-2 block">
                 Tipo de preço
@@ -1707,6 +1724,7 @@ export default function ServicosPage() {
 
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() =>
                     setForm(p => ({
                       ...p,
@@ -1727,10 +1745,11 @@ export default function ServicosPage() {
                         }
                   }
                 >
-                  💰 Preço fixo
+                  Preço fixo
                 </button>
 
                 <button
+                  type="button"
                   onClick={() =>
                     setForm(p => ({
                       ...p,
@@ -1751,11 +1770,12 @@ export default function ServicosPage() {
                         }
                   }
                 >
-                  📊 Preço variável
+                  Preço variável
                 </button>
               </div>
             </div>
 
+            {/* PREÇO */}
             {form.tipo_preco === 'fixo' ? (
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
@@ -1820,6 +1840,7 @@ export default function ServicosPage() {
                   </div>
                 </div>
 
+                {/* REGRAS DA FOTO */}
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block flex items-center gap-1">
                     <Camera size={14} />
@@ -1834,7 +1855,8 @@ export default function ServicosPage() {
                     onChange={e =>
                       setForm(p => ({
                         ...p,
-                        regras_foto_orcamento: e.target.value
+                        regras_foto_orcamento:
+                          e.target.value
                       }))
                     }
                   />
@@ -1846,6 +1868,7 @@ export default function ServicosPage() {
               </>
             )}
 
+            {/* DURAÇÃO E SESSÕES */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
@@ -1888,6 +1911,7 @@ export default function ServicosPage() {
               </div>
             </div>
 
+            {/* COMISSÃO E CUSTO */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">
@@ -1931,8 +1955,10 @@ export default function ServicosPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 pt-2">
+            {/* BOTÕES */}
+            <div className="flex gap-3 pt-2 pb-2">
               <button
+                type="button"
                 onClick={() => setModal(false)}
                 className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
               >
@@ -1940,10 +1966,19 @@ export default function ServicosPage() {
               </button>
 
               <button
+                type="button"
                 onClick={handleSalvar}
                 disabled={salvando}
                 className="flex-1 py-3 rounded-2xl text-white font-medium"
                 style={{ backgroundColor: cor }}
               >
-                {salvando
-                  ? 'Salv
+                {salvando ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  )
+}
