@@ -5,28 +5,30 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image, Tag, X, Camera, MessageSquare, FileText, Share2, Check, Filter, Settings } from 'lucide-react'
+import {
+  ArrowLeft, Plus, Edit2, Trash2, Clock, DollarSign, Image,
+  Tag, X, Camera, MessageSquare, FileText, Share2, Filter, Settings, Check
+} from 'lucide-react'
 
 export default function ServicosPage() {
   const { profile, loading } = useAuth()
   const router = useRouter()
+
   const [salao, setSalao] = useState<any>(null)
   const [servicos, setServicos] = useState<any[]>([])
   const [fotos, setFotos] = useState<any[]>([])
   const [categorias, setCategorias] = useState<any[]>([])
   const [orcamentos, setOrcamentos] = useState<any[]>([])
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todos')
-  
+
   const [modal, setModal] = useState(false)
   const [modalCategorias, setModalCategorias] = useState(false)
   const [modalCompartilhar, setModalCompartilhar] = useState(false)
-  
-  // Novos estados para Pré-visualização/Edição de Mensagem e Template do Salão
   const [modalMensagemWhats, setModalMensagemWhats] = useState(false)
   const [modalConfigTemplate, setModalConfigTemplate] = useState(false)
+
   const [textoMensagemEditavel, setTextoMensagemEditavel] = useState('')
   const [templateCustomizado, setTemplateCustomizado] = useState('')
-
   const [categoriaCompartilhar, setCategoriaCompartilhar] = useState('Todos')
   const [modalOrcamento, setModalOrcamento] = useState<any>(null)
   const [editando, setEditando] = useState<any>(null)
@@ -35,12 +37,24 @@ export default function ServicosPage() {
   const [editandoCategoria, setEditandoCategoria] = useState<any>(null)
 
   const [form, setForm] = useState({
-    nome: '', descricao: '', categoria: '', duracao_minutos: 60,
-    sessoes: 1, preco: '', preco_minimo: '', custo_material: '',
-    comissao_percentual: '', tipo_preco: 'fixo' as 'fixo' | 'variavel',
+    nome: '',
+    descricao: '',
+    categoria_ids: [] as string[],
+    duracao_minutos: 60,
+    sessoes: 1,
+    preco: '',
+    preco_minimo: '',
+    custo_material: '',
+    comissao_percentual: '',
+    tipo_preco: 'fixo' as 'fixo' | 'variavel',
     regras_foto_orcamento: '',
   })
-  const [respostaOrcamento, setRespostaOrcamento] = useState({ texto: '', valor: '' })
+
+  const [respostaOrcamento, setRespostaOrcamento] = useState({
+    texto: '',
+    valor: ''
+  })
+
   const [salvando, setSalvando] = useState(false)
   const [uploadando, setUploadando] = useState(false)
   const [salvandoOrcamento, setSalvandoOrcamento] = useState(false)
@@ -52,12 +66,16 @@ export default function ServicosPage() {
 
   useEffect(() => {
     if (loading) return
-    if (!profile) { router.push('/login'); return }
-    
+
+    if (!profile) {
+      router.push('/login')
+      return
+    }
+
     const tipoUser = p.tipo || p.cargo || p.role || ''
-    
-    const temPermissao = 
-      ['dono_salao', 'socio', 'admin'].includes(tipoUser) || 
+
+    const temPermissao =
+      ['dono_salao', 'socio', 'admin'].includes(tipoUser) ||
       p.acesso_total === true ||
       (tipoUser === 'funcionario' && (
         p.acesso_total === true ||
@@ -65,35 +83,124 @@ export default function ServicosPage() {
         p.permissoes?.agenda === true
       ))
 
-    if (!temPermissao) { 
-      alert('Você não tem permissão para acessar esta página.')
+    if (!temPermissao) {
+      alert('VocÃª nÃ£o tem permissÃ£o para acessar esta pÃ¡gina.')
       router.push('/salao/dashboard')
-      return 
+      return
     }
+
     if (salaoId) carregarDados(salaoId)
   }, [loading, profile])
 
   async function carregarDados(idSalao: string) {
     setCarregando(true)
-    const [salRes, srvsRes, ftsRes, catsRes, orcsRes] = await Promise.all([
-      supabase.from('saloes').select('*').eq('id', idSalao).single(),
-      supabase.from('servicos').select('*').eq('salao_id', idSalao).eq('ativo', true).order('categoria'),
-      supabase.from('fotos_servicos').select('*').eq('salao_id', idSalao),
-      supabase.from('categorias_servicos').select('*').eq('salao_id', idSalao).order('nome'),
-      supabase.from('solicitacoes_orcamento')
+
+    const [
+      salRes,
+      srvsRes,
+      ftsRes,
+      catsRes,
+      relRes,
+      orcsRes
+    ] = await Promise.all([
+      supabase
+        .from('saloes')
+        .select('*')
+        .eq('id', idSalao)
+        .single(),
+
+      supabase
+        .from('servicos')
+        .select('*')
+        .eq('salao_id', idSalao)
+        .eq('ativo', true)
+        .order('categoria'),
+
+      supabase
+        .from('fotos_servicos')
+        .select('*')
+        .eq('salao_id', idSalao),
+
+      supabase
+        .from('categorias_servicos')
+        .select('*')
+        .eq('salao_id', idSalao)
+        .order('nome'),
+
+      supabase
+        .from('servicos_categorias')
+        .select('id, servico_id, categoria_id')
+        .eq('salao_id', idSalao),
+
+      supabase
+        .from('solicitacoes_orcamento')
         .select('*, servicos(nome), clientes(nome)')
         .eq('salao_id', idSalao)
         .eq('status', 'pendente')
         .order('created_at', { ascending: false }),
     ])
-    
+
+    if (salRes.error) {
+      console.error('Erro ao carregar salÃ£o:', salRes.error)
+    }
+
+    if (srvsRes.error) {
+      console.error('Erro ao carregar serviÃ§os:', srvsRes.error)
+    }
+
+    if (catsRes.error) {
+      console.error('Erro ao carregar categorias:', catsRes.error)
+    }
+
+    if (relRes.error) {
+      console.error('Erro ao carregar relaÃ§Ãµes serviÃ§o/categoria:', relRes.error)
+    }
+
+    const cats = catsRes.data || []
+    const relacoes = relRes.data || []
+
+    const servicosComCategorias = (srvsRes.data || []).map((servico: any) => {
+      const relacoesServico = relacoes.filter(
+        (r: any) => r.servico_id === servico.id
+      )
+
+      let categoriaIds = relacoesServico.map(
+        (r: any) => r.categoria_id
+      )
+
+      let categoriasNomes = categoriaIds
+        .map((id: string) => cats.find((c: any) => c.id === id)?.nome)
+        .filter(Boolean)
+
+      // Compatibilidade com serviÃ§os antigos:
+      // se por algum motivo nÃ£o houver relaÃ§Ã£o, usa a categoria
+      // antiga armazenada em servicos.categoria.
+      if (categoriaIds.length === 0 && servico.categoria) {
+        const categoriaAntiga = cats.find(
+          (c: any) => c.nome === servico.categoria
+        )
+
+        if (categoriaAntiga) {
+          categoriaIds = [categoriaAntiga.id]
+          categoriasNomes = [categoriaAntiga.nome]
+        } else {
+          categoriasNomes = [servico.categoria]
+        }
+      }
+
+      return {
+        ...servico,
+        categoria_ids: categoriaIds,
+        categorias_nomes: categoriasNomes,
+      }
+    })
+
     setSalao(salRes.data)
-    setServicos(srvsRes.data || [])
+    setServicos(servicosComCategorias)
     setFotos(ftsRes.data || [])
-    setCategorias(catsRes.data || [])
+    setCategorias(cats)
     setOrcamentos(orcsRes.data || [])
 
-    // Carregar template salvo do salão se existir na tabela ou no registro do salão
     if (salRes.data?.template_whatsapp_catalogo) {
       setTemplateCustomizado(salRes.data.template_whatsapp_catalogo)
     }
@@ -101,40 +208,78 @@ export default function ServicosPage() {
     setCarregando(false)
   }
 
-  // Prepara o texto padrão com base no template do salão ou padrão do sistema
+  function toggleCategoria(categoriaId: string) {
+    setForm(prev => {
+      const existe = prev.categoria_ids.includes(categoriaId)
+
+      return {
+        ...prev,
+        categoria_ids: existe
+          ? prev.categoria_ids.filter(id => id !== categoriaId)
+          : [...prev.categoria_ids, categoriaId]
+      }
+    })
+  }
+
+  function obterNomesCategoriasDoServico(servico: any) {
+    if (servico.categorias_nomes?.length) {
+      return servico.categorias_nomes
+    }
+
+    if (servico.categoria) {
+      return [servico.categoria]
+    }
+
+    return []
+  }
+
   function prepararTextoWhatsApp() {
     const servicosParaCompartilhar = categoriaCompartilhar === 'Todos'
       ? servicos
-      : servicos.filter(s => s.categoria === categoriaCompartilhar)
+      : servicos.filter(s =>
+          obterNomesCategoriasDoServico(s).includes(categoriaCompartilhar)
+        )
 
     let corpoServicos = ''
+
     servicosParaCompartilhar.forEach(servico => {
-      const preco = servico.tipo_preco === 'variavel' 
-        ? `A partir de R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}` 
+      const preco = servico.tipo_preco === 'variavel'
+        ? `A partir de R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}`
         : `R$ ${Number(servico.preco).toFixed(2).replace('.', ',')}`
-      
-      corpoServicos += `🔹 *${servico.nome}*\n`
-      corpoServicos += `💰 ${preco} | ⏱️ ${formatarDuracao(servico.duracao_minutos)}\n`
-      if (servico.descricao) {
-        corpoServicos += `📝 _${servico.descricao}_\n`
+
+      corpoServicos += `ð¹ *${servico.nome}*\n`
+      corpoServicos += `ð° ${preco} | â±ï¸ ${formatarDuracao(servico.duracao_minutos)}\n`
+
+      const categoriasServico = obterNomesCategoriasDoServico(servico)
+
+      if (categoriasServico.length > 0) {
+        corpoServicos += `ð·ï¸ ${categoriasServico.join(' â¢ ')}\n`
       }
+
+      if (servico.descricao) {
+        corpoServicos += `ð _${servico.descricao}_\n`
+      }
+
       corpoServicos += `\n`
     })
 
     if (templateCustomizado.trim()) {
-      // Se houver template customizado do salão, injetamos os dados onde faz sentido ou usamos o formato dele
       let textoFinal = templateCustomizado
-        .replace('{nome_salao}', salao?.nome || 'Nosso Salão')
+        .replace('{nome_salao}', salao?.nome || 'Nosso SalÃ£o')
         .replace('{categoria}', categoriaCompartilhar)
         .replace('{servicos}', corpoServicos)
+
       setTextoMensagemEditavel(textoFinal)
     } else {
-      let textoPadrao = `✨ *Catálogo de Serviços - ${salao?.nome || 'Nosso Salão'}* ✨\n\n`
+      let textoPadrao = `â¨ *CatÃ¡logo de ServiÃ§os - ${salao?.nome || 'Nosso SalÃ£o'}* â¨\n\n`
+
       if (categoriaCompartilhar !== 'Todos') {
-        textoPadrao += `📌 *Categoria: ${categoriaCompartilhar}*\n\n`
+        textoPadrao += `ð *Categoria: ${categoriaCompartilhar}*\n\n`
       }
+
       textoPadrao += corpoServicos
-      textoPadrao += `📲 Agende seu horário conosco!`
+      textoPadrao += `ð² Agende seu horÃ¡rio conosco!`
+
       setTextoMensagemEditavel(textoPadrao)
     }
 
@@ -142,19 +287,23 @@ export default function ServicosPage() {
     setModalMensagemWhats(true)
   }
 
-  // Dispara o WhatsApp com o texto editado no modal
   function dispararWhatsAppEditado() {
-    const urlWhatsApp = `https://api.whatsapp.com/send?text=${encodeURIComponent(textoMensagemEditavel)}`
+    const urlWhatsApp =
+      `https://api.whatsapp.com/send?text=${encodeURIComponent(textoMensagemEditavel)}`
+
     window.open(urlWhatsApp, '_blank')
     setModalMensagemWhats(false)
   }
 
-  // Salva o modelo de mensagem preferido do salão no banco
   async function salvarTemplateSalao() {
     if (!salaoId) return
-    const { error } = await supabase.from('saloes').update({
-      template_whatsapp_catalogo: templateCustomizado
-    }).eq('id', salaoId)
+
+    const { error } = await supabase
+      .from('saloes')
+      .update({
+        template_whatsapp_catalogo: templateCustomizado
+      })
+      .eq('id', salaoId)
 
     if (error) {
       alert('Erro ao salvar template: ' + error.message)
@@ -168,19 +317,35 @@ export default function ServicosPage() {
     const urlPdf = categoriaCompartilhar === 'Todos'
       ? `/salao/catalogo`
       : `/salao/catalogo?categoria=${encodeURIComponent(categoriaCompartilhar)}`
-    
+
     window.open(urlPdf, '_blank')
     setModalCompartilhar(false)
   }
 
   function abrirModal(s?: any) {
     setErroSalvar('')
+
     if (s) {
+      const ids = Array.isArray(s.categoria_ids)
+        ? s.categoria_ids
+        : []
+
+      let categoriaIds = ids
+
+      if (categoriaIds.length === 0 && s.categoria) {
+        const cat = categorias.find(c => c.nome === s.categoria)
+        if (cat) categoriaIds = [cat.id]
+      }
+
       setEditando(s)
+
       setForm({
-        nome: s.nome, descricao: s.descricao || '', categoria: s.categoria,
-        duracao_minutos: s.duracao_minutos, sessoes: s.sessoes || 1,
-        preco: s.preco.toString(),
+        nome: s.nome || '',
+        descricao: s.descricao || '',
+        categoria_ids: categoriaIds,
+        duracao_minutos: s.duracao_minutos || 60,
+        sessoes: s.sessoes || 1,
+        preco: s.preco?.toString() || '',
         preco_minimo: s.preco_minimo?.toString() || '',
         custo_material: s.custo_material?.toString() || '',
         comissao_percentual: s.comissao_percentual?.toString() || '',
@@ -189,324 +354,816 @@ export default function ServicosPage() {
       })
     } else {
       setEditando(null)
+
       setForm({
-        nome: '', descricao: '', categoria: categorias[0]?.nome || '',
-        duracao_minutos: 60, sessoes: 1, preco: '', preco_minimo: '',
-        custo_material: '', comissao_percentual: '',
-        tipo_preco: 'fixo', regras_foto_orcamento: '',
+        nome: '',
+        descricao: '',
+        categoria_ids: categorias[0]?.id
+          ? [categorias[0].id]
+          : [],
+        duracao_minutos: 60,
+        sessoes: 1,
+        preco: '',
+        preco_minimo: '',
+        custo_material: '',
+        comissao_percentual: '',
+        tipo_preco: 'fixo',
+        regras_foto_orcamento: '',
       })
     }
+
     setModal(true)
+  }
+
+  async function sincronizarCategoriasServico(
+    servicoId: string,
+    categoriaIds: string[]
+  ) {
+    const { error: deleteError } = await supabase
+      .from('servicos_categorias')
+      .delete()
+      .eq('servico_id', servicoId)
+      .eq('salao_id', salaoId)
+
+    if (deleteError) {
+      throw new Error(
+        'NÃ£o foi possÃ­vel atualizar as categorias: ' +
+        deleteError.message
+      )
+    }
+
+    const registros = categoriaIds.map(categoriaId => ({
+      salao_id: salaoId,
+      servico_id: servicoId,
+      categoria_id: categoriaId,
+    }))
+
+    if (registros.length === 0) return
+
+    const { error: insertError } = await supabase
+      .from('servicos_categorias')
+      .insert(registros)
+
+    if (insertError) {
+      throw new Error(
+        'O serviÃ§o foi salvo, mas nÃ£o foi possÃ­vel vincular as categorias: ' +
+        insertError.message
+      )
+    }
   }
 
   async function handleSalvar() {
     setErroSalvar('')
-    if (!form.nome) { setErroSalvar('Preencha o nome do serviço.'); return }
-    if (!form.preco) { setErroSalvar('Preencha o preço.'); return }
-    if (!form.categoria) { setErroSalvar('Selecione uma categoria.'); return }
+
+    if (!form.nome.trim()) {
+      setErroSalvar('Preencha o nome do serviÃ§o.')
+      return
+    }
+
+    if (!form.preco) {
+      setErroSalvar('Preencha o preÃ§o.')
+      return
+    }
+
+    if (form.categoria_ids.length === 0) {
+      setErroSalvar('Selecione pelo menos uma categoria.')
+      return
+    }
+
+    if (!salaoId) {
+      setErroSalvar('SalÃ£o nÃ£o identificado.')
+      return
+    }
 
     setSalvando(true)
-    const dados = {
-      salao_id: salaoId,
-      nome: form.nome, descricao: form.descricao || null,
-      categoria: form.categoria,
-      duracao_minutos: form.duracao_minutos, sessoes: form.sessoes,
-      preco: parseFloat(form.preco),
-      preco_minimo: form.tipo_preco === 'variavel' && form.preco_minimo ? parseFloat(form.preco_minimo) : null,
-      custo_material: parseFloat(form.custo_material || '0'),
-      comissao_percentual: parseFloat(form.comissao_percentual || '0'),
-      tipo_preco: form.tipo_preco,
-      regras_foto_orcamento: form.tipo_preco === 'variavel' ? (form.regras_foto_orcamento || null) : null,
-      criado_por: p.id,
-    }
 
-    let resultado
-    if (editando) {
-      resultado = await supabase.from('servicos').update(dados).eq('id', editando.id).select()
-    } else {
-      resultado = await supabase.from('servicos').insert(dados).select()
-    }
+    try {
+      const categoriasSelecionadas = categorias.filter(c =>
+        form.categoria_ids.includes(c.id)
+      )
 
-    if (resultado.error) { setErroSalvar('Erro: ' + resultado.error.message); setSalvando(false); return }
-    setModal(false); setSalvando(false); carregarDados(salaoId)
+      const categoriaPrincipal =
+        categoriasSelecionadas[0]?.nome || ''
+
+      const dados = {
+        salao_id: salaoId,
+        nome: form.nome.trim(),
+        descricao: form.descricao || null,
+
+        // Mantemos este campo por compatibilidade com o restante
+        // do sistema. A fonte real das mÃºltiplas categorias Ã©
+        // servicos_categorias.
+        categoria: categoriaPrincipal,
+
+        duracao_minutos: form.duracao_minutos,
+        sessoes: form.sessoes,
+        preco: parseFloat(form.preco),
+
+        preco_minimo:
+          form.tipo_preco === 'variavel' && form.preco_minimo
+            ? parseFloat(form.preco_minimo)
+            : null,
+
+        custo_material: parseFloat(form.custo_material || '0'),
+        comissao_percentual: parseFloat(form.comissao_percentual || '0'),
+        tipo_preco: form.tipo_preco,
+
+        regras_foto_orcamento:
+          form.tipo_preco === 'variavel'
+            ? (form.regras_foto_orcamento || null)
+            : null,
+
+        criado_por: p.id,
+      }
+
+      let resultado
+      let servicoSalvo
+
+      if (editando) {
+        resultado = await supabase
+          .from('servicos')
+          .update(dados)
+          .eq('id', editando.id)
+          .select()
+          .single()
+
+        servicoSalvo = resultado.data
+      } else {
+        resultado = await supabase
+          .from('servicos')
+          .insert(dados)
+          .select()
+          .single()
+
+        servicoSalvo = resultado.data
+      }
+
+      if (resultado.error) {
+        throw new Error(resultado.error.message)
+      }
+
+      if (!servicoSalvo?.id) {
+        throw new Error('O serviÃ§o foi salvo, mas nÃ£o foi possÃ­vel identificar o serviÃ§o criado.')
+      }
+
+      await sincronizarCategoriasServico(
+        servicoSalvo.id,
+        form.categoria_ids
+      )
+
+      setModal(false)
+      await carregarDados(salaoId)
+    } catch (error: any) {
+      console.error(error)
+      setErroSalvar('Erro ao salvar: ' + error.message)
+    } finally {
+      setSalvando(false)
+    }
   }
 
   async function excluir(id: string) {
-    await supabase.from('servicos').update({ ativo: false }).eq('id', id)
+    if (!confirm('Deseja realmente desativar este serviÃ§o?')) return
+
+    const { error } = await supabase
+      .from('servicos')
+      .update({ ativo: false })
+      .eq('id', id)
+
+    if (error) {
+      alert('Erro ao excluir serviÃ§o: ' + error.message)
+      return
+    }
+
     carregarDados(salaoId)
   }
 
   async function uploadFoto(servicoId: string, file: File) {
     setUploadando(true)
-    const ext = file.name.split('.').pop()
-    const path = `${salaoId}/${servicoId}/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('fotos-servicos').upload(path, file)
-    if (!error) {
-      const { data: urlData } = supabase.storage.from('fotos-servicos').getPublicUrl(path)
-      await supabase.from('fotos_servicos').insert({
-        salao_id: salaoId, servico_id: servicoId,
-        url: urlData.publicUrl, adicionado_por: p.id
-      })
+
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${salaoId}/${servicoId}/${Date.now()}.${ext}`
+
+      const { error } = await supabase
+        .storage
+        .from('fotos-servicos')
+        .upload(path, file)
+
+      if (error) {
+        alert('Erro ao enviar foto: ' + error.message)
+        return
+      }
+
+      const { data: urlData } = supabase
+        .storage
+        .from('fotos-servicos')
+        .getPublicUrl(path)
+
+      await supabase
+        .from('fotos_servicos')
+        .insert({
+          salao_id: salaoId,
+          servico_id: servicoId,
+          url: urlData.publicUrl,
+          adicionado_por: p.id
+        })
+
       carregarDados(salaoId)
+    } finally {
+      setUploadando(false)
     }
-    setUploadando(false)
   }
 
   async function removerFoto(fotoId: string) {
-    await supabase.from('fotos_servicos').delete().eq('id', fotoId)
+    await supabase
+      .from('fotos_servicos')
+      .delete()
+      .eq('id', fotoId)
+
     carregarDados(salaoId)
   }
 
   async function adicionarCategoria() {
-    if (!novaCategoria) return
-    await supabase.from('categorias_servicos').insert({ salao_id: salaoId, nome: novaCategoria })
-    setNovaCategoria(''); carregarDados(salaoId)
+    const nome = novaCategoria.trim()
+
+    if (!nome) return
+
+    const existe = categorias.some(
+      c => c.nome.toLowerCase() === nome.toLowerCase()
+    )
+
+    if (existe) {
+      alert('JÃ¡ existe uma categoria com esse nome.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('categorias_servicos')
+      .insert({
+        salao_id: salaoId,
+        nome
+      })
+
+    if (error) {
+      alert('Erro ao criar categoria: ' + error.message)
+      return
+    }
+
+    setNovaCategoria('')
+    carregarDados(salaoId)
   }
 
   async function editarCategoria(cat: any, novoNome: string) {
-    if (!novoNome) return
-    await supabase.from('categorias_servicos').update({ nome: novoNome }).eq('id', cat.id)
-    await supabase.from('servicos').update({ categoria: novoNome }).eq('categoria', cat.nome).eq('salao_id', salaoId)
-    setEditandoCategoria(null); carregarDados(salaoId)
+    const nome = novoNome.trim()
+
+    if (!nome) return
+
+    if (
+      categorias.some(
+        c =>
+          c.id !== cat.id &&
+          c.nome.toLowerCase() === nome.toLowerCase()
+      )
+    ) {
+      alert('JÃ¡ existe uma categoria com esse nome.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('categorias_servicos')
+      .update({ nome })
+      .eq('id', cat.id)
+
+    if (error) {
+      alert('Erro ao editar categoria: ' + error.message)
+      return
+    }
+
+    // MantÃ©m o campo legado "categoria" sincronizado para os
+    // serviÃ§os cuja categoria principal era esta.
+    await supabase
+      .from('servicos')
+      .update({ categoria: nome })
+      .eq('categoria', cat.nome)
+      .eq('salao_id', salaoId)
+
+    setEditandoCategoria(null)
+    carregarDados(salaoId)
   }
 
   async function excluirCategoria(cat: any) {
-    const emUso = servicos.some(s => s.categoria === cat.nome)
-    if (emUso) { alert('Esta categoria tem serviços. Mude a categoria deles antes de excluir.'); return }
-    await supabase.from('categorias_servicos').delete().eq('id', cat.id)
+    const emUso = servicos.some(s =>
+      Array.isArray(s.categoria_ids) &&
+      s.categoria_ids.includes(cat.id)
+    )
+
+    if (emUso) {
+      alert(
+        'Esta categoria estÃ¡ vinculada a um ou mais serviÃ§os. ' +
+        'Retire a categoria desses serviÃ§os antes de excluÃ­-la.'
+      )
+      return
+    }
+
+    if (!confirm(`Excluir a categoria "${cat.nome}"?`)) return
+
+    const { error } = await supabase
+      .from('categorias_servicos')
+      .delete()
+      .eq('id', cat.id)
+
+    if (error) {
+      alert('Erro ao excluir categoria: ' + error.message)
+      return
+    }
+
     carregarDados(salaoId)
   }
 
   async function responderOrcamento() {
     if (!modalOrcamento) return
+
     setSalvandoOrcamento(true)
-    await supabase.from('solicitacoes_orcamento').update({
-      status: 'respondido',
-      resposta: respostaOrcamento.texto,
-      valor_resposta: respostaOrcamento.valor ? parseFloat(respostaOrcamento.valor) : null,
-    }).eq('id', modalOrcamento.id)
-    
+
+    const { error } = await supabase
+      .from('solicitacoes_orcamento')
+      .update({
+        status: 'respondido',
+        resposta: respostaOrcamento.texto,
+        valor_resposta: respostaOrcamento.valor
+          ? parseFloat(respostaOrcamento.valor)
+          : null,
+      })
+      .eq('id', modalOrcamento.id)
+
+    if (error) {
+      alert('Erro ao responder orÃ§amento: ' + error.message)
+      setSalvandoOrcamento(false)
+      return
+    }
+
     setSalvandoOrcamento(false)
     setModalOrcamento(null)
-    setRespostaOrcamento({ texto: '', valor: '' })
+    setRespostaOrcamento({
+      texto: '',
+      valor: ''
+    })
+
     carregarDados(salaoId)
   }
 
   function formatarDuracao(minutos: number) {
     if (minutos < 60) return `${minutos} min`
-    const h = Math.floor(minutos / 60), m = minutos % 60
-    if (m === 0) return h === 1 ? '1 hora' : `${h} horas`
+
+    const h = Math.floor(minutos / 60)
+    const m = minutos % 60
+
+    if (m === 0) {
+      return h === 1 ? '1 hora' : `${h} horas`
+    }
+
     return `${h} hora${h > 1 ? 's' : ''} e ${m} minutos`
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
-  const nomesCategorias = ['Todos', ...categorias.map(c => c.nome)]
-  const filtrados = servicos.filter(s => categoriaFiltro === 'Todos' || s.categoria === categoriaFiltro)
 
-  if (loading || carregando) return (
-    <div className="min-h-screen pb-8 bg-[#f8f9fa]">
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Catálogo de Serviços</h1>
+  const nomesCategorias = [
+    'Todos',
+    ...categorias.map(c => c.nome)
+  ]
+
+  const filtrados = servicos.filter(s => {
+    if (categoriaFiltro === 'Todos') return true
+
+    return obterNomesCategoriasDoServico(s)
+      .includes(categoriaFiltro)
+  })
+
+  if (loading || carregando) {
+    return (
+      <div className="min-h-screen pb-8 bg-[#f8f9fa]">
+        <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
+          <button onClick={() => router.back()}>
+            <ArrowLeft size={22} className="text-gray-700" />
+          </button>
+
+          <h1 className="font-bold text-gray-900 text-lg flex-1">
+            CatÃ¡logo de ServiÃ§os
+          </h1>
+        </div>
+
+        <div className="px-4 py-4 flex flex-col gap-3">
+          {[1, 2, 3].map(i => (
+            <div
+              key={i}
+              className="bg-white rounded-2xl p-4 animate-pulse flex flex-col gap-3"
+            >
+              <div className="h-4 bg-gray-100 rounded w-2/3 mb-2" />
+              <div className="h-3 bg-gray-100 rounded w-1/3" />
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="bg-white rounded-2xl p-4 animate-pulse flex flex-col gap-3">
-            <div className="h-4 bg-gray-100 rounded w-2/3 mb-2" />
-            <div className="h-3 bg-gray-100 rounded w-1/3" />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen pb-8 bg-[#f8f9fa]">
+
+      {/* CABEÃALHO */}
       <div className="bg-white px-4 py-4 flex items-center gap-2 shadow-sm">
-        <button onClick={() => router.back()}><ArrowLeft size={22} className="text-gray-700" /></button>
-        <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">Catálogo de Serviços</h1>
-        
-        {/* Botão Configurar Template WhatsApp */}
-        <button onClick={() => setModalConfigTemplate(true)}
+        <button onClick={() => router.back()}>
+          <ArrowLeft size={22} className="text-gray-700" />
+        </button>
+
+        <h1 className="font-bold text-gray-900 text-lg flex-1 truncate">
+          CatÃ¡logo de ServiÃ§os
+        </h1>
+
+        <button
+          onClick={() => setModalConfigTemplate(true)}
           title="Configurar Modelo de Mensagem"
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center transition-colors">
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+        >
           <Settings size={16} className="text-gray-600" />
         </button>
 
-        {/* Botão de Compartilhar (Abre o modal de escolha) */}
-        <button onClick={() => setModalCompartilhar(true)}
-          title="Compartilhar Catálogo / Preços"
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center transition-colors">
+        <button
+          onClick={() => setModalCompartilhar(true)}
+          title="Compartilhar CatÃ¡logo"
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+        >
           <Share2 size={16} className="text-gray-600" />
         </button>
 
-        <button onClick={() => router.push('/salao/catalogo')}
-          title="Gerar Catálogo PDF"
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+        <button
+          onClick={() => router.push('/salao/catalogo')}
+          title="Gerar CatÃ¡logo PDF"
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+        >
           <FileText size={16} className="text-gray-600" />
         </button>
 
         {orcamentos.length > 0 && (
-          <button onClick={() => setModalOrcamento(orcamentos[0])}
+          <button
+            onClick={() => setModalOrcamento(orcamentos[0])}
             className="relative flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-white text-xs font-medium"
-            style={{ backgroundColor: cor }}>
+            style={{ backgroundColor: cor }}
+          >
             <MessageSquare size={13} />
             {orcamentos.length}
           </button>
         )}
-        <button onClick={() => setModalCategorias(true)}
+
+        <button
+          onClick={() => setModalCategorias(true)}
           title="Categorias"
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center">
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
+        >
           <Tag size={16} className="text-gray-600" />
         </button>
-        <button onClick={() => abrirModal()}
-          title="Novo serviço"
+
+        <button
+          onClick={() => abrirModal()}
+          title="Novo serviÃ§o"
           className="w-9 h-9 rounded-full flex items-center justify-center text-white"
-          style={{ backgroundColor: cor }}>
+          style={{ backgroundColor: cor }}
+        >
           <Plus size={18} />
         </button>
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-3">
+
         {categorias.length === 0 && (
-          <div className="card bg-yellow-50 border border-yellow-200 p-3 rounded-2xl">
-            <p className="text-sm text-yellow-700">Crie uma categoria antes de adicionar serviços. Toque no ícone de etiqueta no topo.</p>
+          <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-2xl">
+            <p className="text-sm text-yellow-700">
+              Crie uma categoria antes de adicionar serviÃ§os.
+              Toque no Ã­cone de etiqueta no topo.
+            </p>
           </div>
         )}
 
+        {/* FILTRO */}
         <div className="flex gap-2 overflow-x-auto pb-1">
           {nomesCategorias.map(c => (
-            <button key={c} onClick={() => setCategoriaFiltro(c)}
+            <button
+              key={c}
+              onClick={() => setCategoriaFiltro(c)}
               className="px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all"
-              style={categoriaFiltro === c ? { backgroundColor: cor, color: 'white' } : { backgroundColor: 'white', color: '#6b7280' }}>
+              style={
+                categoriaFiltro === c
+                  ? {
+                      backgroundColor: cor,
+                      color: 'white'
+                    }
+                  : {
+                      backgroundColor: 'white',
+                      color: '#6b7280'
+                    }
+              }
+            >
               {c}
             </button>
           ))}
         </div>
 
+        {/* SERVIÃOS */}
         {filtrados.length === 0 && categorias.length > 0 ? (
-          <div className="card text-center py-10 bg-white rounded-2xl">
-            <p className="text-gray-400">Nenhum serviço nesta categoria</p>
-            <button onClick={() => abrirModal()} className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white" style={{ backgroundColor: cor }}>
-              + Adicionar serviço
+          <div className="text-center py-10 bg-white rounded-2xl">
+            <p className="text-gray-400">
+              Nenhum serviÃ§o nesta categoria
+            </p>
+
+            <button
+              onClick={() => abrirModal()}
+              className="mt-3 px-4 py-2 rounded-full text-sm font-medium text-white"
+              style={{ backgroundColor: cor }}
+            >
+              + Adicionar serviÃ§o
             </button>
           </div>
-        ) : filtrados.map(s => {
-          const fotosServico = fotos.filter(f => f.servico_id === s.id)
-          const aberto = expandido === s.id
-          const variavel = s.tipo_preco === 'variavel'
+        ) : (
+          filtrados.map(s => {
+            const fotosServico = fotos.filter(
+              f => f.servico_id === s.id
+            )
 
-          return (
-            <div key={s.id} className="card bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-3">
-              {fotosServico.length > 0 && (
-                <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
-                  {fotosServico.map(f => (
-                    <div key={f.id} className="relative shrink-0">
-                      <img src={f.url} alt={s.nome} className="w-28 h-28 rounded-2xl object-cover" />
-                      <button onClick={() => removerFoto(f.id)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center">
-                        <X size={12} className="text-white" />
-                      </button>
+            const aberto = expandido === s.id
+            const variavel = s.tipo_preco === 'variavel'
+            const categoriasServico =
+              obterNomesCategoriasDoServico(s)
+
+            return (
+              <div
+                key={s.id}
+                className="bg-white p-4 rounded-2xl border border-gray-100 flex flex-col gap-3"
+              >
+
+                {fotosServico.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
+                    {fotosServico.map(f => (
+                      <div
+                        key={f.id}
+                        className="relative shrink-0"
+                      >
+                        <img
+                          src={f.url}
+                          alt={s.nome}
+                          className="w-28 h-28 rounded-2xl object-cover"
+                        />
+
+                        <button
+                          onClick={() => removerFoto(f.id)}
+                          className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center"
+                        >
+                          <X size={12} className="text-white" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-bold text-gray-900">
+                        {s.nome}
+                      </p>
+
+                      {categoriasServico.map((nome: string) => (
+                        <span
+                          key={nome}
+                          className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"
+                        >
+                          {nome}
+                        </span>
+                      ))}
+
+                      {variavel && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: cor }}
+                        >
+                          PreÃ§o variÃ¡vel
+                        </span>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
 
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-bold text-gray-900">{s.nome}</p>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{s.categoria}</span>
-                    {variavel && (
-                      <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: cor }}>
-                        Preço variável
-                      </span>
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+
+                      <div className="flex items-center gap-1">
+                        <DollarSign
+                          size={14}
+                          style={{ color: cor }}
+                        />
+
+                        <span
+                          className="text-sm font-bold"
+                          style={{ color: cor }}
+                        >
+                          {variavel
+                            ? `A partir de R$ ${Number(s.preco).toFixed(2).replace('.', ',')}`
+                            : `R$ ${Number(s.preco).toFixed(2).replace('.', ',')}`
+                          }
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 text-gray-400">
+                        <Clock size={13} />
+                        <span className="text-xs">
+                          {formatarDuracao(s.duracao_minutos)}
+                        </span>
+                      </div>
+
+                      {s.sessoes > 1 && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full text-white"
+                          style={{ backgroundColor: cor }}
+                        >
+                          {s.sessoes} sessÃµes
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-1.5 ml-2">
+
+                    <label className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center cursor-pointer">
+                      <Image
+                        size={14}
+                        className="text-gray-500"
+                      />
+
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => {
+                          if (e.target.files?.[0]) {
+                            uploadFoto(
+                              s.id,
+                              e.target.files[0]
+                            )
+                          }
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      onClick={() => abrirModal(s)}
+                      className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                    >
+                      <Edit2
+                        size={14}
+                        className="text-gray-500"
+                      />
+                    </button>
+
+                    <button
+                      onClick={() => excluir(s.id)}
+                      className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center"
+                    >
+                      <Trash2
+                        size={14}
+                        className="text-red-400"
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {s.descricao && (
+                  <div>
+                    <button
+                      onClick={() =>
+                        setExpandido(
+                          aberto ? null : s.id
+                        )
+                      }
+                      className="text-sm font-medium"
+                      style={{ color: cor }}
+                    >
+                      {aberto
+                        ? 'Ocultar descriÃ§Ã£o'
+                        : 'Ver descriÃ§Ã£o'}
+                    </button>
+
+                    {aberto && (
+                      <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                        {s.descricao}
+                      </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 mt-2 flex-wrap">
-                    <div className="flex items-center gap-1">
-                      <DollarSign size={14} style={{ color: cor }} />
-                      <span className="text-sm font-bold" style={{ color: cor }}>
-                        {variavel ? `A partir de R$ ${Number(s.preco).toFixed(2).replace('.', ',')}` : `R$ ${Number(s.preco).toFixed(2).replace('.', ',')}`}
-                      </span>
+                )}
+
+                {variavel &&
+                  s.regras_foto_orcamento && (
+                    <div className="bg-blue-50 rounded-xl px-3 py-2">
+                      <p className="text-xs text-blue-600 flex items-start gap-1">
+                        <Camera
+                          size={12}
+                          className="mt-0.5 shrink-0"
+                        />
+
+                        <span>
+                          <span className="font-semibold">
+                            Regras da foto:
+                          </span>{' '}
+                          {s.regras_foto_orcamento}
+                        </span>
+                      </p>
                     </div>
-                    <div className="flex items-center gap-1 text-gray-400">
-                      <Clock size={13} /><span className="text-xs">{formatarDuracao(s.duracao_minutos)}</span>
-                    </div>
-                    {s.sessoes > 1 && (
-                      <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: cor }}>{s.sessoes} sessões</span>
-                    )}
-                  </div>
-                </div>
+                  )}
 
-                <div className="flex gap-1.5 ml-2">
-                  <label className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center cursor-pointer">
-                    <Image size={14} className="text-gray-500" />
-                    <input type="file" accept="image/*" className="hidden"
-                      onChange={e => { if (e.target.files?.[0]) uploadFoto(s.id, e.target.files[0]) }} />
-                  </label>
-                  <button onClick={() => abrirModal(s)} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                    <Edit2 size={14} className="text-gray-500" />
-                  </button>
-                  <button onClick={() => excluir(s.id)} className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
-                    <Trash2 size={14} className="text-red-400" />
-                  </button>
-                </div>
-              </div>
-
-              {s.descricao && (
-                <div>
-                  <button onClick={() => setExpandido(aberto ? null : s.id)} className="text-sm font-medium" style={{ color: cor }}>
-                    {aberto ? 'Ocultar descrição' : 'Ver descrição'}
-                  </button>
-                  {aberto && <p className="text-sm text-gray-500 mt-2 leading-relaxed">{s.descricao}</p>}
-                </div>
-              )}
-
-              {variavel && s.regras_foto_orcamento && (
-                <div className="bg-blue-50 rounded-xl px-3 py-2">
-                  <p className="text-xs text-blue-600 flex items-start gap-1">
-                    <Camera size={12} className="mt-0.5 shrink-0" />
-                    <span><span className="font-semibold">Regras da foto:</span> {s.regras_foto_orcamento}</span>
+                {s.comissao_percentual > 0 && (
+                  <p className="text-xs text-gray-400">
+                    ComissÃ£o: {s.comissao_percentual}%
                   </p>
-                </div>
-              )}
+                )}
 
-              {s.comissao_percentual > 0 && <p className="text-xs text-gray-400">Comissão: {s.comissao_percentual}%</p>}
-              {uploadando && <p className="text-xs text-center" style={{ color: cor }}>Enviando foto...</p>}
-            </div>
-          )
-        })}
+                {uploadando && (
+                  <p
+                    className="text-xs text-center"
+                    style={{ color: cor }}
+                  >
+                    Enviando foto...
+                  </p>
+                )}
+              </div>
+            )
+          })
+        )}
       </div>
 
-      {/* Modal de Configuração de Template do Salão */}
+      {/* MODAL TEMPLATE WHATSAPP */}
       {modalConfigTemplate && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
+
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <Settings size={20} style={{ color: cor }} /> Modelo de Mensagem do Salão
+                <Settings
+                  size={20}
+                  style={{ color: cor }}
+                />
+                Modelo de Mensagem do SalÃ£o
               </h3>
-              <button onClick={() => setModalConfigTemplate(false)}><X size={20} className="text-gray-400" /></button>
+
+              <button
+                onClick={() => setModalConfigTemplate(false)}
+              >
+                <X
+                  size={20}
+                  className="text-gray-400"
+                />
+              </button>
             </div>
-            
+
             <p className="text-xs text-gray-500">
-              Personalize como o salão gosta de enviar mensagens para os clientes. Você pode usar as tags: <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">&#123;nome_salao&#125;</code>, <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">&#123;categoria&#125;</code> e <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">&#123;servicos&#125;</code>.
+              Personalize como o salÃ£o gosta de enviar mensagens.
+              VocÃª pode usar as tags:
+              {' '}
+              <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">
+                {'{nome_salao}'}
+              </code>
+              ,{' '}
+              <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">
+                {'{categoria}'}
+              </code>
+              {' '}e{' '}
+              <code className="bg-gray-100 px-1 py-0.5 rounded text-pink-600">
+                {'{servicos}'}
+              </code>.
             </p>
 
-            <div>
-              <textarea 
-                className="w-full border border-gray-200 rounded-xl p-3.5 text-sm outline-none resize-none font-mono"
-                rows={8}
-                placeholder="Ex: Olá! Aqui é do {nome_salao}. Confira nossos serviços da categoria {categoria}:&#10;&#10;{servicos}&#10;Qualquer dúvida estamos à disposição!"
-                value={templateCustomizado}
-                onChange={e => setTemplateCustomizado(e.target.value)}
-              />
-            </div>
+            <textarea
+              className="w-full border border-gray-200 rounded-xl p-3.5 text-sm outline-none resize-none font-mono"
+              rows={8}
+              placeholder={
+                'Ex: OlÃ¡! Aqui Ã© do {nome_salao}. Confira nossos serviÃ§os da categoria {categoria}:\n\n{servicos}\nQualquer dÃºvida estamos Ã  disposiÃ§Ã£o!'
+              }
+              value={templateCustomizado}
+              onChange={e =>
+                setTemplateCustomizado(e.target.value)
+              }
+            />
 
             <div className="flex gap-3">
-              <button onClick={() => setModalConfigTemplate(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm">Cancelar</button>
-              <button onClick={salvarTemplateSalao} className="flex-1 py-3 rounded-2xl text-white font-medium text-sm shadow-sm" style={{ backgroundColor: cor }}>
+              <button
+                onClick={() =>
+                  setModalConfigTemplate(false)
+                }
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={salvarTemplateSalao}
+                className="flex-1 py-3 rounded-2xl text-white font-medium text-sm shadow-sm"
+                style={{ backgroundColor: cor }}
+              >
                 Salvar Modelo
               </button>
             </div>
@@ -514,153 +1171,366 @@ export default function ServicosPage() {
         </div>
       )}
 
-      {/* Modal de Compartilhamento (Seleção de Categoria e Opção de Abrir WhatsApp com Pré-visualização ou PDF) */}
+      {/* MODAL COMPARTILHAR */}
       {modalCompartilhar && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <Share2 size={20} style={{ color: cor }} /> Compartilhar Catálogo
+                <Share2
+                  size={20}
+                  style={{ color: cor }}
+                />
+                Compartilhar CatÃ¡logo
               </h3>
-              <button onClick={() => setModalCompartilhar(false)}><X size={20} className="text-gray-400" /></button>
+
+              <button
+                onClick={() =>
+                  setModalCompartilhar(false)
+                }
+              >
+                <X
+                  size={20}
+                  className="text-gray-400"
+                />
+              </button>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
-                <Filter size={14} /> Filtrar Categoria para Envio
+                <Filter size={14} />
+                Filtrar Categoria para Envio
               </label>
-              <select 
+
+              <select
                 value={categoriaCompartilhar}
-                onChange={e => setCategoriaCompartilhar(e.target.value)}
+                onChange={e =>
+                  setCategoriaCompartilhar(e.target.value)
+                }
                 className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none bg-gray-50"
               >
-                <option value="Todos">Todas as categorias</option>
-                {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                <option value="Todos">
+                  Todas as categorias
+                </option>
+
+                {categorias.map(c => (
+                  <option key={c.id} value={c.nome}>
+                    {c.nome}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div className="flex flex-col gap-2.5 pt-2">
-              <button 
+
+              <button
                 onClick={prepararTextoWhatsApp}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
               >
-                <MessageSquare size={18} /> Pré-visualizar e Editar WhatsApp
+                <MessageSquare size={18} />
+                PrÃ©-visualizar e Editar WhatsApp
               </button>
 
-              <button 
+              <button
                 onClick={gerarPdfFiltrado}
                 className="w-full text-white font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
                 style={{ backgroundColor: cor }}
               >
-                <FileText size={18} /> Gerar / Visualizar PDF
+                <FileText size={18} />
+                Gerar / Visualizar PDF
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal de Simulação/Edição de Texto do WhatsApp antes do disparo */}
+      {/* MODAL MENSAGEM WHATSAPP */}
       {modalMensagemWhats && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+
             <div className="flex items-center justify-between border-b pb-3">
               <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <MessageSquare size={20} className="text-emerald-600" /> Editar Mensagem do WhatsApp
+                <MessageSquare
+                  size={20}
+                  className="text-emerald-600"
+                />
+                Editar Mensagem do WhatsApp
               </h3>
-              <button onClick={() => setModalMensagemWhats(false)}><X size={20} className="text-gray-400" /></button>
+
+              <button
+                onClick={() =>
+                  setModalMensagemWhats(false)
+                }
+              >
+                <X
+                  size={20}
+                  className="text-gray-400"
+                />
+              </button>
             </div>
 
             <p className="text-xs text-gray-500">
-              Ajuste o texto livremente abaixo (apague itens indesejados, altere preços ou adicione observações) antes de disparar para a cliente.
+              Ajuste o texto livremente abaixo antes de enviar.
             </p>
 
-            <div>
-              <textarea 
-                className="w-full border border-gray-200 rounded-xl p-3.5 text-sm outline-none resize-none font-sans leading-relaxed bg-gray-50"
-                rows={12}
-                value={textoMensagemEditavel}
-                onChange={e => setTextoMensagemEditavel(e.target.value)}
-              />
-            </div>
+            <textarea
+              className="w-full border border-gray-200 rounded-xl p-3.5 text-sm outline-none resize-none font-sans leading-relaxed bg-gray-50"
+              rows={12}
+              value={textoMensagemEditavel}
+              onChange={e =>
+                setTextoMensagemEditavel(e.target.value)
+              }
+            />
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setModalMensagemWhats(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm">Cancelar</button>
-              <button 
+              <button
+                onClick={() =>
+                  setModalMensagemWhats(false)
+                }
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium text-sm"
+              >
+                Cancelar
+              </button>
+
+              <button
                 onClick={dispararWhatsAppEditado}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-2xl flex items-center justify-center gap-2 transition-colors text-sm shadow-sm"
               >
-                <Share2 size={16} /> Disparar no WhatsApp
+                <Share2 size={16} />
+                Disparar no WhatsApp
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* MODAL ORÃAMENTO */}
       {modalOrcamento && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4">
+
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">Responder orçamento</h3>
-              <button onClick={() => setModalOrcamento(null)}><X size={20} className="text-gray-400" /></button>
+              <h3 className="font-bold text-gray-900 text-lg">
+                Responder orÃ§amento
+              </h3>
+
+              <button
+                onClick={() =>
+                  setModalOrcamento(null)
+                }
+              >
+                <X
+                  size={20}
+                  className="text-gray-400"
+                />
+              </button>
             </div>
+
             <div className="bg-gray-50 rounded-xl p-3">
-              <p className="text-sm font-semibold text-gray-800">{modalOrcamento.clientes?.nome}</p>
-              <p className="text-xs text-gray-500">{modalOrcamento.servicos?.nome}</p>
+              <p className="text-sm font-semibold text-gray-800">
+                {modalOrcamento.clientes?.nome}
+              </p>
+
+              <p className="text-xs text-gray-500">
+                {modalOrcamento.servicos?.nome}
+              </p>
+
               {modalOrcamento.foto_url && (
-                <img src={modalOrcamento.foto_url} alt="Foto" className="w-full h-48 object-cover rounded-xl mt-2" />
+                <img
+                  src={modalOrcamento.foto_url}
+                  alt="Foto"
+                  className="w-full h-48 object-cover rounded-xl mt-2"
+                />
               )}
+
               {modalOrcamento.observacoes && (
-                <p className="text-xs text-gray-500 mt-2 italic">"{modalOrcamento.observacoes}"</p>
+                <p className="text-xs text-gray-500 mt-2 italic">
+                  "{modalOrcamento.observacoes}"
+                </p>
               )}
             </div>
+
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Valor do orçamento (R$)</label>
-              <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 250,00"
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Valor do orÃ§amento (R$)
+              </label>
+
+              <input
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                type="number"
+                placeholder="Ex: 250,00"
                 value={respostaOrcamento.valor}
-                onChange={e => setRespostaOrcamento(p => ({ ...p, valor: e.target.value }))} />
+                onChange={e =>
+                  setRespostaOrcamento(p => ({
+                    ...p,
+                    valor: e.target.value
+                  }))
+                }
+              />
             </div>
+
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Mensagem para a cliente</label>
-              <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
-                placeholder="Ex: Com base na foto, ficará R$ 250. Posso atender na quinta às 14h."
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Mensagem para a cliente
+              </label>
+
+              <textarea
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
+                rows={3}
+                placeholder="Ex: Com base na foto, ficarÃ¡ R$ 250. Posso atender na quinta Ã s 14h."
                 value={respostaOrcamento.texto}
-                onChange={e => setRespostaOrcamento(p => ({ ...p, texto: e.target.value }))} />
+                onChange={e =>
+                  setRespostaOrcamento(p => ({
+                    ...p,
+                    texto: e.target.value
+                  }))
+                }
+              />
             </div>
+
             <div className="flex gap-3">
-              <button onClick={() => setModalOrcamento(null)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={responderOrcamento} disabled={salvandoOrcamento}
-                className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>
-                {salvandoOrcamento ? 'Enviando...' : 'Enviar resposta'}
+              <button
+                onClick={() =>
+                  setModalOrcamento(null)
+                }
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={responderOrcamento}
+                disabled={salvandoOrcamento}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
+                style={{ backgroundColor: cor }}
+              >
+                {salvandoOrcamento
+                  ? 'Enviando...'
+                  : 'Enviar resposta'}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* MODAL CATEGORIAS */}
       {modalCategorias && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto">
+
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">Categorias</h3>
-              <button onClick={() => setModalCategorias(false)}><X size={20} className="text-gray-400" /></button>
+              <h3 className="font-bold text-gray-900 text-lg">
+                Categorias
+              </h3>
+
+              <button
+                onClick={() =>
+                  setModalCategorias(false)
+                }
+              >
+                <X
+                  size={20}
+                  className="text-gray-400"
+                />
+              </button>
             </div>
+
+            <p className="text-xs text-gray-500">
+              Um serviÃ§o pode pertencer a vÃ¡rias categorias.
+              Por exemplo: <strong>Manicure + Massagem</strong>.
+            </p>
+
             <div className="flex gap-2">
-              <input className="flex-1 border border-gray-200 rounded-xl px-3.5 py-2 text-sm outline-none" placeholder="Nova categoria" value={novaCategoria} onChange={e => setNovaCategoria(e.target.value)} />
-              <button onClick={adicionarCategoria} className="px-4 rounded-xl text-white font-medium" style={{ backgroundColor: cor }}><Plus size={18} /></button>
+              <input
+                className="flex-1 border border-gray-200 rounded-xl px-3.5 py-2 text-sm outline-none"
+                placeholder="Nova categoria"
+                value={novaCategoria}
+                onChange={e =>
+                  setNovaCategoria(e.target.value)
+                }
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    adicionarCategoria()
+                  }
+                }}
+              />
+
+              <button
+                onClick={adicionarCategoria}
+                className="px-4 rounded-xl text-white font-medium"
+                style={{ backgroundColor: cor }}
+              >
+                <Plus size={18} />
+              </button>
             </div>
+
             <div className="flex flex-col gap-2">
               {categorias.map(cat => (
-                <div key={cat.id} className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
+                <div
+                  key={cat.id}
+                  className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2"
+                >
                   {editandoCategoria?.id === cat.id ? (
-                    <input className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none"
-                      defaultValue={cat.nome} autoFocus
-                      onKeyDown={e => { if (e.key === 'Enter') editarCategoria(cat, (e.target as HTMLInputElement).value) }}
-                      onBlur={e => editarCategoria(cat, e.target.value)} />
+                    <input
+                      className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-sm outline-none"
+                      defaultValue={cat.nome}
+                      autoFocus
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          editarCategoria(
+                            cat,
+                            (e.target as HTMLInputElement).value
+                          )
+                        }
+                      }}
+                      onBlur={e =>
+                        editarCategoria(
+                          cat,
+                          e.target.value
+                        )
+                      }
+                    />
                   ) : (
-                    <p className="flex-1 text-sm text-gray-700">{cat.nome}</p>
+                    <div className="flex-1 flex items-center gap-2">
+                      <p className="text-sm text-gray-700">
+                        {cat.nome}
+                      </p>
+
+                      <span className="text-[10px] bg-white border border-gray-200 rounded-full px-2 py-0.5 text-gray-400">
+                        {servicos.filter(s =>
+                          Array.isArray(s.categoria_ids) &&
+                          s.categoria_ids.includes(cat.id)
+                        ).length}{' '}
+                        serviÃ§os
+                      </span>
+                    </div>
                   )}
-                  <button onClick={() => setEditandoCategoria(cat)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"><Edit2 size={12} className="text-gray-500" /></button>
-                  <button onClick={() => excluirCategoria(cat)} className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center"><Trash2 size={12} className="text-red-400" /></button>
+
+                  <button
+                    onClick={() =>
+                      setEditandoCategoria(cat)
+                    }
+                    className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center"
+                  >
+                    <Edit2
+                      size={12}
+                      className="text-gray-500"
+                    />
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      excluirCategoria(cat)
+                    }
+                    className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center"
+                  >
+                    <Trash2
+                      size={12}
+                      className="text-red-400"
+                    />
+                  </button>
                 </div>
               ))}
             </div>
@@ -668,124 +1538,416 @@ export default function ServicosPage() {
         </div>
       )}
 
+      {/* MODAL SERVIÃO */}
       {modal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-            <h3 className="font-bold text-gray-900 text-lg">{editando ? 'Editar Serviço' : 'Novo Serviço'}</h3>
+
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-gray-900 text-lg">
+                {editando
+                  ? 'Editar ServiÃ§o'
+                  : 'Novo ServiÃ§o'}
+              </h3>
+
+              <button onClick={() => setModal(false)}>
+                <X
+                  size={20}
+                  className="text-gray-400"
+                />
+              </button>
+            </div>
 
             {erroSalvar && (
               <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                <p className="text-red-600 text-sm">{erroSalvar}</p>
+                <p className="text-red-600 text-sm">
+                  {erroSalvar}
+                </p>
               </div>
             )}
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Nome do serviço *</label>
-              <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" placeholder="Ex: Corte Feminino"
-                value={form.nome} onChange={e => setForm(p => ({ ...p, nome: e.target.value }))} />
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Nome do serviÃ§o *
+              </label>
+
+              <input
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                placeholder="Ex: Corte Feminino"
+                value={form.nome}
+                onChange={e =>
+                  setForm(p => ({
+                    ...p,
+                    nome: e.target.value
+                  }))
+                }
+              />
             </div>
 
+            {/* MULTICATEGORIA */}
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Categoria</label>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Categorias *
+              </label>
+
+              <p className="text-xs text-gray-400 mb-2">
+                Selecione uma ou mais categorias para este serviÃ§o.
+              </p>
+
               {categorias.length === 0 ? (
-                <p className="text-xs text-red-500">Crie uma categoria primeiro.</p>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                  <p className="text-xs text-yellow-700">
+                    Crie uma categoria primeiro.
+                  </p>
+                </div>
               ) : (
-                <select className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none bg-white" value={form.categoria} onChange={e => setForm(p => ({ ...p, categoria: e.target.value }))}>
-                  {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  {categorias.map(cat => {
+                    const selecionada =
+                      form.categoria_ids.includes(cat.id)
+
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() =>
+                          toggleCategoria(cat.id)
+                        }
+                        className="flex items-center gap-2 text-left px-3 py-2.5 rounded-xl border-2 transition-all"
+                        style={
+                          selecionada
+                            ? {
+                                backgroundColor: `${cor}12`,
+                                borderColor: cor,
+                                color: cor
+                              }
+                            : {
+                                backgroundColor: 'white',
+                                borderColor: '#e5e7eb',
+                                color: '#6b7280'
+                              }
+                        }
+                      >
+                        <span
+                          className="w-5 h-5 rounded-full border flex items-center justify-center shrink-0"
+                          style={
+                            selecionada
+                              ? {
+                                  backgroundColor: cor,
+                                  borderColor: cor
+                                }
+                              : {
+                                  backgroundColor: 'white',
+                                  borderColor: '#d1d5db'
+                                }
+                          }
+                        >
+                          {selecionada && (
+                            <Check
+                              size={13}
+                              className="text-white"
+                            />
+                          )}
+                        </span>
+
+                        <span className="text-sm font-medium truncate">
+                          {cat.nome}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {form.categoria_ids.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {categorias
+                    .filter(c =>
+                      form.categoria_ids.includes(c.id)
+                    )
+                    .map(c => (
+                      <span
+                        key={c.id}
+                        className="text-xs px-2.5 py-1 rounded-full"
+                        style={{
+                          backgroundColor: `${cor}15`,
+                          color: cor
+                        }}
+                      >
+                        {c.nome}
+                      </span>
+                    ))}
+                </div>
               )}
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Descrição</label>
-              <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
-                placeholder="Descreva o serviço, cuidados, contraindicações..."
-                value={form.descricao} onChange={e => setForm(p => ({ ...p, descricao: e.target.value }))} />
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                DescriÃ§Ã£o
+              </label>
+
+              <textarea
+                className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
+                rows={3}
+                placeholder="Descreva o serviÃ§o, cuidados, contraindicaÃ§Ãµes..."
+                value={form.descricao}
+                onChange={e =>
+                  setForm(p => ({
+                    ...p,
+                    descricao: e.target.value
+                  }))
+                }
+              />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">Tipo de preço</label>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                Tipo de preÃ§o
+              </label>
+
               <div className="flex gap-2">
-                <button onClick={() => setForm(p => ({ ...p, tipo_preco: 'fixo' }))}
+                <button
+                  onClick={() =>
+                    setForm(p => ({
+                      ...p,
+                      tipo_preco: 'fixo'
+                    }))
+                  }
                   className="flex-1 py-3 rounded-2xl text-sm font-semibold border-2 transition-all"
-                  style={form.tipo_preco === 'fixo'
-                    ? { backgroundColor: cor, color: 'white', borderColor: cor }
-                    : { borderColor: '#e5e7eb', color: '#6b7280' }}>
-                  💰 Preço fixo
+                  style={
+                    form.tipo_preco === 'fixo'
+                      ? {
+                          backgroundColor: cor,
+                          color: 'white',
+                          borderColor: cor
+                        }
+                      : {
+                          borderColor: '#e5e7eb',
+                          color: '#6b7280'
+                        }
+                  }
+                >
+                  ð° PreÃ§o fixo
                 </button>
-                <button onClick={() => setForm(p => ({ ...p, tipo_preco: 'variavel' }))}
+
+                <button
+                  onClick={() =>
+                    setForm(p => ({
+                      ...p,
+                      tipo_preco: 'variavel'
+                    }))
+                  }
                   className="flex-1 py-3 rounded-2xl text-sm font-semibold border-2 transition-all"
-                  style={form.tipo_preco === 'variavel'
-                    ? { backgroundColor: cor, color: 'white', borderColor: cor }
-                    : { borderColor: '#e5e7eb', color: '#6b7280' }}>
-                  📊 Preço variável
+                  style={
+                    form.tipo_preco === 'variavel'
+                      ? {
+                          backgroundColor: cor,
+                          color: 'white',
+                          borderColor: cor
+                        }
+                      : {
+                          borderColor: '#e5e7eb',
+                          color: '#6b7280'
+                        }
+                  }
+                >
+                  ð PreÃ§o variÃ¡vel
                 </button>
               </div>
             </div>
 
             {form.tipo_preco === 'fixo' ? (
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Preço (R$) *</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0,00"
-                  value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} />
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  PreÃ§o (R$) *
+                </label>
+
+                <input
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={form.preco}
+                  onChange={e =>
+                    setForm(p => ({
+                      ...p,
+                      preco: e.target.value
+                    }))
+                  }
+                />
               </div>
             ) : (
               <>
                 <div className="flex gap-3">
                   <div className="flex-1">
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">A partir de (R$) *</label>
-                    <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 150,00"
-                      value={form.preco} onChange={e => setForm(p => ({ ...p, preco: e.target.value }))} />
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">
+                      A partir de (R$) *
+                    </label>
+
+                    <input
+                      className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                      type="number"
+                      step="0.01"
+                      placeholder="Ex: 150,00"
+                      value={form.preco}
+                      onChange={e =>
+                        setForm(p => ({
+                          ...p,
+                          preco: e.target.value
+                        }))
+                      }
+                    />
                   </div>
+
                   <div className="flex-1">
-                    <label className="text-sm font-medium text-gray-700 mb-1 block">Até (R$) opcional</label>
-                    <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="Ex: 400,00"
-                      value={form.preco_minimo} onChange={e => setForm(p => ({ ...p, preco_minimo: e.target.value }))} />
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">
+                      AtÃ© (R$) opcional
+                    </label>
+
+                    <input
+                      className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                      type="number"
+                      step="0.01"
+                      placeholder="Ex: 400,00"
+                      value={form.preco_minimo}
+                      onChange={e =>
+                        setForm(p => ({
+                          ...p,
+                          preco_minimo: e.target.value
+                        }))
+                      }
+                    />
                   </div>
                 </div>
+
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block flex items-center gap-1">
-                    <Camera size={14} /> Regras da foto para orçamento
+                    <Camera size={14} />
+                    Regras da foto para orÃ§amento
                   </label>
-                  <textarea className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none" rows={3}
-                    placeholder="Ex: Tire uma foto com boa iluminação, de costas, com o cabelo solto e para frente."
+
+                  <textarea
+                    className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none resize-none"
+                    rows={3}
+                    placeholder="Ex: Tire uma foto com boa iluminaÃ§Ã£o, de costas, com o cabelo solto e para frente."
                     value={form.regras_foto_orcamento}
-                    onChange={e => setForm(p => ({ ...p, regras_foto_orcamento: e.target.value }))} />
-                  <p className="text-xs text-gray-400 mt-1">Este texto aparece para a cliente ao solicitar orçamento.</p>
+                    onChange={e =>
+                      setForm(p => ({
+                        ...p,
+                        regras_foto_orcamento: e.target.value
+                      }))
+                    }
+                  />
+
+                  <p className="text-xs text-gray-400 mt-1">
+                    Este texto aparece para a cliente ao solicitar orÃ§amento.
+                  </p>
                 </div>
               </>
             )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Duração (min)</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number"
-                  value={form.duracao_minutos} onChange={e => setForm(p => ({ ...p, duracao_minutos: parseInt(e.target.value) }))} />
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  DuraÃ§Ã£o (min)
+                </label>
+
+                <input
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                  type="number"
+                  min="1"
+                  value={form.duracao_minutos}
+                  onChange={e =>
+                    setForm(p => ({
+                      ...p,
+                      duracao_minutos:
+                        parseInt(e.target.value) || 0
+                    }))
+                  }
+                />
               </div>
+
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Sessões</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" min="1"
-                  value={form.sessoes} onChange={e => setForm(p => ({ ...p, sessoes: parseInt(e.target.value) }))} />
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  SessÃµes
+                </label>
+
+                <input
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                  type="number"
+                  min="1"
+                  value={form.sessoes}
+                  onChange={e =>
+                    setForm(p => ({
+                      ...p,
+                      sessoes:
+                        parseInt(e.target.value) || 1
+                    }))
+                  }
+                />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Comissão %</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0"
-                  value={form.comissao_percentual} onChange={e => setForm(p => ({ ...p, comissao_percentual: e.target.value }))} />
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  ComissÃ£o %
+                </label>
+
+                <input
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                  type="number"
+                  step="0.01"
+                  placeholder="0"
+                  value={form.comissao_percentual}
+                  onChange={e =>
+                    setForm(p => ({
+                      ...p,
+                      comissao_percentual:
+                        e.target.value
+                    }))
+                  }
+                />
               </div>
+
               <div>
-                <label className="text-sm font-medium text-gray-700 mb-1 block">Custo material (R$)</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none" type="number" placeholder="0,00"
-                  value={form.custo_material} onChange={e => setForm(p => ({ ...p, custo_material: e.target.value }))} />
+                <label className="text-sm font-medium text-gray-700 mb-1 block">
+                  Custo material (R$)
+                </label>
+
+                <input
+                  className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm outline-none"
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={form.custo_material}
+                  onChange={e =>
+                    setForm(p => ({
+                      ...p,
+                      custo_material: e.target.value
+                    }))
+                  }
+                />
               </div>
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setModal(false)} className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
-              <button onClick={handleSalvar} disabled={salvando} className="flex-1 py-3 rounded-2xl text-white font-medium" style={{ backgroundColor: cor }}>
-                {salvando ? 'Salvando...' : 'Salvar'}
+              <button
+                onClick={() => setModal(false)}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={handleSalvar}
+                disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-medium"
+                style={{ backgroundColor: cor }}
+              >
+                {salvando
+                  ? 'Salvando...'
+                  : 'Salvar'}
               </button>
             </div>
           </div>
