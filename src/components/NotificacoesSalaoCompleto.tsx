@@ -50,6 +50,7 @@ export default function NotificacoesDonoPage() {
   const [confirmacoes, setConfirmacoes] = useState<any[]>([])
   const [notificacoes, setNotificacoes] = useState<any[]>([])
   const [notificacoesExcluidas, setNotificacoesExcluidas] = useState<any[]>([])
+
   const [modalSugestao, setModalSugestao] = useState<any>(null)
   const [modalConfirmar, setModalConfirmar] = useState<any>(null)
 
@@ -349,6 +350,7 @@ export default function NotificacoesDonoPage() {
     //
     // Portanto, se passar 1 dia, 1 semana ou mais,
     // ele continuará aparecendo até ser tratado.
+
     const { data: ags } = await supabase
       .from('agendamentos')
       .select(
@@ -635,10 +637,12 @@ export default function NotificacoesDonoPage() {
       }
     })
   }
+
   // ─── CONFIRMAR ATENDIMENTO ──────────────────────────────────────────────
 
   async function abrirModalConfirmar(agendamento: any) {
     setModalConfirmar(agendamento)
+
     setServicoRealizado(
       agendamento.servicos?.nome ||
       agendamento.servico_nome ||
@@ -660,9 +664,7 @@ export default function NotificacoesDonoPage() {
           .insert({
             agendamento_id: agendamento.id,
             salao_id: profile.salao_id,
-            confirmado_por: profile.id,
-            confirmado_em:
-              new Date().toISOString()
+            confirmado_por: profile.id
           })
 
       if (erroConfirmacao) {
@@ -903,16 +905,10 @@ export default function NotificacoesDonoPage() {
     const dataRegistro =
       new Date().toISOString()
 
-    // ────────────────────────────────────────────────────────────────────
     // Cada serviço do agendamento possui sua própria quantidade de
     // sessões equivalentes.
     //
-    // Exemplo:
-    // Manicure = 1 sessão
-    // Massagem = 2 sessões
-    //
     // O desconto precisa considerar TODOS os serviços agendados.
-    // ────────────────────────────────────────────────────────────────────
 
     for (const cobertura of coberturasAtuais) {
       let quantidadeRestante =
@@ -926,139 +922,145 @@ export default function NotificacoesDonoPage() {
       ) {
         continue
       }
-
-      // Primeiro tenta usar o pacote escolhido para aquele serviço.
-      let pacoteSelecionado =
-        cobertura.clientePacoteIdSelecionado
-          ? pacotes.find(
-              (p: any) =>
-                p.id ===
-                cobertura.clientePacoteIdSelecionado
-            )
-          : null
-
-      // Se não houver pacote selecionado,
-      // usa o primeiro pacote compatível/disponível.
-      if (
-        !pacoteSelecionado
-      ) {
-        pacoteSelecionado =
-          pacotes.find(
-            (p: any) =>
-              Number(
-                p.sessoes_restantes || 0
-              ) >=
-              quantidadeRestante
-          ) ||
-          pacotes.find(
-            (p: any) =>
-              Number(
-                p.sessoes_restantes || 0
-              ) > 0
-          )
-      }
-
-      while (
-        quantidadeRestante > 0 &&
-        pacoteSelecionado
-      ) {
-        const restantesAntes =
-          Number(
-            pacoteSelecionado.sessoes_restantes ||
-              0
-          )
-
         if (
-          restantesAntes <= 0
+          quantidadeRestante <= 0
         ) {
-          pacoteSelecionado =
-            pacotes.find(
-              (p: any) =>
-                Number(
-                  p.sessoes_restantes ||
-                    0
-                ) > 0 &&
-                p.id !==
-                  pacoteSelecionado.id
-            ) || null
-
           continue
         }
 
-        const desconto = Math.min(
-          quantidadeRestante,
-          restantesAntes
-        )
+        // Primeiro tenta usar o pacote escolhido para aquele serviço.
+        let pacoteSelecionado =
+          cobertura.clientePacoteIdSelecionado
+            ? pacotes.find(
+                (p: any) =>
+                  p.id ===
+                  cobertura.clientePacoteIdSelecionado
+              )
+            : null
 
-        const restantesDepois =
-          restantesAntes -
-          desconto
-
-        let historico =
-          Array.isArray(
-            pacoteSelecionado.historico_sessoes
-          )
-            ? [
-                ...pacoteSelecionado.historico_sessoes
-              ]
-            : []
-
-        historico.push({
-          tipo: 'nao_comparecimento',
-          data: dataRegistro,
-          quantidade: desconto,
-          servico:
-            cobertura.servicoNome,
-          sessoes_equivalentes:
-            cobertura.sessoesEquivalentes,
-          justificativa:
-            justificativa ||
-            'Não comparecimento sem aviso prévio.',
-          agendamento_id:
-            agendamento.id
-        })
-
-        const { error: erroUpdate } =
-          await supabase
-            .from(
-              'pacotes_clientes_resumo'
-            )
-            .update({
-              sessoes_restantes:
-                restantesDepois,
-              status:
-                restantesDepois <= 0
-                  ? 'concluido'
-                  : 'ativo',
-              historico_sessoes:
-                historico
-            })
-            .eq(
-              'id',
-              pacoteSelecionado.id
-            )
-
-        if (erroUpdate) {
-          throw erroUpdate
-        }
-
-        pacoteSelecionado.sessoes_restantes =
-          restantesDepois
-
-        quantidadeRestante -=
-          desconto
-
+        // Se não houver pacote selecionado,
+        // usa o primeiro pacote compatível/disponível.
         if (
-          quantidadeRestante > 0
+          !pacoteSelecionado
         ) {
           pacoteSelecionado =
             pacotes.find(
               (p: any) =>
                 Number(
-                  p.sessoes_restantes ||
-                    0
+                  p.sessoes_restantes || 0
+                ) >=
+                quantidadeRestante
+            ) ||
+            pacotes.find(
+              (p: any) =>
+                Number(
+                  p.sessoes_restantes || 0
                 ) > 0
-            ) || null
+            )
+        }
+
+        while (
+          quantidadeRestante > 0 &&
+          pacoteSelecionado
+        ) {
+          const restantesAntes =
+            Number(
+              pacoteSelecionado.sessoes_restantes ||
+                0
+            )
+
+          if (
+            restantesAntes <= 0
+          ) {
+            pacoteSelecionado =
+              pacotes.find(
+                (p: any) =>
+                  Number(
+                    p.sessoes_restantes ||
+                      0
+                  ) > 0 &&
+                  p.id !==
+                    pacoteSelecionado.id
+              ) || null
+
+            continue
+          }
+
+          const desconto = Math.min(
+            quantidadeRestante,
+            restantesAntes
+          )
+
+          const restantesDepois =
+            restantesAntes -
+            desconto
+
+          let historico =
+            Array.isArray(
+              pacoteSelecionado.historico_sessoes
+            )
+              ? [
+                  ...pacoteSelecionado.historico_sessoes
+                ]
+              : []
+
+          historico.push({
+            tipo: 'nao_comparecimento',
+            data: dataRegistro,
+            quantidade: desconto,
+            servico:
+              cobertura.servicoNome,
+            sessoes_equivalentes:
+              cobertura.sessoesEquivalentes,
+            justificativa:
+              justificativa ||
+              'Não comparecimento sem aviso prévio.',
+            agendamento_id:
+              agendamento.id
+          })
+
+          const { error: erroUpdate } =
+            await supabase
+              .from(
+                'pacotes_clientes_resumo'
+              )
+              .update({
+                sessoes_restantes:
+                  restantesDepois,
+                status:
+                  restantesDepois <= 0
+                    ? 'concluido'
+                    : 'ativo',
+                historico_sessoes:
+                  historico
+              })
+              .eq(
+                'id',
+                pacoteSelecionado.id
+              )
+
+          if (erroUpdate) {
+            throw erroUpdate
+          }
+
+          pacoteSelecionado.sessoes_restantes =
+            restantesDepois
+
+          quantidadeRestante -=
+            desconto
+
+          if (
+            quantidadeRestante > 0
+          ) {
+            pacoteSelecionado =
+              pacotes.find(
+                (p: any) =>
+                  Number(
+                    p.sessoes_restantes ||
+                      0
+                  ) > 0
+              ) || null
+          }
         }
       }
     }
@@ -1326,6 +1328,8 @@ export default function NotificacoesDonoPage() {
   async function excluirNotificacao(
     notificacao: any
   ) {
+    if (!profile?.salao_id) return
+
     try {
       const {
         error
@@ -1337,6 +1341,10 @@ export default function NotificacoesDonoPage() {
         .eq(
           'id',
           notificacao.id
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
         )
 
       if (error) {
@@ -1354,7 +1362,7 @@ export default function NotificacoesDonoPage() {
       setNotificacoesExcluidas(
         prev => [
           notificacao,
-          ...prev
+          ...prev.map(item => item)
         ]
       )
 
@@ -1363,12 +1371,21 @@ export default function NotificacoesDonoPage() {
         'Erro ao excluir notificação:',
         error
       )
+
+      alert(
+        error?.message ||
+          'Não foi possível excluir a notificação.'
+      )
     }
   }
+
+  // ─── RESTAURAR NOTIFICAÇÃO ─────────────────────────────────────────────
 
   async function restaurarNotificacao(
     notificacao: any
   ) {
+    if (!profile?.salao_id) return
+
     try {
       const {
         error
@@ -1380,6 +1397,10 @@ export default function NotificacoesDonoPage() {
         .eq(
           'id',
           notificacao.id
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
         )
 
       if (error) {
@@ -1396,7 +1417,10 @@ export default function NotificacoesDonoPage() {
       )
 
       setNotificacoes(prev => [
-        notificacao,
+        {
+          ...notificacao,
+          excluida: false
+        },
         ...prev
       ])
 
@@ -1405,16 +1429,194 @@ export default function NotificacoesDonoPage() {
         'Erro ao restaurar notificação:',
         error
       )
+
+      alert(
+        error?.message ||
+          'Não foi possível restaurar a notificação.'
+      )
     }
   }
 
-  // ─── RENDER ─────────────────────────────────────────────────────────────
+  // ─── LIMPAR NOTIFICAÇÕES ───────────────────────────────────────────────
 
-  if (loading) {
+  async function limparNotificacoes() {
+    if (!profile?.salao_id) return
+
+    if (
+      notificacoes.length === 0
+    ) {
+      return
+    }
+
+    const confirmar =
+      window.confirm(
+        'Deseja excluir todas as notificações?'
+      )
+
+    if (!confirmar) {
+      return
+    }
+
+    try {
+      const {
+        error
+      } = await supabase
+        .from('notificacoes')
+        .update({
+          excluida: true
+        })
+        .eq(
+          'salao_id',
+          profile.salao_id
+        )
+        .eq(
+          'destinatario_id',
+          profile.id
+        )
+        .eq(
+          'excluida',
+          false
+        )
+
+      if (error) {
+        throw error
+      }
+
+      await carregarDados()
+
+    } catch (error: any) {
+      console.error(
+        'Erro ao limpar notificações:',
+        error
+      )
+
+      alert(
+        error?.message ||
+          'Não foi possível limpar as notificações.'
+      )
+    }
+  }
+
+  // ─── FORMATADORES ──────────────────────────────────────────────────────
+
+  function formatarDataHora(
+    valor: string | null | undefined
+  ) {
+    if (!valor) {
+      return ''
+    }
+
+    const data = new Date(valor)
+
+    if (
+      Number.isNaN(
+        data.getTime()
+      )
+    ) {
+      return ''
+    }
+
+    return data.toLocaleDateString(
+      'pt-BR',
+      {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }
+    ) +
+      ' às ' +
+      data.toLocaleTimeString(
+        'pt-BR',
+        {
+          hour: '2-digit',
+          minute: '2-digit'
+        }
+      )
+  }
+
+  function formatarHora(
+    valor: string | null | undefined
+  ) {
+    if (!valor) {
+      return ''
+    }
+
+    const data = new Date(valor)
+
+    if (
+      Number.isNaN(
+        data.getTime()
+      )
+    ) {
+      return ''
+    }
+
+    return data.toLocaleTimeString(
+      'pt-BR',
+      {
+        hour: '2-digit',
+        minute: '2-digit'
+      }
+    )
+  }
+
+  function obterNomeCliente(
+    item: any
+  ) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-current animate-spin" />
+      item?.clientes?.nome ||
+      item?.cliente_nome ||
+      'Cliente'
+    )
+  }
+
+  function obterTelefoneCliente(
+    item: any
+  ) {
+    return (
+      item?.clientes?.telefone ||
+      item?.telefone ||
+      ''
+    )
+  }
+
+  function abrirWhatsApp(
+    telefone: string
+  ) {
+    if (!telefone) {
+      return
+    }
+
+    const numero = telefone.replace(
+      /\D/g,
+      ''
+    )
+
+    if (!numero) {
+      return
+    }
+
+    const numeroFinal =
+      numero.startsWith('55')
+        ? numero
+        : `55${numero}`
+
+    window.open(
+      `https://wa.me/${numeroFinal}`,
+      '_blank'
+    )
+  }
+
+  // ─── LOADING ───────────────────────────────────────────────────────────
+
+  if (
+    loading ||
+    !profile
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8faf8]">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-[#6f8f72] animate-spin mx-auto mb-3" />
           <p className="text-sm text-gray-500">
             Carregando...
           </p>
@@ -1423,785 +1625,874 @@ export default function NotificacoesDonoPage() {
     )
   }
 
-  if (!profile) {
-    return null
-  }
-
-  const cor =
-    salao?.cor_primaria ||
-    '#8FA88F'
-
-  const quantidadeConfirmacoes =
-    confirmacoes.length
+  // ─── CONTADORES ────────────────────────────────────────────────────────
 
   const quantidadeSolicitacoes =
     solicitacoes.length
+
+  const quantidadeConfirmacoes =
+    confirmacoes.length
 
   const quantidadeNotificacoes =
     notificacoes.filter(
       n => !n.lida
     ).length
 
+  // ─── RENDER ────────────────────────────────────────────────────────────
+
   return (
-    <div
-      className="min-h-screen bg-gray-50 pb-24"
-      style={
-        {
-          '--cor-salao': cor
-        } as React.CSSProperties
-      }
-    >
-      {/* CABEÇALHO */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-30">
-        <div className="max-w-xl mx-auto px-4 py-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-50"
-          >
-            <ArrowLeft
-              size={19}
-              className="text-gray-600"
-            />
-          </button>
+    <div className="min-h-screen bg-[#f8faf8] text-[#26352a]">
 
-          <div className="flex-1 min-w-0">
-            <h1 className="font-bold text-gray-900">
-              Central de Atendimento
-            </h1>
+      {/* HEADER */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#e8eee9]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
 
-            <p className="text-xs text-gray-400">
-              Gerencie solicitações e atendimentos
-            </p>
+          <div className="flex items-center gap-3">
+
+            <button
+              type="button"
+              onClick={() =>
+                router.back()
+              }
+              className="w-10 h-10 rounded-full bg-[#f3f7f3] flex items-center justify-center text-[#617963] hover:bg-[#e8f0e8] transition"
+            >
+              <ArrowLeft
+                size={19}
+              />
+            </button>
+
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+                Central de Atendimento
+              </h1>
+
+              <p className="text-xs sm:text-sm text-gray-500 mt-0.5 truncate">
+                {salao?.nome ||
+                  'Gerencie seus atendimentos'}
+              </p>
+            </div>
+
           </div>
-
-          <Bell
-            size={21}
-            style={{
-              color: cor
-            }}
-          />
         </div>
       </header>
 
       {/* ABAS */}
-      <div className="bg-white border-b border-gray-100 sticky top-[73px] z-20">
-        <div className="max-w-xl mx-auto px-3">
-          <div className="flex overflow-x-auto no-scrollbar">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-5">
+        <div className="bg-white rounded-2xl border border-[#e8eee9] p-1.5 flex gap-1 overflow-x-auto">
 
-            <button
-              type="button"
-              onClick={() =>
-                setAba('pedidos')
-              }
-              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
-                aba === 'pedidos'
-                  ? 'text-gray-900'
-                  : 'text-gray-400 border-transparent'
-              }`}
-              style={
-                aba === 'pedidos'
-                  ? {
-                      borderColor: cor,
-                      color: cor
-                    }
-                  : {}
-              }
-            >
+          <button
+            type="button"
+            onClick={() =>
+              setAba('pedidos')
+            }
+            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              aba === 'pedidos'
+                ? 'bg-[#6f8f72] text-white shadow-sm'
+                : 'text-gray-600 hover:bg-[#f4f7f4]'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2">
+              <Calendar
+                size={16}
+              />
               Pedidos
+
               {quantidadeSolicitacoes >
                 0 && (
                 <span
-                  className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] text-white"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
+                    aba === 'pedidos'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[#edf3ed] text-[#58705b]'
+                  }`}
                 >
                   {quantidadeSolicitacoes}
                 </span>
               )}
-            </button>
+            </span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                setAba('confirmacoes')
-              }
-              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
-                aba === 'confirmacoes'
-                  ? 'text-gray-900'
-                  : 'text-gray-400 border-transparent'
-              }`}
-              style={
-                aba === 'confirmacoes'
-                  ? {
-                      borderColor: cor,
-                      color: cor
-                    }
-                  : {}
-              }
-            >
+          <button
+            type="button"
+            onClick={() =>
+              setAba('confirmacoes')
+            }
+            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              aba === 'confirmacoes'
+                ? 'bg-[#6f8f72] text-white shadow-sm'
+                : 'text-gray-600 hover:bg-[#f4f7f4]'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2">
+              <Check
+                size={16}
+              />
               Confirmar
+
               {quantidadeConfirmacoes >
                 0 && (
                 <span
-                  className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] text-white"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
+                    aba === 'confirmacoes'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[#edf3ed] text-[#58705b]'
+                  }`}
                 >
                   {quantidadeConfirmacoes}
                 </span>
               )}
-            </button>
+            </span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                setAba('notificacoes')
-              }
-              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
-                aba === 'notificacoes'
-                  ? 'text-gray-900'
-                  : 'text-gray-400 border-transparent'
-              }`}
-              style={
-                aba === 'notificacoes'
-                  ? {
-                      borderColor: cor,
-                      color: cor
-                    }
-                  : {}
-              }
-            >
+          <button
+            type="button"
+            onClick={() =>
+              setAba('notificacoes')
+            }
+            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              aba === 'notificacoes'
+                ? 'bg-[#6f8f72] text-white shadow-sm'
+                : 'text-gray-600 hover:bg-[#f4f7f4]'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2">
+              <Bell
+                size={16}
+              />
               Notificações
+
               {quantidadeNotificacoes >
                 0 && (
                 <span
-                  className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] text-white"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
+                    aba === 'notificacoes'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[#edf3ed] text-[#58705b]'
+                  }`}
                 >
                   {quantidadeNotificacoes}
                 </span>
               )}
-            </button>
+            </span>
+          </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                setAba('excluidas')
-              }
-              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
-                aba === 'excluidas'
-                  ? 'text-gray-900'
-                  : 'text-gray-400 border-transparent'
-              }`}
-              style={
-                aba === 'excluidas'
-                  ? {
-                      borderColor: cor,
-                      color: cor
-                    }
-                  : {}
-              }
-            >
+          <button
+            type="button"
+            onClick={() =>
+              setAba('excluidas')
+            }
+            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+              aba === 'excluidas'
+                ? 'bg-[#6f8f72] text-white shadow-sm'
+                : 'text-gray-600 hover:bg-[#f4f7f4]'
+            }`}
+          >
+            <span className="flex items-center justify-center gap-2">
+              <Trash2
+                size={16}
+              />
               Excluídas
-            </button>
 
-          </div>
+              {notificacoesExcluidas.length >
+                0 && (
+                <span
+                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
+                    aba === 'excluidas'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-[#edf3ed] text-[#58705b]'
+                  }`}
+                >
+                  {notificacoesExcluidas.length}
+                </span>
+              )}
+            </span>
+          </button>
+
         </div>
       </div>
-      {/* CONTEÚDO */}
-      <main className="max-w-xl mx-auto px-4 py-5">
 
-        {/* ─── PEDIDOS ──────────────────────────────────────────────── */}
+      {/* CONTEÚDO */}
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+
+        {/* ───────────────── PEDIDOS ───────────────── */}
+
         {aba === 'pedidos' && (
-          <div className="space-y-3">
+          <section>
+
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Solicitações de agendamento
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  Pedidos enviados pelas clientes.
+                </p>
+              </div>
+            </div>
 
             {solicitacoes.length === 0 ? (
-              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
+              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
                 <Calendar
-                  size={38}
+                  size={30}
                   className="mx-auto text-gray-300 mb-3"
                 />
 
-                <p className="font-semibold text-gray-700">
-                  Nenhum pedido pendente
+                <p className="font-medium text-gray-700">
+                  Nenhuma solicitação pendente
                 </p>
 
-                <p className="text-xs text-gray-400 mt-1">
-                  Quando uma cliente solicitar um agendamento,
-                  ele aparecerá aqui.
-                </p>
-              </div>
-            ) : (
-              solicitacoes.map(
-                (solicitacao: any) => (
-                  <div
-                    key={solicitacao.id}
-                    className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm"
-                  >
-                    <div className="flex items-start gap-3">
-
-                      <div
-                        className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0"
-                        style={{
-                          backgroundColor: cor
-                        }}
-                      >
-                        {(
-                          solicitacao.clientes
-                            ?.nome ||
-                          'C'
-                        )
-                          .charAt(0)
-                          .toUpperCase()}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-gray-900">
-                          {solicitacao.clientes
-                            ?.nome ||
-                            'Cliente'}
-                        </p>
-
-                        {solicitacao.clientes
-                          ?.telefone && (
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            {
-                              solicitacao
-                                .clientes
-                                .telefone
-                            }
-                          </p>
-                        )}
-
-                        <div className="mt-3 space-y-1.5">
-
-                          {solicitacao.servicos
-                            ?.nome && (
-                            <div className="flex items-center gap-2 text-xs text-gray-600">
-                              <Calendar
-                                size={14}
-                                className="shrink-0"
-                                style={{
-                                  color: cor
-                                }}
-                              />
-
-                              <span>
-                                {
-                                  solicitacao
-                                    .servicos
-                                    .nome
-                                }
-                              </span>
-                            </div>
-                          )}
-
-                          {formatarDataPreferida(
-                            solicitacao
-                          ) && (
-                            <p className="text-xs text-gray-500">
-                              <span className="font-semibold">
-                                Data:
-                              </span>{' '}
-                              {formatarDataPreferida(
-                                solicitacao
-                              )}
-                            </p>
-                          )}
-
-                          {formatarPeriodoPreferido(
-                            solicitacao
-                          ) && (
-                            <p className="text-xs text-gray-500">
-                              <span className="font-semibold">
-                                Período:
-                              </span>{' '}
-                              {formatarPeriodoPreferido(
-                                solicitacao
-                              )}
-                            </p>
-                          )}
-
-                          {solicitacao.observacoes && (
-                            <p className="text-xs text-gray-500 bg-gray-50 rounded-xl p-2.5 mt-2">
-                              {solicitacao.observacoes}
-                            </p>
-                          )}
-
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-2 mt-4">
-
-                      <button
-                        type="button"
-                        disabled={salvando}
-                        onClick={() =>
-                          recusarSolicitacao(
-                            solicitacao
-                          )
-                        }
-                        className="py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
-                      >
-                        <X size={14} />
-                        Recusar
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={salvando}
-                        onClick={() => {
-                          setModalSugestao(
-                            solicitacao
-                          )
-                        }}
-                        className="py-2.5 rounded-xl border text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
-                        style={{
-                          borderColor: `${cor}55`,
-                          color: cor
-                        }}
-                      >
-                        <Clock size={14} />
-                        Sugerir
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={salvando}
-                        onClick={() =>
-                          aceitarSolicitacao(
-                            solicitacao
-                          )
-                        }
-                        className="py-2.5 rounded-xl text-white text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
-                        style={{
-                          backgroundColor: cor
-                        }}
-                      >
-                        <Check size={14} />
-                        Aceitar
-                      </button>
-
-                    </div>
-                  </div>
-                )
-              )
-            )}
-
-          </div>
-        )}
-
-        {/* ─── CONFIRMAR ───────────────────────────────────────────── */}
-        {aba === 'confirmacoes' && (
-          <div className="space-y-3">
-
-            {confirmacoes.length === 0 ? (
-              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
-                <Check
-                  size={38}
-                  className="mx-auto text-gray-300 mb-3"
-                />
-
-                <p className="font-semibold text-gray-700">
-                  Tudo em dia
-                </p>
-
-                <p className="text-xs text-gray-400 mt-1">
-                  Não há atendimentos aguardando confirmação.
+                <p className="text-sm text-gray-500 mt-1">
+                  Novos pedidos aparecerão aqui.
                 </p>
               </div>
             ) : (
-              confirmacoes.map(
-                (agendamento: any) => {
-                  const dataHora =
-                    agendamento.data_hora
-                      ? new Date(
-                          agendamento.data_hora
-                        )
-                      : null
+              <div className="space-y-4">
 
-                  return (
+                {solicitacoes.map(
+                  (solicitacao: any) => (
                     <div
-                      key={agendamento.id}
-                      className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm"
+                      key={
+                        solicitacao.id
+                      }
+                      className="bg-white border border-[#e8eee9] rounded-2xl p-4 sm:p-5 shadow-sm"
                     >
 
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-start justify-between gap-3">
 
-                        <div
-                          className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0"
-                          style={{
-                            backgroundColor: cor
-                          }}
-                        >
-                          {(
-                            agendamento
-                              .clientes
-                              ?.nome ||
-                            'C'
-                          )
-                            .charAt(0)
-                            .toUpperCase()}
+                        <div className="min-w-0">
+
+                          <h3 className="font-semibold text-[#26352a]">
+                            {obterNomeCliente(
+                              solicitacao
+                            )}
+                          </h3>
+
+                          {solicitacao.clientes?.telefone && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              {
+                                solicitacao.clientes.telefone
+                              }
+                            </p>
+                          )}
+
                         </div>
 
-                        <div className="flex-1 min-w-0">
+                        {solicitacao.status ===
+                          'horario_sugerido' && (
+                          <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#fff5df] text-[#946b1c] text-xs font-medium">
+                            Horários sugeridos
+                          </span>
+                        )}
 
-                          <div className="flex items-start justify-between gap-2">
-
-                            <div className="min-w-0">
-                              <p className="font-bold text-gray-900 truncate">
-                                {agendamento.clientes
-                                  ?.nome ||
-                                  'Cliente'}
-                              </p>
-
-                              {agendamento.clientes
-                                ?.telefone && (
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  {
-                                    agendamento
-                                      .clientes
-                                      .telefone
-                                  }
-                                </p>
-                              )}
-                            </div>
-
-                            <span
-                              className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full"
-                              style={{
-                                backgroundColor:
-                                  `${cor}12`,
-                                color: cor
-                              }}
-                            >
-                              Aguardando
-                            </span>
-
-                          </div>
-
-                          <div className="mt-3 space-y-1.5">
-
-                            {agendamento.servicos
-                              ?.nome && (
-                              <p className="text-sm font-medium text-gray-700">
-                                {
-                                  agendamento
-                                    .servicos
-                                    .nome
-                                }
-                              </p>
-                            )}
-
-                            {dataHora && (
-                              <div className="flex items-center gap-2 text-xs text-gray-500">
-                                <Calendar
-                                  size={14}
-                                  style={{
-                                    color: cor
-                                  }}
-                                />
-
-                                <span>
-                                  {dataHora.toLocaleDateString(
-                                    'pt-BR',
-                                    {
-                                      weekday:
-                                        'short',
-                                      day: '2-digit',
-                                      month: '2-digit',
-                                      year: 'numeric'
-                                    }
-                                  )}
-                                </span>
-
-                                <Clock
-                                  size={14}
-                                  className="ml-1"
-                                  style={{
-                                    color: cor
-                                  }}
-                                />
-
-                                <span>
-                                  {dataHora.toLocaleTimeString(
-                                    'pt-BR',
-                                    {
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    }
-                                  )}
-                                </span>
-                              </div>
-                            )}
-
-                          </div>
-                        </div>
                       </div>
 
-                      {/* AÇÕES DO ATENDIMENTO */}
-                      <div className="grid grid-cols-2 gap-2 mt-4">
+                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-                        {/* NÃO VEIO */}
+                        <div className="rounded-xl bg-[#f7faf7] p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                            Serviço
+                          </p>
+
+                          <p className="text-sm font-medium mt-1">
+                            {solicitacao.servicos?.nome ||
+                              solicitacao.servico_nome ||
+                              'Serviço'}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl bg-[#f7faf7] p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                            Data desejada
+                          </p>
+
+                          <p className="text-sm font-medium mt-1">
+                            {formatarDataPreferida(
+                              solicitacao
+                            ) ||
+                              'Não informada'}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl bg-[#f7faf7] p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                            Período
+                          </p>
+
+                          <p className="text-sm font-medium mt-1">
+                            {formatarPeriodoPreferido(
+                              solicitacao
+                            ) ||
+                              'Não informado'}
+                          </p>
+                        </div>
+
+                        {solicitacao.observacoes && (
+                          <div className="rounded-xl bg-[#f7faf7] p-3">
+                            <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                              Observações
+                            </p>
+
+                            <p className="text-sm font-medium mt-1">
+                              {
+                                solicitacao.observacoes
+                              }
+                            </p>
+                          </div>
+                        )}
+
+                      </div>
+
+                      {Array.isArray(
+                        solicitacao.horarios_sugeridos
+                      ) &&
+                        solicitacao.horarios_sugeridos.length >
+                          0 && (
+                          <div className="mt-4 rounded-xl bg-[#f3f7f3] p-3">
+                            <p className="text-xs font-semibold text-[#58705b] mb-2">
+                              Horários enviados
+                            </p>
+
+                            <div className="flex flex-wrap gap-2">
+                              {solicitacao.horarios_sugeridos.map(
+                                (
+                                  horario: string,
+                                  index: number
+                                ) => (
+                                  <span
+                                    key={
+                                      index
+                                    }
+                                    className="px-3 py-1.5 bg-white border border-[#dfe8df] rounded-lg text-sm"
+                                  >
+                                    {horario}
+                                  </span>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                      <div className="mt-5 flex flex-col sm:flex-row gap-2">
+
                         <button
                           type="button"
-                          disabled={salvando}
+                          disabled={
+                            salvando
+                          }
                           onClick={() =>
-                            iniciarNaoComparecimento(
-                              agendamento
+                            aceitarSolicitacao(
+                              solicitacao
                             )
                           }
-                          className="py-3 rounded-2xl border border-gray-200 text-gray-600 text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          className="flex-1 h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold hover:bg-[#5f7e63] transition disabled:opacity-50"
                         >
-                          <X size={15} />
-                          Não veio
+                          <span className="flex items-center justify-center gap-2">
+                            <Check
+                              size={17}
+                            />
+                            Aceitar
+                          </span>
                         </button>
 
-                        {/* CONFIRMAR */}
                         <button
                           type="button"
-                          disabled={salvando}
+                          disabled={
+                            salvando
+                          }
+                          onClick={() => {
+                            setModalSugestao(
+                              solicitacao
+                            )
+
+                            setHorariosLivres([
+                              '',
+                              '',
+                              ''
+                            ])
+                          }}
+                          className="flex-1 h-11 rounded-xl border border-[#dbe5dc] bg-white text-[#58705b] text-sm font-semibold hover:bg-[#f4f8f4] transition disabled:opacity-50"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <Clock
+                              size={17}
+                            />
+                            Sugerir horários
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            salvando
+                          }
                           onClick={() =>
-                            abrirModalConfirmar(
-                              agendamento
+                            recusarSolicitacao(
+                              solicitacao
                             )
                           }
-                          className="py-3 rounded-2xl text-white text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
-                          style={{
-                            backgroundColor: cor
-                          }}
+                          className="h-11 px-5 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold hover:bg-[#fff7f7] transition disabled:opacity-50"
                         >
-                          <Check size={15} />
-                          Confirmar atendimento
+                          <span className="flex items-center justify-center gap-2">
+                            <X
+                              size={17}
+                            />
+                            Recusar
+                          </span>
                         </button>
 
                       </div>
 
                     </div>
                   )
-                }
-              )
+                )}
+
+              </div>
             )}
 
-          </div>
+          </section>
         )}
 
-        {/* ─── NOTIFICAÇÕES ────────────────────────────────────────── */}
-        {aba === 'notificacoes' && (
-          <div className="space-y-3">
+        {/* ───────────────── CONFIRMAÇÕES ───────────────── */}
 
-            {notificacoes.length === 0 ? (
-              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
-                <Bell
-                  size={38}
+        {aba === 'confirmacoes' && (
+          <section>
+
+            <div className="flex items-center justify-between gap-3 mb-5">
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Confirmar atendimentos
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  Confirme quem realmente compareceu ou registre o não comparecimento.
+                </p>
+              </div>
+            </div>
+
+            {confirmacoes.length === 0 ? (
+              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
+                <Check
+                  size={30}
                   className="mx-auto text-gray-300 mb-3"
                 />
 
-                <p className="font-semibold text-gray-700">
+                <p className="font-medium text-gray-700">
+                  Tudo em dia
+                </p>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  Não há atendimentos aguardando confirmação.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+
+                {confirmacoes.map(
+                  (agendamento: any) => (
+                    <div
+                      key={
+                        agendamento.id
+                      }
+                      className="bg-white border border-[#e8eee9] rounded-2xl p-4 sm:p-5 shadow-sm"
+                    >
+
+                      <div className="flex items-start justify-between gap-3">
+
+                        <div className="min-w-0">
+
+                          <h3 className="font-semibold text-[#26352a]">
+                            {obterNomeCliente(
+                              agendamento
+                            )}
+                          </h3>
+
+                          {obterTelefoneCliente(
+                            agendamento
+                          ) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                abrirWhatsApp(
+                                  obterTelefoneCliente(
+                                    agendamento
+                                  )
+                                )
+                              }
+                              className="mt-1 inline-flex items-center gap-1.5 text-xs text-[#5d8062] hover:underline"
+                            >
+                              <MessageCircle
+                                size={13}
+                              />
+
+                              {obterTelefoneCliente(
+                                agendamento
+                              )}
+                            </button>
+                          )}
+
+                        </div>
+
+                        <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#fff5df] text-[#946b1c] text-xs font-medium">
+                          Aguardando
+                        </span>
+
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                        <div className="rounded-xl bg-[#f7faf7] p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                            Data
+                          </p>
+
+                          <p className="text-sm font-medium mt-1">
+                            {formatarDataHora(
+                              agendamento.data_hora
+                            )}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl bg-[#f7faf7] p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
+                            Serviço
+                          </p>
+
+                          <p className="text-sm font-medium mt-1">
+                            {agendamento.servicos?.nome ||
+                              agendamento.servico_nome ||
+                              'Atendimento'}
+                          </p>
+                        </div>
+
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2">
+
+                        <button
+                          type="button"
+                          disabled={
+                            salvando
+                          }
+                          onClick={() =>
+                            iniciarNaoComparecimento(
+                              agendamento
+                            )
+                          }
+                          className="h-11 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold hover:bg-[#fff7f7] transition disabled:opacity-50"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <X
+                              size={17}
+                            />
+                            Não veio
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            salvando
+                          }
+                          onClick={() =>
+                            abrirModalConfirmar(
+                              agendamento
+                            )
+                          }
+                          className="h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold hover:bg-[#5f7e63] transition disabled:opacity-50"
+                        >
+                          <span className="flex items-center justify-center gap-2">
+                            <Check
+                              size={17}
+                            />
+                            Confirmar atendimento
+                          </span>
+                        </button>
+
+                      </div>
+
+                    </div>
+                  )
+                )}
+
+              </div>
+            )}
+
+          </section>
+        )}
+
+        {/* ───────────────── NOTIFICAÇÕES ───────────────── */}
+
+        {aba === 'notificacoes' && (
+          <section>
+
+            <div className="flex items-center justify-between gap-3 mb-5">
+
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Notificações
+                </h2>
+
+                <p className="text-sm text-gray-500 mt-1">
+                  Avisos e atualizações do salão.
+                </p>
+              </div>
+
+              {notificacoes.length >
+                0 && (
+                <button
+                  type="button"
+                  onClick={
+                    limparNotificacoes
+                  }
+                  className="text-xs font-medium text-[#9b5e5e] hover:underline"
+                >
+                  Limpar tudo
+                </button>
+              )}
+
+            </div>
+
+            {notificacoes.length ===
+            0 ? (
+              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
+                <Bell
+                  size={30}
+                  className="mx-auto text-gray-300 mb-3"
+                />
+
+                <p className="font-medium text-gray-700">
                   Nenhuma notificação
                 </p>
 
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-sm text-gray-500 mt-1">
                   Você está em dia.
                 </p>
               </div>
             ) : (
-              notificacoes.map(
-                (notificacao: any) => (
-                  <div
-                    key={notificacao.id}
-                    className={`bg-white rounded-3xl p-4 border shadow-sm ${
-                      notificacao.lida
-                        ? 'border-gray-100'
-                        : 'border-gray-200'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleClicarNotificacao(
-                          notificacao
-                        )
+              <div className="space-y-3">
+
+                {notificacoes.map(
+                  (notificacao: any) => (
+                    <div
+                      key={
+                        notificacao.id
                       }
-                      className="w-full text-left"
+                      className={`bg-white border rounded-2xl p-4 transition ${
+                        notificacao.lida
+                          ? 'border-[#e8eee9]'
+                          : 'border-[#d9e6da] shadow-sm'
+                      }`}
                     >
-                      <div className="flex items-start gap-3">
 
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                          style={{
-                            backgroundColor:
-                              `${cor}12`,
-                            color: cor
-                          }}
-                        >
-                          <Bell size={18} />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <p
-                              className={`text-sm ${
-                                notificacao.lida
-                                  ? 'font-medium'
-                                  : 'font-bold'
-                              } text-gray-900`}
-                            >
-                              {notificacao.titulo ||
-                                'Notificação'}
-                            </p>
-
-                            {!notificacao.lida && (
-                              <span
-                                className="w-2 h-2 rounded-full shrink-0 mt-1.5"
-                                style={{
-                                  backgroundColor:
-                                    cor
-                                }}
-                              />
-                            )}
-                          </div>
-
-                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                            {notificacao.mensagem}
-                          </p>
-
-                          {notificacao.created_at && (
-                            <p className="text-[10px] text-gray-400 mt-2">
-                              {new Date(
-                                notificacao.created_at
-                              ).toLocaleString(
-                                'pt-BR'
-                              )}
-                            </p>
-                          )}
-                        </div>
-
-                      </div>
-                    </button>
-
-                    <div className="flex justify-end mt-2">
                       <button
                         type="button"
                         onClick={() =>
-                          excluirNotificacao(
+                          handleClicarNotificacao(
                             notificacao
                           )
                         }
-                        className="text-[10px] text-gray-400 flex items-center gap-1 px-2 py-1"
+                        className="w-full text-left"
                       >
-                        <Trash2 size={12} />
-                        Excluir
+
+                        <div className="flex gap-3">
+
+                          <div
+                            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                              notificacao.lida
+                                ? 'bg-[#f2f5f2] text-gray-400'
+                                : 'bg-[#eaf2ea] text-[#638067]'
+                            }`}
+                          >
+                            <Bell
+                              size={18}
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+
+                            <div className="flex items-start justify-between gap-2">
+
+                              <p className="font-semibold text-sm">
+                                {
+                                  notificacao.titulo
+                                }
+                              </p>
+
+                              {!notificacao.lida && (
+                                <span className="w-2 h-2 rounded-full bg-[#6f8f72] shrink-0 mt-1.5" />
+                              )}
+
+                            </div>
+
+                            <p className="text-sm text-gray-600 mt-1">
+                              {
+                                notificacao.mensagem
+                              }
+                            </p>
+
+                            {notificacao.created_at && (
+                              <p className="text-[11px] text-gray-400 mt-2">
+                                {formatarDataHora(
+                                  notificacao.created_at
+                                )}
+                              </p>
+                            )}
+
+                          </div>
+
+                        </div>
+
                       </button>
+
+                      <div className="mt-3 flex justify-end">
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            excluirNotificacao(
+                              notificacao
+                            )
+                          }
+                          className="text-xs text-gray-400 hover:text-[#9b5e5e] transition"
+                        >
+                          Excluir
+                        </button>
+
+                      </div>
+
                     </div>
-                  </div>
-                )
-              )
+                  )
+                )}
+
+              </div>
             )}
 
-          </div>
+          </section>
         )}
 
-        {/* ─── EXCLUÍDAS ───────────────────────────────────────────── */}
+        {/* ───────────────── EXCLUÍDAS ───────────────── */}
+
         {aba === 'excluidas' && (
-          <div className="space-y-3">
+          <section>
+
+            <div className="mb-5">
+              <h2 className="text-lg font-semibold">
+                Notificações excluídas
+              </h2>
+
+              <p className="text-sm text-gray-500 mt-1">
+                Notificações que foram removidas da central.
+              </p>
+            </div>
 
             {notificacoesExcluidas.length ===
             0 ? (
-              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
+              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
                 <Trash2
-                  size={38}
+                  size={30}
                   className="mx-auto text-gray-300 mb-3"
                 />
 
-                <p className="font-semibold text-gray-700">
+                <p className="font-medium text-gray-700">
                   Nenhuma notificação excluída
                 </p>
               </div>
             ) : (
-              notificacoesExcluidas.map(
-                (notificacao: any) => (
-                  <div
-                    key={notificacao.id}
-                    className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm"
-                  >
-                    <div className="flex items-start gap-3">
+              <div className="space-y-3">
 
-                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-                        <Bell
-                          size={18}
-                          className="text-gray-400"
-                        />
+                {notificacoesExcluidas.map(
+                  (notificacao: any) => (
+                    <div
+                      key={
+                        notificacao.id
+                      }
+                      className="bg-white border border-[#e8eee9] rounded-2xl p-4"
+                    >
+
+                      <div className="flex gap-3">
+
+                        <div className="w-10 h-10 rounded-full bg-[#f2f5f2] text-gray-400 flex items-center justify-center shrink-0">
+                          <Trash2
+                            size={18}
+                          />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+
+                          <p className="font-semibold text-sm">
+                            {
+                              notificacao.titulo
+                            }
+                          </p>
+
+                          <p className="text-sm text-gray-600 mt-1">
+                            {
+                              notificacao.mensagem
+                            }
+                          </p>
+
+                          {notificacao.created_at && (
+                            <p className="text-[11px] text-gray-400 mt-2">
+                              {formatarDataHora(
+                                notificacao.created_at
+                              )}
+                            </p>
+                          )}
+
+                        </div>
+
                       </div>
 
-                      <div className="flex-1 min-w-0">
+                      <div className="mt-3 flex justify-end">
 
-                        <p className="text-sm font-semibold text-gray-800">
-                          {notificacao.titulo ||
-                            'Notificação'}
-                        </p>
-
-                        <p className="text-xs text-gray-500 mt-1">
-                          {notificacao.mensagem}
-                        </p>
-
-                        {notificacao.created_at && (
-                          <p className="text-[10px] text-gray-400 mt-2">
-                            {new Date(
-                              notificacao.created_at
-                            ).toLocaleString(
-                              'pt-BR'
-                            )}
-                          </p>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            restaurarNotificacao(
+                              notificacao
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#58705b] hover:underline"
+                        >
+                          <RotateCcw
+                            size={13}
+                          />
+                          Restaurar
+                        </button>
 
                       </div>
 
                     </div>
+                  )
+                )}
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        restaurarNotificacao(
-                          notificacao
-                        )
-                      }
-                      className="w-full mt-3 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-semibold flex items-center justify-center gap-1.5"
-                    >
-                      <RotateCcw
-                        size={14}
-                      />
-                      Restaurar
-                    </button>
-                  </div>
-                )
-              )
+              </div>
             )}
 
-          </div>
+          </section>
         )}
 
       </main>
-      {/* MODAL SUGERIR HORÁRIOS */}
-      {modalSugestao && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
 
-            <div className="flex items-center justify-between mb-5">
+      {/* ───────────────── MODAL SUGERIR HORÁRIOS ───────────────── */}
+
+      {modalSugestao && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+
+          <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden">
+
+            <div className="p-5 border-b border-[#edf0ed] flex items-center justify-between">
+
               <div>
-                <h3 className="font-bold text-gray-900 text-lg">
+                <h3 className="font-semibold text-lg">
                   Sugerir horários
                 </h3>
 
-                <p className="text-xs text-gray-400 mt-1">
-                  {modalSugestao.clientes?.nome ||
-                    'Cliente'}
+                <p className="text-sm text-gray-500 mt-1">
+                  {obterNomeCliente(
+                    modalSugestao
+                  )}
                 </p>
               </div>
 
@@ -2210,245 +2501,132 @@ export default function NotificacoesDonoPage() {
                 onClick={() =>
                   setModalSugestao(null)
                 }
-                className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"
+                className="w-9 h-9 rounded-full bg-[#f4f6f4] flex items-center justify-center text-gray-500"
               >
                 <X
                   size={18}
-                  className="text-gray-500"
                 />
               </button>
+
             </div>
 
-            <p className="text-sm text-gray-600 mb-4">
-              Informe até três horários disponíveis para a cliente.
-            </p>
+            <div className="p-5">
 
-            <div className="space-y-3">
-              {horariosLivres.map(
-                (horario, index) => (
-                  <div key={index}>
-                    <label className="text-xs font-medium text-gray-600 mb-1 block">
-                      Opção {index + 1}
-                    </label>
+              <p className="text-sm text-gray-600 mb-4">
+                Informe até três horários que podem funcionar para a cliente.
+              </p>
 
-                    <input
-                      type="datetime-local"
-                      value={horario}
-                      onChange={e => {
-                        const novos =
-                          [...horariosLivres]
+              <div className="space-y-3">
 
-                        novos[index] =
-                          e.target.value
-
-                        setHorariosLivres(
-                          novos
-                        )
-                      }}
-                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:ring-2"
-                      style={
-                        {
-                          '--tw-ring-color': cor
-                        } as React.CSSProperties
+                {horariosLivres.map(
+                  (
+                    horario,
+                    index
+                  ) => (
+                    <div
+                      key={
+                        index
                       }
-                    />
-                  </div>
-                )
-              )}
-            </div>
+                    >
+                      <label className="text-xs font-medium text-gray-500 mb-1.5 block">
+                        Horário {index + 1}
+                      </label>
 
-            <div className="flex gap-3 mt-5">
-              <button
-                type="button"
-                onClick={() =>
-                  setModalSugestao(null)
-                }
-                disabled={salvando}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm disabled:opacity-50"
-              >
-                Cancelar
-              </button>
+                      <input
+                        type="datetime-local"
+                        value={
+                          horario
+                        }
+                        onChange={e => {
+                          const novos = [
+                            ...horariosLivres
+                          ]
 
-              <button
-                type="button"
-                onClick={
-                  salvarSugestaoHorario
-                }
-                disabled={salvando}
-                className="flex-1 py-3 rounded-2xl text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{
-                  backgroundColor: cor
-                }}
-              >
-                {salvando ? (
-                  <>
-                    <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  <>
-                    <MessageCircle
-                      size={16}
-                    />
-                    Enviar horários
-                  </>
+                          novos[
+                            index
+                          ] =
+                            e.target.value
+
+                          setHorariosLivres(
+                            novos
+                          )
+                        }}
+                        className="w-full h-11 rounded-xl border border-[#dfe7df] px-3 text-sm outline-none focus:border-[#8aa28c]"
+                      />
+                    </div>
+                  )
                 )}
-              </button>
-            </div>
 
-          </div>
-        </div>
-      )}
+              </div>
 
-      {/* MODAL CONFIRMAR ATENDIMENTO */}
-      {modalConfirmar &&
-        modalConfirmar.tipo !==
-          'nao_compareceu' && (
-          <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-            <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
-
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <h3 className="font-bold text-gray-900 text-lg">
-                    Confirmar atendimento
-                  </h3>
-
-                  <p className="text-xs text-gray-400 mt-1">
-                    Confirme que o atendimento realmente aconteceu.
-                  </p>
-                </div>
+              <div className="mt-5 grid grid-cols-2 gap-2">
 
                 <button
                   type="button"
                   onClick={() =>
-                    setModalConfirmar(
+                    setModalSugestao(
                       null
                     )
                   }
-                  className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"
-                >
-                  <X
-                    size={18}
-                    className="text-gray-500"
-                  />
-                </button>
-              </div>
-
-              <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-                <p className="font-bold text-gray-900">
-                  {modalConfirmar.clientes
-                    ?.nome ||
-                    'Cliente'}
-                </p>
-
-                {modalConfirmar.servicos
-                  ?.nome && (
-                  <p className="text-sm text-gray-600 mt-1">
-                    {
-                      modalConfirmar
-                        .servicos
-                        .nome
-                    }
-                  </p>
-                )}
-
-                {modalConfirmar.data_hora && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    {new Date(
-                      modalConfirmar.data_hora
-                    ).toLocaleString(
-                      'pt-BR'
-                    )}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">
-                  Serviço realizado
-                </label>
-
-                <input
-                  type="text"
-                  value={servicoRealizado}
-                  onChange={e =>
-                    setServicoRealizado(
-                      e.target.value
-                    )
-                  }
-                  placeholder="Nome do serviço"
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none"
-                />
-              </div>
-
-              <div className="flex gap-3 mt-5">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModalConfirmar(
-                      null
-                    )
-                  }
-                  disabled={salvando}
-                  className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm disabled:opacity-50"
+                  className="h-11 rounded-xl border border-[#dfe5df] text-sm font-semibold text-gray-600"
                 >
                   Cancelar
                 </button>
 
                 <button
                   type="button"
-                  onClick={
-                    confirmarAtendimento
+                  disabled={
+                    salvando
                   }
-                  disabled={salvando}
-                  className="flex-1 py-3 rounded-2xl text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  onClick={
+                    salvarSugestaoHorario
+                  }
+                  className="h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold disabled:opacity-50"
                 >
-                  {salvando ? (
-                    <>
-                      <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                      Confirmando...
-                    </>
-                  ) : (
-                    <>
-                      <Check size={16} />
-                      Confirmar atendimento
-                    </>
-                  )}
+                  Enviar horários
                 </button>
+
               </div>
 
             </div>
-          </div>
-        )}
 
-      {/* MODAL NÃO COMPARECEU */}
-      {modalConfirmar?.tipo ===
-        'nao_compareceu' && (
-        <NaoCompareceuModal
-          agendamento={
-            modalConfirmar.agendamento
+          </div>
+
+        </div>
+      )}
+
+      {/* ───────────────── MODAL CONFIRMAR / NÃO COMPARECEU ─────────────── */}
+
+      {modalConfirmar && (
+        <ModalAtendimento
+          modalConfirmar={
+            modalConfirmar
           }
-          cor={cor}
-          salvando={salvando}
-          coberturas={coberturas}
+          salvando={
+            salvando
+          }
+          servicoRealizado={
+            servicoRealizado
+          }
+          setServicoRealizado={
+            setServicoRealizado
+          }
+          coberturas={
+            coberturas
+          }
           carregandoCoberturas={
             carregandoCoberturas
           }
           onClose={() =>
-            setModalConfirmar(null)
-          }
-          onConfirmar={(
-            descontarPacote,
-            justificativa
-          ) =>
-            registrarNaoComparecimento(
-              modalConfirmar.agendamento,
-              descontarPacote,
-              justificativa
+            setModalConfirmar(
+              null
             )
+          }
+          onConfirmar={
+            confirmarAtendimento
+          }
+          onNaoComparecimento={
+            registrarNaoComparecimento
           }
         />
       )}
@@ -2457,48 +2635,72 @@ export default function NotificacoesDonoPage() {
   )
 }
 
-// ─── MODAL DE NÃO COMPARECIMENTO ─────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+// MODAL DE ATENDIMENTO
+// ─────────────────────────────────────────────────────────────────────────
 
-function NaoCompareceuModal({
-  agendamento,
-  cor,
+function ModalAtendimento({
+  modalConfirmar,
   salvando,
+  servicoRealizado,
+  setServicoRealizado,
   coberturas,
   carregandoCoberturas,
   onClose,
-  onConfirmar
-}: {
-  agendamento: any
-  cor: string
-  salvando: boolean
-  coberturas: CoberturaServico[]
-  carregandoCoberturas: boolean
-  onClose: () => void
-  onConfirmar: (
-    descontarPacote: boolean,
-    justificativa: string
-  ) => void
-}) {
-  const [etapa, setEtapa] = useState<
-    'antecedencia' | 'desconto' | 'justificativa'
-  >('antecedencia')
+  onConfirmar,
+  onNaoComparecimento
+}: any) {
 
-  const [
-    avisouComAntecedencia,
-    setAvisouComAntecedencia
-  ] = useState<boolean | null>(null)
+  const [etapaNaoCompareceu, setEtapaNaoCompareceu] =
+    useState<
+      'pergunta_aviso' |
+      'pergunta_pacote' |
+      'justificativa'
+    >('pergunta_aviso')
 
-  const [
-    descontarPacote,
-    setDescontarPacote
-  ] = useState<boolean | null>(null)
+  const [avisouComAntecedencia, setAvisouComAntecedencia] =
+    useState<boolean | null>(null)
 
-  const [
-    justificativa,
-    setJustificativa
-  ] = useState('')
+  const [descontarPacote, setDescontarPacote] =
+    useState<boolean | null>(null)
 
-  function escolherAntecedencia(
+  const [justificativa, setJustificativa] =
+    useState('')
+
+  const isNaoComparecimento =
+    modalConfirmar?.tipo ===
+    'nao_compareceu'
+
+  useEffect(() => {
+    if (
+      isNaoComparecimento
+    ) {
+      setEtapaNaoCompareceu(
+        'pergunta_aviso'
+      )
+
+      setAvisouComAntecedencia(
+        null
+      )
+
+      setDescontarPacote(
+        null
+      )
+
+      setJustificativa('')
+    }
+  }, [
+    modalConfirmar?.agendamento?.id,
+    isNaoComparecimento
+  ])
+
+  function fechar() {
+    if (salvando) return
+
+    onClose()
+  }
+
+  function selecionarAviso(
     avisou: boolean
   ) {
     setAvisouComAntecedencia(
@@ -2506,357 +2708,435 @@ function NaoCompareceuModal({
     )
 
     if (avisou) {
-      // Se avisou com antecedência,
-      // não há desconto de pacote.
-      setDescontarPacote(false)
-      setEtapa(
-        'justificativa'
+      // Se a cliente avisou com antecedência,
+      // não existe desconto de pacote.
+      setDescontarPacote(
+        false
       )
-    } else {
-      // Se não avisou com antecedência,
-      // o salão decide se irá descontar.
-      setEtapa('desconto')
+
+      setJustificativa('')
+
+      onNaoComparecimento(
+        modalConfirmar.agendamento,
+        false,
+        ''
+      )
+
+      return
     }
+
+    setEtapaNaoCompareceu(
+      'pergunta_pacote'
+    )
   }
 
-  function escolherDesconto(
+  function selecionarDesconto(
     descontar: boolean
   ) {
     setDescontarPacote(
       descontar
     )
 
-    if (descontar) {
-      // Para descontar, exigimos
-      // uma justificativa escrita.
-      setEtapa(
-        'justificativa'
-      )
-    } else {
-      // Sem desconto, não é necessária
-      // justificativa para o pacote.
-      onConfirmar(
+    if (!descontar) {
+      onNaoComparecimento(
+        modalConfirmar.agendamento,
         false,
         ''
       )
-    }
-  }
 
-  function confirmarJustificativa() {
-    if (
-      descontarPacote &&
-      !justificativa.trim()
-    ) {
-      alert(
-        'Escreva uma justificativa antes de descontar a sessão do pacote.'
-      )
       return
     }
 
-    onConfirmar(
-      Boolean(descontarPacote),
-      justificativa.trim()
+    setEtapaNaoCompareceu(
+      'justificativa'
     )
   }
 
-  const nomeCliente =
-    agendamento?.clientes?.nome ||
-    'Cliente'
+  function confirmarJustificativa() {
+    const texto =
+      justificativa.trim()
+
+    if (!texto) {
+      alert(
+        'Escreva uma justificativa antes de descontar as sessões do pacote.'
+      )
+
+      return
+    }
+
+    onNaoComparecimento(
+      modalConfirmar.agendamento,
+      true,
+      texto
+    )
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-      <div className="bg-white w-full rounded-t-3xl p-6 max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[60] bg-black/45 flex items-end sm:items-center justify-center p-0 sm:p-4">
+
+      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
 
         {/* CABEÇALHO */}
-        <div className="flex items-start justify-between gap-3 mb-5">
-          <div>
-            <h3 className="font-bold text-gray-900 text-lg">
-              Não compareceu
+
+        <div className="p-5 border-b border-[#edf0ed] flex items-start justify-between gap-3">
+
+          <div className="min-w-0">
+
+            <h3 className="text-lg font-semibold text-[#26352a]">
+              {isNaoComparecimento
+                ? 'Registrar não comparecimento'
+                : 'Confirmar atendimento'}
             </h3>
 
-            <p className="text-xs text-gray-400 mt-1">
-              {nomeCliente}
+            <p className="text-sm text-gray-500 mt-1">
+              {modalConfirmar?.agendamento
+                ? (
+                  modalConfirmar
+                    .agendamento
+                    .clientes
+                    ?.nome ||
+                  'Cliente'
+                )
+                : ''}
             </p>
+
           </div>
 
           <button
             type="button"
-            onClick={onClose}
-            disabled={salvando}
-            className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center shrink-0 disabled:opacity-50"
+            onClick={
+              fechar
+            }
+            disabled={
+              salvando
+            }
+            className="w-9 h-9 rounded-full bg-[#f4f6f4] flex items-center justify-center text-gray-500 shrink-0 disabled:opacity-50"
           >
             <X
               size={18}
-              className="text-gray-500"
             />
           </button>
+
         </div>
 
-        {/* ETAPA 1 — AVISOU? */}
-        {etapa ===
-          'antecedencia' && (
-          <div>
+        {/* CONTEÚDO */}
 
-            <div className="bg-gray-50 rounded-2xl p-4 mb-5">
-              <p className="text-sm font-semibold text-gray-800">
-                A cliente avisou o salão sobre a falta com antecedência?
-              </p>
+        <div className="overflow-y-auto p-5">
 
-              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                Considere como "não" quando ela não avisou
-                ou avisou em cima da hora.
-              </p>
-            </div>
+          {!isNaoComparecimento ? (
+            <div>
 
-            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl bg-[#f5f8f5] p-4">
 
-              <button
-                type="button"
-                onClick={() =>
-                  escolherAntecedencia(
-                    true
-                  )
-                }
-                className="py-3.5 rounded-2xl border-2 text-sm font-semibold"
-                style={{
-                  borderColor: cor,
-                  color: cor
-                }}
-              >
-                Sim, avisou
-              </button>
+                <p className="text-xs uppercase tracking-wide text-gray-400">
+                  Serviço realizado
+                </p>
 
-              <button
-                type="button"
-                onClick={() =>
-                  escolherAntecedencia(
-                    false
-                  )
-                }
-                className="py-3.5 rounded-2xl bg-gray-100 text-gray-700 text-sm font-semibold"
-              >
-                Não avisou
-              </button>
-
-            </div>
-          </div>
-        )}
-
-        {/* ETAPA 2 — DESCONTO */}
-        {etapa === 'desconto' && (
-          <div>
-
-            <div className="bg-gray-50 rounded-2xl p-4 mb-5">
-              <p className="text-sm font-semibold text-gray-800">
-                Deseja descontar as sessões do pacote?
-              </p>
-
-              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                Como a cliente não avisou com antecedência,
-                você pode optar por descontar as sessões
-                correspondentes aos serviços agendados.
-              </p>
-            </div>
-
-            {carregandoCoberturas ? (
-              <div className="py-6 text-center">
-                <div
-                  className="w-6 h-6 rounded-full border-2 border-gray-200 border-t-current animate-spin mx-auto"
-                  style={{
-                    color: cor
-                  }}
+                <input
+                  type="text"
+                  value={
+                    servicoRealizado
+                  }
+                  onChange={e =>
+                    setServicoRealizado(
+                      e.target.value
+                    )
+                  }
+                  className="w-full mt-2 h-11 rounded-xl border border-[#dfe7df] bg-white px-3 text-sm outline-none focus:border-[#8aa28c]"
+                  placeholder="Nome do serviço"
                 />
 
-                <p className="text-xs text-gray-400 mt-2">
-                  Verificando pacotes...
-                </p>
               </div>
-            ) : (
-              <>
-                {coberturas.length >
-                  0 && (
-                  <div className="bg-white border border-gray-100 rounded-2xl p-3 mb-4">
-                    <p className="text-xs font-bold text-gray-700 mb-2">
-                      Serviços deste atendimento
+
+              <div className="mt-5 rounded-2xl border border-[#e3ebe3] p-4">
+
+                <p className="text-sm text-gray-600">
+                  Ao confirmar, o atendimento será registrado como concluído e deixará de aparecer na aba de confirmação.
+                </p>
+
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  salvando
+                }
+                onClick={
+                  onConfirmar
+                }
+                className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
+              >
+                {salvando
+                  ? 'Salvando...'
+                  : 'Confirmar atendimento'}
+              </button>
+
+            </div>
+          ) : (
+            <div>
+
+              {/* ETAPA 1 */}
+
+              {etapaNaoCompareceu ===
+                'pergunta_aviso' && (
+                <div>
+
+                  <div className="rounded-2xl bg-[#fff8ec] p-4 mb-5">
+
+                    <p className="text-sm font-semibold text-[#765d29]">
+                      A cliente avisou o salão sobre a falta com antecedência?
                     </p>
 
-                    <div className="space-y-2">
+                    <p className="text-xs text-[#8c7441] mt-1.5">
+                      Se avisou em cima da hora ou não avisou, considere como falta sem aviso prévio.
+                    </p>
+
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3">
+
+                    <button
+                      type="button"
+                      disabled={
+                        salvando
+                      }
+                      onClick={() =>
+                        selecionarAviso(
+                          true
+                        )
+                      }
+                      className="min-h-12 rounded-xl border border-[#dbe7dc] bg-[#f7fbf7] text-[#58705b] font-semibold text-sm"
+                    >
+                      Sim, avisou com antecedência
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        salvando
+                      }
+                      onClick={() =>
+                        selecionarAviso(
+                          false
+                        )
+                      }
+                      className="min-h-12 rounded-xl border border-[#eadada] bg-[#fff8f8] text-[#9b5e5e] font-semibold text-sm"
+                    >
+                      Não, não avisou / avisou em cima da hora
+                    </button>
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* ETAPA 2 */}
+
+              {etapaNaoCompareceu ===
+                'pergunta_pacote' && (
+                <div>
+
+                  <div className="rounded-2xl bg-[#fff8ec] p-4 mb-5">
+
+                    <p className="text-sm font-semibold text-[#765d29]">
+                      Deseja descontar a falta do pacote da cliente?
+                    </p>
+
+                    <p className="text-xs text-[#8c7441] mt-1.5">
+                      O sistema considerará todos os serviços do agendamento e suas respectivas sessões equivalentes.
+                    </p>
+
+                  </div>
+
+                  {coberturas.length >
+                    0 && (
+                    <div className="mb-5 space-y-2">
+
                       {coberturas.map(
-                        cobertura => (
+                        (
+                          cobertura: CoberturaServico
+                        ) => (
                           <div
                             key={
                               cobertura.servicoId
                             }
-                            className="flex items-center justify-between gap-3"
+                            className="rounded-xl bg-[#f7faf7] p-3"
                           >
-                            <span className="text-xs text-gray-600">
+
+                            <div className="flex items-center justify-between gap-3">
+
+                              <span className="text-sm font-medium">
+                                {
+                                  cobertura.servicoNome
+                                }
+                              </span>
+
+                              <span className="text-xs text-gray-500">
+                                {
+                                  cobertura.sessoesEquivalentes
+                                }{' '}
+                                sessão(ões)
+                              </span>
+
+                            </div>
+
+                          </div>
+                        )
+                      )}
+
+                    </div>
+                  )}
+
+                  {carregandoCoberturas && (
+                    <p className="text-sm text-gray-500 mb-4">
+                      Verificando os pacotes disponíveis...
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+
+                    <button
+                      type="button"
+                      disabled={
+                        salvando ||
+                        carregandoCoberturas
+                      }
+                      onClick={() =>
+                        selecionarDesconto(
+                          false
+                        )
+                      }
+                      className="h-12 rounded-xl border border-[#dfe5df] text-gray-600 font-semibold text-sm disabled:opacity-50"
+                    >
+                      Não descontar
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        salvando ||
+                        carregandoCoberturas
+                      }
+                      onClick={() =>
+                        selecionarDesconto(
+                          true
+                        )
+                      }
+                      className="h-12 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
+                    >
+                      Sim, descontar
+                    </button>
+
+                  </div>
+
+                </div>
+              )}
+
+              {/* ETAPA 3 */}
+
+              {etapaNaoCompareceu ===
+                'justificativa' && (
+                <div>
+
+                  <div className="rounded-2xl bg-[#fff8ec] p-4 mb-5">
+
+                    <p className="text-sm font-semibold text-[#765d29]">
+                      Justificativa do desconto
+                    </p>
+
+                    <p className="text-xs text-[#8c7441] mt-1.5">
+                      Escreva o motivo pelo qual as sessões serão descontadas. Essa justificativa ficará registrada no histórico do pacote.
+                    </p>
+
+                  </div>
+
+                  <label className="block">
+
+                    <span className="text-xs font-semibold text-gray-500">
+                      Justificativa
+                    </span>
+
+                    <textarea
+                      value={
+                        justificativa
+                      }
+                      onChange={e =>
+                        setJustificativa(
+                          e.target.value
+                        )
+                      }
+                      rows={5}
+                      placeholder="Ex.: Cliente não compareceu e não avisou o salão com antecedência."
+                      className="w-full mt-2 rounded-xl border border-[#dfe7df] px-3 py-3 text-sm outline-none resize-none focus:border-[#8aa28c]"
+                    />
+
+                  </label>
+
+                  <div className="mt-4 rounded-xl bg-[#f7faf7] p-3">
+
+                    <p className="text-xs text-gray-500">
+                      Serviços que serão considerados:
+                    </p>
+
+                    <div className="mt-2 space-y-1.5">
+
+                      {coberturas.map(
+                        (
+                          cobertura: CoberturaServico
+                        ) => (
+                          <div
+                            key={
+                              cobertura.servicoId
+                            }
+                            className="flex items-center justify-between gap-3 text-sm"
+                          >
+
+                            <span>
                               {
                                 cobertura.servicoNome
                               }
                             </span>
 
-                            <span
-                              className="text-xs font-semibold"
-                              style={{
-                                color: cor
-                              }}
-                            >
-                              {cobertura.sessoesEquivalentes}{' '}
-                              {cobertura.sessoesEquivalentes ===
-                              1
-                                ? 'sessão'
-                                : 'sessões'}
+                            <span className="font-medium text-[#58705b]">
+                              {
+                                cobertura.sessoesEquivalentes
+                              }{' '}
+                              sessão(ões)
                             </span>
+
                           </div>
                         )
                       )}
+
                     </div>
+
                   </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-3">
 
                   <button
                     type="button"
                     disabled={
                       salvando
                     }
-                    onClick={() =>
-                      escolherDesconto(
-                        false
-                      )
+                    onClick={
+                      confirmarJustificativa
                     }
-                    className="py-3.5 rounded-2xl border border-gray-200 text-gray-700 text-sm font-semibold disabled:opacity-50"
+                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
                   >
-                    Não descontar
-                  </button>
-
-                  <button
-                    type="button"
-                    disabled={
-                      salvando
-                    }
-                    onClick={() =>
-                      escolherDesconto(
-                        true
-                      )
-                    }
-                    className="py-3.5 rounded-2xl text-white text-sm font-semibold disabled:opacity-50"
-                    style={{
-                      backgroundColor:
-                        cor
-                    }}
-                  >
-                    Descontar
+                    {salvando
+                      ? 'Salvando...'
+                      : 'Registrar falta e descontar pacote'}
                   </button>
 
                 </div>
-              </>
-            )}
-
-          </div>
-        )}
-
-        {/* ETAPA 3 — JUSTIFICATIVA */}
-        {etapa ===
-          'justificativa' && (
-          <div>
-
-            <div className="bg-gray-50 rounded-2xl p-4 mb-4">
-              <p className="text-sm font-semibold text-gray-800">
-                {descontarPacote
-                  ? 'Justificativa do desconto'
-                  : 'Registro do não comparecimento'}
-              </p>
-
-              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                {descontarPacote
-                  ? 'Escreva o motivo que ficará registrado no histórico do pacote e poderá ser consultado pela cliente.'
-                  : avisouComAntecedencia
-                    ? 'O atendimento será registrado como não comparecimento, sem desconto no pacote.'
-                    : 'O atendimento será registrado como não comparecimento, sem desconto no pacote.'}
-              </p>
-            </div>
-
-            {descontarPacote ? (
-              <textarea
-                value={justificativa}
-                onChange={e =>
-                  setJustificativa(
-                    e.target.value
-                  )
-                }
-                placeholder="Ex.: Cliente não compareceu ao horário agendado e não avisou o salão com antecedência."
-                className="w-full h-28 resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:ring-2"
-              />
-            ) : (
-              <div className="bg-gray-50 rounded-2xl p-4">
-                <p className="text-xs text-gray-500">
-                  Nenhuma sessão será descontada do pacote.
-                </p>
-              </div>
-            )}
-
-            <div className="flex gap-3 mt-5">
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (
-                    avisouComAntecedencia ===
-                    false
-                  ) {
-                    setEtapa(
-                      'desconto'
-                    )
-                  } else {
-                    setEtapa(
-                      'antecedencia'
-                    )
-                  }
-                }}
-                disabled={salvando}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm disabled:opacity-50"
-              >
-                Voltar
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  confirmarJustificativa
-                }
-                disabled={
-                  salvando ||
-                  (Boolean(
-                    descontarPacote
-                  ) &&
-                    !justificativa.trim())
-                }
-                className="flex-1 py-3 rounded-2xl text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                style={{
-                  backgroundColor:
-                    cor
-                }}
-              >
-                {salvando ? (
-                  <>
-                    <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <Check size={16} />
-                    Registrar falta
-                  </>
-                )}
-              </button>
+              )}
 
             </div>
-          </div>
-        )}
+          )}
+
+        </div>
 
       </div>
+
     </div>
   )
 }
