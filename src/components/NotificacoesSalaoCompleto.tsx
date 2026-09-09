@@ -19,7 +19,6 @@ import {
 } from 'lucide-react'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────
-
 type PacoteOpcao = {
   clientePacoteId: string
   nome: string
@@ -41,7 +40,6 @@ export default function NotificacoesDonoPage() {
 
   const { profile, loading } = useAuth()
   const router = useRouter()
-
   const [salao, setSalao] = useState<any>(null)
 
   const [aba, setAba] = useState<
@@ -52,7 +50,6 @@ export default function NotificacoesDonoPage() {
   const [confirmacoes, setConfirmacoes] = useState<any[]>([])
   const [notificacoes, setNotificacoes] = useState<any[]>([])
   const [notificacoesExcluidas, setNotificacoesExcluidas] = useState<any[]>([])
-
   const [modalSugestao, setModalSugestao] = useState<any>(null)
   const [modalConfirmar, setModalConfirmar] = useState<any>(null)
 
@@ -338,10 +335,20 @@ export default function NotificacoesDonoPage() {
 
     setSolicitacoes(sols || [])
 
-    // Confirmações
-    const ontem = new Date()
-    ontem.setDate(ontem.getDate() - 1)
-
+    // ─── CONFIRMAÇÕES ─────────────────────────────────────────────────────
+    //
+    // IMPORTANTE:
+    // Não existe mais limite de data aqui.
+    //
+    // O atendimento permanece na aba "Confirmar" enquanto:
+    //
+    // 1. pertencer ao salão;
+    // 2. estiver com status "confirmado";
+    // 3. ainda não possuir registro em
+    //    confirmacoes_atendimento.
+    //
+    // Portanto, se passar 1 dia, 1 semana ou mais,
+    // ele continuará aparecendo até ser tratado.
     const { data: ags } = await supabase
       .from('agendamentos')
       .select(
@@ -349,8 +356,6 @@ export default function NotificacoesDonoPage() {
       )
       .eq('salao_id', profile.salao_id)
       .eq('status', 'confirmado')
-      .gte('data_hora', ontem.toISOString())
-      .lte('data_hora', new Date().toISOString())
       .order('data_hora')
 
     setConfirmacoes(
@@ -630,54 +635,534 @@ export default function NotificacoesDonoPage() {
       }
     })
   }
+  // ─── CONFIRMAR ATENDIMENTO ──────────────────────────────────────────────
 
-  // ─── Abrir confirmação ─────────────────────────────────────────────────
-
-  async function abrirModalConfirmar(
-    ag: any
-  ) {
-    setModalConfirmar(ag)
-
+  async function abrirModalConfirmar(agendamento: any) {
+    setModalConfirmar(agendamento)
     setServicoRealizado(
-      ag.servicos?.nome || ''
-    )
-
-    setCarregandoCoberturas(true)
-
-    const covs =
-      await montarCoberturas(ag)
-
-    setCoberturas(covs)
-
-    setCarregandoCoberturas(false)
-  }
-
-  // ─── Alterar pacote escolhido ──────────────────────────────────────────
-
-  function alterarPacoteServico(
-    servicoId: string,
-    clientePacoteId: string | null
-  ) {
-    setCoberturas(prev =>
-      prev.map(c =>
-        c.servicoId === servicoId
-          ? {
-              ...c,
-              clientePacoteIdSelecionado:
-                clientePacoteId
-            }
-          : c
-      )
+      agendamento.servicos?.nome ||
+      agendamento.servico_nome ||
+      ''
     )
   }
-
-  // ─── Confirmar atendimento ─────────────────────────────────────────────
 
   async function confirmarAtendimento() {
+    if (!modalConfirmar || !profile?.salao_id) return
+
+    setSalvando(true)
+
+    try {
+      const agendamento = modalConfirmar
+
+      const { error: erroConfirmacao } =
+        await supabase
+          .from('confirmacoes_atendimento')
+          .insert({
+            agendamento_id: agendamento.id,
+            salao_id: profile.salao_id,
+            confirmado_por: profile.id,
+            confirmado_em:
+              new Date().toISOString()
+          })
+
+      if (erroConfirmacao) {
+        throw erroConfirmacao
+      }
+
+      const { error: erroAgendamento } =
+        await supabase
+          .from('agendamentos')
+          .update({
+            status: 'concluido'
+          })
+          .eq(
+            'id',
+            agendamento.id
+          )
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
+
+      if (erroAgendamento) {
+        throw erroAgendamento
+      }
+
+      await notificar({
+        salao_id: profile.salao_id,
+        tipo: 'atendimento_confirmado',
+        titulo: 'Atendimento confirmado',
+        mensagem: `O atendimento de ${
+          agendamento.clientes?.nome ||
+          'cliente'
+        } foi confirmado.`,
+        destinatario_id:
+          agendamento.cliente_id ||
+          null,
+        url: '/cliente'
+      })
+
+      setConfirmacoes(prev =>
+        prev.filter(
+          item =>
+            item.id !==
+            agendamento.id
+        )
+      )
+
+      setModalConfirmar(null)
+
+      await carregarDados()
+
+    } catch (error: any) {
+      console.error(
+        'Erro ao confirmar atendimento:',
+        error
+      )
+
+      alert(
+        error?.message ||
+          'Não foi possível confirmar o atendimento.'
+      )
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  // ─── NÃO COMPARECEU ────────────────────────────────────────────────────
+
+  async function iniciarNaoComparecimento(
+    agendamento: any
+  ) {
+    setModalConfirmar({
+      tipo: 'nao_compareceu',
+      agendamento
+    })
+
+    setCoberturas([])
+    setCarregandoCoberturas(true)
+
+    try {
+      const dados =
+        await montarCoberturas(
+          agendamento
+        )
+
+      setCoberturas(dados)
+    } catch (error) {
+      console.error(
+        'Erro ao montar coberturas:',
+        error
+      )
+    } finally {
+      setCarregandoCoberturas(false)
+    }
+  }
+
+  async function registrarNaoComparecimento(
+    agendamento: any,
+    descontarPacote: boolean,
+    justificativa: string
+  ) {
+    if (!profile?.salao_id) return
+
+    setSalvando(true)
+
+    try {
+      // Se a opção for descontar pacote,
+      // primeiro processamos os descontos.
+      if (descontarPacote) {
+        await aplicarDescontosPacotes(
+          agendamento,
+          justificativa
+        )
+      }
+
+      // O atendimento passa para
+      // "nao_compareceu".
+      const {
+        error: erroAgendamento
+      } = await supabase
+        .from('agendamentos')
+        .update({
+          status: 'nao_compareceu'
+        })
+        .eq(
+          'id',
+          agendamento.id
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
+        )
+
+      if (erroAgendamento) {
+        throw erroAgendamento
+      }
+
+      await notificar({
+        salao_id: profile.salao_id,
+        tipo: 'nao_compareceu',
+        titulo: 'Atendimento não realizado',
+        mensagem: `O atendimento de ${
+          agendamento.clientes?.nome ||
+          'cliente'
+        } foi marcado como não comparecimento.`,
+        destinatario_id:
+          agendamento.cliente_id ||
+          null,
+        url: '/cliente/pacotes'
+      })
+
+      setConfirmacoes(prev =>
+        prev.filter(
+          item =>
+            item.id !==
+            agendamento.id
+        )
+      )
+
+      setModalConfirmar(null)
+
+      await carregarDados()
+
+    } catch (error: any) {
+      console.error(
+        'Erro ao registrar não comparecimento:',
+        error
+      )
+
+      alert(
+        error?.message ||
+          'Não foi possível registrar o não comparecimento.'
+      )
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  // ─── DESCONTO DOS PACOTES ──────────────────────────────────────────────
+
+  async function aplicarDescontosPacotes(
+    agendamento: any,
+    justificativa: string
+  ) {
+    if (!profile?.salao_id) return
+
+    const clienteNome =
+      agendamento.clientes?.nome ||
+      agendamento.cliente_nome ||
+      ''
+
+    if (!clienteNome) {
+      throw new Error(
+        'Não foi possível identificar a cliente.'
+      )
+    }
+
+    const { data: pacotes, error } =
+      await supabase
+        .from('pacotes_clientes_resumo')
+        .select(
+          'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
+        )
+        .eq(
+          'cliente_nome',
+          clienteNome
+        )
+        .eq(
+          'status',
+          'ativo'
+        )
+        .gt(
+          'sessoes_restantes',
+          0
+        )
+        .order(
+          'created_at',
+          {
+            ascending: true
+          }
+        )
+
+    if (error) {
+      throw error
+    }
+
+    if (!pacotes?.length) {
+      return
+    }
+
+    const coberturasAtuais =
+      coberturas.length > 0
+        ? coberturas
+        : await montarCoberturas(
+            agendamento
+          )
+
+    const dataRegistro =
+      new Date().toISOString()
+
+    // ────────────────────────────────────────────────────────────────────
+    // Cada serviço do agendamento possui sua própria quantidade de
+    // sessões equivalentes.
+    //
+    // Exemplo:
+    // Manicure = 1 sessão
+    // Massagem = 2 sessões
+    //
+    // O desconto precisa considerar TODOS os serviços agendados.
+    // ────────────────────────────────────────────────────────────────────
+
+    for (const cobertura of coberturasAtuais) {
+      let quantidadeRestante =
+        Number(
+          cobertura.sessoesEquivalentes ||
+            1
+        )
+
+      if (
+        quantidadeRestante <= 0
+      ) {
+        continue
+      }
+
+      // Primeiro tenta usar o pacote escolhido para aquele serviço.
+      let pacoteSelecionado =
+        cobertura.clientePacoteIdSelecionado
+          ? pacotes.find(
+              (p: any) =>
+                p.id ===
+                cobertura.clientePacoteIdSelecionado
+            )
+          : null
+
+      // Se não houver pacote selecionado,
+      // usa o primeiro pacote compatível/disponível.
+      if (
+        !pacoteSelecionado
+      ) {
+        pacoteSelecionado =
+          pacotes.find(
+            (p: any) =>
+              Number(
+                p.sessoes_restantes || 0
+              ) >=
+              quantidadeRestante
+          ) ||
+          pacotes.find(
+            (p: any) =>
+              Number(
+                p.sessoes_restantes || 0
+              ) > 0
+          )
+      }
+
+      while (
+        quantidadeRestante > 0 &&
+        pacoteSelecionado
+      ) {
+        const restantesAntes =
+          Number(
+            pacoteSelecionado.sessoes_restantes ||
+              0
+          )
+
+        if (
+          restantesAntes <= 0
+        ) {
+          pacoteSelecionado =
+            pacotes.find(
+              (p: any) =>
+                Number(
+                  p.sessoes_restantes ||
+                    0
+                ) > 0 &&
+                p.id !==
+                  pacoteSelecionado.id
+            ) || null
+
+          continue
+        }
+
+        const desconto = Math.min(
+          quantidadeRestante,
+          restantesAntes
+        )
+
+        const restantesDepois =
+          restantesAntes -
+          desconto
+
+        let historico =
+          Array.isArray(
+            pacoteSelecionado.historico_sessoes
+          )
+            ? [
+                ...pacoteSelecionado.historico_sessoes
+              ]
+            : []
+
+        historico.push({
+          tipo: 'nao_comparecimento',
+          data: dataRegistro,
+          quantidade: desconto,
+          servico:
+            cobertura.servicoNome,
+          sessoes_equivalentes:
+            cobertura.sessoesEquivalentes,
+          justificativa:
+            justificativa ||
+            'Não comparecimento sem aviso prévio.',
+          agendamento_id:
+            agendamento.id
+        })
+
+        const { error: erroUpdate } =
+          await supabase
+            .from(
+              'pacotes_clientes_resumo'
+            )
+            .update({
+              sessoes_restantes:
+                restantesDepois,
+              status:
+                restantesDepois <= 0
+                  ? 'concluido'
+                  : 'ativo',
+              historico_sessoes:
+                historico
+            })
+            .eq(
+              'id',
+              pacoteSelecionado.id
+            )
+
+        if (erroUpdate) {
+          throw erroUpdate
+        }
+
+        pacoteSelecionado.sessoes_restantes =
+          restantesDepois
+
+        quantidadeRestante -=
+          desconto
+
+        if (
+          quantidadeRestante > 0
+        ) {
+          pacoteSelecionado =
+            pacotes.find(
+              (p: any) =>
+                Number(
+                  p.sessoes_restantes ||
+                    0
+                ) > 0
+            ) || null
+        }
+      }
+    }
+  }
+
+  // ─── SOLICITAÇÕES ──────────────────────────────────────────────────────
+
+  async function aceitarSolicitacao(
+    solicitacao: any
+  ) {
+    if (!profile?.salao_id) return
+
+    setSalvando(true)
+
+    try {
+      const dataHora =
+        solicitacao.data_hora ||
+        solicitacao.data_agendada ||
+        solicitacao.horario_sugerido
+
+      const {
+        error: erroAgendamento
+      } = await supabase
+        .from('agendamentos')
+        .insert({
+          salao_id:
+            profile.salao_id,
+          cliente_id:
+            solicitacao.cliente_id,
+          servico_id:
+            solicitacao.servico_id,
+          data_hora: dataHora,
+          status: 'confirmado',
+          observacoes:
+            solicitacao.observacoes ||
+            null
+        })
+
+      if (erroAgendamento) {
+        throw erroAgendamento
+      }
+
+      await supabase
+        .from(
+          'solicitacoes_agendamento'
+        )
+        .update({
+          status: 'aceito'
+        })
+        .eq(
+          'id',
+          solicitacao.id
+        )
+
+      await notificar({
+        salao_id: profile.salao_id,
+        tipo: 'solicitacao_aceita',
+        titulo: 'Agendamento confirmado',
+        mensagem: `O agendamento de ${
+          solicitacao.clientes?.nome ||
+          'cliente'
+        } foi confirmado.`,
+        destinatario_id:
+          solicitacao.cliente_id ||
+          null,
+        url: '/cliente'
+      })
+
+      setSolicitacoes(prev =>
+        prev.filter(
+          item =>
+            item.id !==
+            solicitacao.id
+        )
+      )
+
+      await carregarDados()
+
+    } catch (error: any) {
+      console.error(
+        'Erro ao aceitar solicitação:',
+        error
+      )
+
+      alert(
+        error?.message ||
+          'Não foi possível aceitar a solicitação.'
+      )
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function recusarSolicitacao(
+    solicitacao: any
+  ) {
+    if (!profile?.salao_id) return
+
+    const motivo = window.prompt(
+      'Informe o motivo da recusa:'
+    )
+
     if (
-      !servicoRealizado ||
-      !modalConfirmar ||
-      !profile?.salao_id
+      motivo === null
     ) {
       return
     }
@@ -686,1522 +1171,1692 @@ export default function NotificacoesDonoPage() {
 
     try {
       const {
-        error: confirmacaoError
+        error
       } = await supabase
         .from(
-          'confirmacoes_atendimento'
+          'solicitacoes_agendamento'
         )
-        .insert({
-          agendamento_id:
-            modalConfirmar.id,
-          salao_id:
-            profile.salao_id,
-          confirmado_por:
-            profile.id,
-          servico_realizado:
-            servicoRealizado
-        })
-
-      if (confirmacaoError) {
-        console.error(
-          'Erro ao registrar confirmação:',
-          confirmacaoError
-        )
-        throw confirmacaoError
-      }
-
-      const {
-        error: agendamentoError
-      } = await supabase
-        .from('agendamentos')
         .update({
-          status: 'concluido'
+          status: 'recusado',
+          motivo_recusa:
+            motivo || null
         })
         .eq(
           'id',
-          modalConfirmar.id
-        )
-
-      if (agendamentoError) {
-        console.error(
-          'Erro ao concluir agendamento:',
-          agendamentoError
-        )
-        throw agendamentoError
-      }
-
-      const descontos: Record<
-        string,
-        {
-          nome: string
-          peso: number
-        }[]
-      > = {}
-
-      for (const cob of coberturas) {
-        if (
-          !cob.clientePacoteIdSelecionado
-        ) {
-          continue
-        }
-
-        if (
-          !descontos[
-            cob.clientePacoteIdSelecionado
-          ]
-        ) {
-          descontos[
-            cob.clientePacoteIdSelecionado
-          ] = []
-        }
-
-        descontos[
-          cob.clientePacoteIdSelecionado
-        ].push({
-          nome:
-            cob.servicoNome,
-          peso:
-            cob.sessoesEquivalentes
-        })
-      }
-
-      const hoje =
-        new Date()
-          .toISOString()
-          .slice(0, 10)
-
-      let totalDescontados = 0
-
-      for (
-        const [
-          pacoteId,
-          itens
-        ] of Object.entries(
-          descontos
-        )
-      ) {
-        const totalPeso =
-          itens.reduce(
-            (
-              acc,
-              item
-            ) =>
-              acc +
-              item.peso,
-            0
-          )
-
-        const {
-          data: pacote,
-          error: pacoteError
-        } = await supabase
-          .from(
-            'pacotes_clientes_resumo'
-          )
-          .select(
-            'id, cliente_nome, servico, sessoes_total, sessoes_restantes, status, historico_sessoes'
-          )
-          .eq(
-            'id',
-            pacoteId
-          )
-          .single()
-
-        if (
-          pacoteError ||
-          !pacote
-        ) {
-          console.error(
-            'Erro ao buscar pacote:',
-            pacoteError
-          )
-          continue
-        }
-
-        const sessoesRestantesAtuais =
-          Number(
-            pacote.sessoes_restantes ??
-              0
-          )
-
-        const sessoesRestantesNovas =
-          Math.max(
-            0,
-            sessoesRestantesAtuais -
-              totalPeso
-          )
-
-        const novoStatus =
-          sessoesRestantesNovas <=
-          0
-            ? 'concluido'
-            : 'ativo'
-
-        let historico =
-          Array.isArray(
-            pacote.historico_sessoes
-          )
-            ? [
-                ...pacote.historico_sessoes
-              ]
-            : []
-
-        for (const item of itens) {
-          for (
-            let i = 0;
-            i < item.peso;
-            i++
-          ) {
-            historico.push({
-              id:
-                typeof crypto !==
-                  'undefined' &&
-                crypto.randomUUID
-                  ? crypto.randomUUID()
-                  : `${Date.now()}-${Math.random()
-                      .toString(36)
-                      .substring(
-                        2,
-                        9
-                      )}`,
-              data: hoje,
-              servico:
-                item.peso > 1
-                  ? `${item.nome} (${i + 1}/${item.peso})`
-                  : item.nome
-            })
-          }
-        }
-
-        const {
-          error: updateError
-        } = await supabase
-          .from(
-            'pacotes_clientes_resumo'
-          )
-          .update({
-            sessoes_restantes:
-              sessoesRestantesNovas,
-            status:
-              novoStatus,
-            data_sessao:
-              hoje,
-            historico_sessoes:
-              historico
-          })
-          .eq(
-            'id',
-            pacoteId
-          )
-
-        if (updateError) {
-          console.error(
-            'Erro ao atualizar pacote:',
-            updateError
-          )
-          throw updateError
-        }
-
-        totalDescontados +=
-          totalPeso
-      }
-
-      const nenhumPacoteUsado =
-        coberturas.every(
-          cob =>
-            !cob.clientePacoteIdSelecionado
-        )
-
-      if (nenhumPacoteUsado) {
-        const venderNovo =
-          window.confirm(
-            'Este atendimento está sem sessões no pacote. Deseja vender novo pacote?'
-          )
-
-        if (venderNovo) {
-          router.push(
-            `/salao/pacotes/clientes?cliente_id=${modalConfirmar.cliente_id}&novo=true`
-          )
-          return
-        }
-      }
-
-      const {
-        data: clienteInfo
-      } = await supabase
-        .from('clientes')
-        .select(
-          'profile_id'
+          solicitacao.id
         )
         .eq(
-          'id',
-          modalConfirmar.cliente_id
+          'salao_id',
+          profile.salao_id
         )
-        .single()
 
-      if (
-        clienteInfo?.profile_id
-      ) {
-        await notificar({
-          salaoId:
-            profile.salao_id,
-          remetenteId:
-            profile.id,
-          destinatarioId:
-            clienteInfo.profile_id,
-          titulo:
-            '✅ Atendimento confirmado!',
-          mensagem:
-            totalDescontados >
-            0
-              ? `Seu atendimento foi confirmado. ${totalDescontados} sessão(ões) descontada(s) do pacote.`
-              : 'Seu atendimento foi registrado com sucesso!',
-          tipo:
-            'confirmacao',
-          url:
-            '/cliente/pacotes'
-        })
+      if (error) {
+        throw error
       }
 
-      setModalConfirmar(
-        null
+      await notificar({
+        salao_id: profile.salao_id,
+        tipo: 'solicitacao_recusada',
+        titulo: 'Solicitação recusada',
+        mensagem: `A solicitação de ${
+          solicitacao.clientes?.nome ||
+          'cliente'
+        } foi recusada.`,
+        destinatario_id:
+          solicitacao.cliente_id ||
+          null,
+        url: '/cliente'
+      })
+
+      setSolicitacoes(prev =>
+        prev.filter(
+          item =>
+            item.id !==
+            solicitacao.id
+        )
       )
-      setServicoRealizado(
-        ''
-      )
-      setCoberturas([])
 
       await carregarDados()
+
     } catch (error: any) {
       console.error(
-        'Erro ao confirmar atendimento:',
+        'Erro ao recusar solicitação:',
         error
       )
 
       alert(
-        'Erro detalhado: ' +
-          (
-            error?.message ||
-            JSON.stringify(
-              error
-            )
-          )
+        error?.message ||
+          'Não foi possível recusar a solicitação.'
       )
     } finally {
       setSalvando(false)
     }
   }
 
-  // ─── Sugestão de horários ──────────────────────────────────────────────
+  // ─── SUGESTÃO DE HORÁRIOS ──────────────────────────────────────────────
 
-  async function sugerirHorarios(
-    solicitacao: any
-  ) {
-    const horarios =
-      horariosLivres.filter(
-        h => h
-      )
-
-    if (!horarios.length)
+  async function salvarSugestaoHorario() {
+    if (
+      !modalSugestao ||
+      !profile?.salao_id
+    ) {
       return
+    }
+
+    const horarios = horariosLivres.filter(
+      h => h.trim()
+    )
+
+    if (
+      horarios.length === 0
+    ) {
+      alert(
+        'Informe pelo menos um horário.'
+      )
+      return
+    }
 
     setSalvando(true)
 
-    await supabase
-      .from(
-        'solicitacoes_agendamento'
-      )
-      .update({
-        status:
-          'horario_sugerido',
-        horarios_sugeridos:
-          horarios,
-        profissional_id:
-          profile!.id
-      })
-      .eq(
-        'id',
-        solicitacao.id
-      )
+    try {
+      const {
+        error
+      } = await supabase
+        .from(
+          'solicitacoes_agendamento'
+        )
+        .update({
+          status: 'horario_sugerido',
+          horarios_sugeridos:
+            horarios
+        })
+        .eq(
+          'id',
+          modalSugestao.id
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
+        )
 
-    const {
-      data: cp
-    } = await supabase
-      .from('clientes')
-      .select(
-        'profile_id'
-      )
-      .eq(
-        'id',
-        solicitacao.cliente_id
-      )
-      .single()
+      if (error) {
+        throw error
+      }
 
-    if (cp?.profile_id) {
       await notificar({
-        salaoId:
-          profile!.salao_id,
-        remetenteId:
-          profile!.id,
-        destinatarioId:
-          cp.profile_id,
-        titulo:
-          '📅 Horários disponíveis para você!',
-        mensagem:
-          `${salao?.nome} sugeriu horários para ${solicitacao.servicos?.nome}. Escolha o melhor para você!`,
-        tipo:
-          'horario_sugerido',
-        url:
-          '/cliente/agendamentos'
-      })
-    }
-
-    setModalSugestao(
-      null
-    )
-
-    setHorariosLivres([
-      '',
-      '',
-      ''
-    ])
-
-    setSalvando(false)
-
-    carregarDados()
-  }
-
-  async function cancelarSugestao(
-    solicitacao: any
-  ) {
-    await supabase
-      .from(
-        'solicitacoes_agendamento'
-      )
-      .update({
-        status:
-          'pendente',
-        horarios_sugeridos:
+        salao_id: profile.salao_id,
+        tipo: 'horarios_sugeridos',
+        titulo: 'Novos horários disponíveis',
+        mensagem: `O salão enviou novos horários para ${
+          modalSugestao.clientes?.nome ||
+          'você'
+        }.`,
+        destinatario_id:
+          modalSugestao.cliente_id ||
           null,
-        profissional_id:
-          null
+        url: '/cliente'
       })
-      .eq(
-        'id',
-        solicitacao.id
+
+      setModalSugestao(null)
+      setHorariosLivres([
+        '',
+        '',
+        ''
+      ])
+
+      await carregarDados()
+
+    } catch (error: any) {
+      console.error(
+        'Erro ao salvar sugestão:',
+        error
       )
 
-    carregarDados()
-  }
-
-  async function recusarSolicitacao(
-    solicitacao: any
-  ) {
-    await supabase
-      .from(
-        'solicitacoes_agendamento'
+      alert(
+        error?.message ||
+          'Não foi possível enviar os horários.'
       )
-      .update({
-        status:
-          'recusado'
-      })
-      .eq(
-        'id',
-        solicitacao.id
-      )
-
-    carregarDados()
-  }
-
-  function enviarWhatsAppHorarios(
-    solicitacao: any
-  ) {
-    const telefone =
-      solicitacao.clientes?.telefone
-        ? solicitacao.clientes.telefone.replace(
-            /\D/g,
-            ''
-          )
-        : ''
-
-    const listaHorarios =
-      (
-        solicitacao.horarios_sugeridos ||
-        []
-      )
-        .map(
-          (
-            h: string,
-            index: number
-          ) =>
-            `*Opção ${index + 1}:* ${new Date(
-              h
-            ).toLocaleDateString(
-              'pt-BR',
-              {
-                day: '2-digit',
-                month: 'short'
-              }
-            )} às ${new Date(
-              h
-            ).toLocaleTimeString(
-              'pt-BR',
-              {
-                hour: '2-digit',
-                minute: '2-digit'
-              }
-            )}`
-        )
-        .join('\n')
-
-    const modeloSalvo =
-      salao?.mensagem_sugestao_horarios ||
-      'Olá {cliente}, tudo bem? Sugerimos pelo aplicativo estes horários, caso não tenha checado por lá, estamos enviando por aqui para lembra-la!'
-
-    const textoFinal =
-      modeloSalvo
-        .replace(
-          /{cliente}/g,
-          solicitacao.clientes?.nome ||
-            'Cliente'
-        )
-        .replace(
-          /{servico}/g,
-          solicitacao.servicos?.nome ||
-            'Atendimento'
-        ) +
-      `\n\n${listaHorarios}\n\nQual destas opções fica melhor para você?`
-
-    const texto =
-      encodeURIComponent(
-        textoFinal
-      )
-
-    if (telefone) {
-      window.open(
-        `https://api.whatsapp.com/send?phone=55${telefone}&text=${texto}`,
-        '_blank'
-      )
-    } else {
-      window.open(
-        `https://api.whatsapp.com/send?text=${texto}`,
-        '_blank'
-      )
+    } finally {
+      setSalvando(false)
     }
   }
 
-  function enviarWhatsAppCancelamento(
-    solicitacao: any
-  ) {
-    const telefone =
-      solicitacao.clientes?.telefone
-        ? solicitacao.clientes.telefone.replace(
-            /\D/g,
-            ''
-          )
-        : ''
-
-    const texto =
-      encodeURIComponent(
-        `Olá, ${solicitacao.clientes?.nome}! Aqui é do *${salao?.nome || 'Salão'}*. Infelizmente este horário já não temos mais disponível, mas estamos aguardando seu retorno para verificarmos outra data ideal para você!`
-      )
-
-    if (telefone) {
-      window.open(
-        `https://api.whatsapp.com/send?phone=55${telefone}&text=${texto}`,
-        '_blank'
-      )
-    } else {
-      window.open(
-        `https://api.whatsapp.com/send?text=${texto}`,
-        '_blank'
-      )
-    }
-  }
-
-  async function removerHorarioIndividual(
-    solicitacao: any,
-    horarioRemover: string
-  ) {
-    const novos =
-      solicitacao.horarios_sugeridos.filter(
-        (h: string) =>
-          h !==
-          horarioRemover
-      )
-
-    if (
-      novos.length === 0
-    ) {
-      cancelarSugestao(
-        solicitacao
-      )
-      return
-    }
-
-    await supabase
-      .from(
-        'solicitacoes_agendamento'
-      )
-      .update({
-        horarios_sugeridos:
-          novos
-      })
-      .eq(
-        'id',
-        solicitacao.id
-      )
-
-    carregarDados()
-  }
+  // ─── EXCLUIR NOTIFICAÇÃO ───────────────────────────────────────────────
 
   async function excluirNotificacao(
-    id: string
+    notificacao: any
   ) {
-    await supabase
-      .from('notificacoes')
-      .update({
-        excluida: true
-      })
-      .eq(
-        'id',
-        id
+    try {
+      const {
+        error
+      } = await supabase
+        .from('notificacoes')
+        .update({
+          excluida: true
+        })
+        .eq(
+          'id',
+          notificacao.id
+        )
+
+      if (error) {
+        throw error
+      }
+
+      setNotificacoes(prev =>
+        prev.filter(
+          item =>
+            item.id !==
+            notificacao.id
+        )
       )
 
-    carregarDados()
+      setNotificacoesExcluidas(
+        prev => [
+          notificacao,
+          ...prev
+        ]
+      )
+
+    } catch (error: any) {
+      console.error(
+        'Erro ao excluir notificação:',
+        error
+      )
+    }
   }
 
   async function restaurarNotificacao(
-    id: string
+    notificacao: any
   ) {
-    await supabase
-      .from('notificacoes')
-      .update({
-        excluida: false
-      })
-      .eq(
-        'id',
-        id
+    try {
+      const {
+        error
+      } = await supabase
+        .from('notificacoes')
+        .update({
+          excluida: false
+        })
+        .eq(
+          'id',
+          notificacao.id
+        )
+
+      if (error) {
+        throw error
+      }
+
+      setNotificacoesExcluidas(
+        prev =>
+          prev.filter(
+            item =>
+              item.id !==
+              notificacao.id
+          )
       )
 
-    carregarDados()
+      setNotificacoes(prev => [
+        notificacao,
+        ...prev
+      ])
+
+    } catch (error: any) {
+      console.error(
+        'Erro ao restaurar notificação:',
+        error
+      )
+    }
+  }
+
+  // ─── RENDER ─────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-4 border-gray-200 border-t-current animate-spin" />
+          <p className="text-sm text-gray-500">
+            Carregando...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return null
   }
 
   const cor =
     salao?.cor_primaria ||
-    '#E91E8C'
+    '#8FA88F'
 
-  const badges = {
-    pedidos:
-      solicitacoes.length,
-    confirmacoes:
-      confirmacoes.length,
-    notificacoes:
-      notificacoes.filter(
-        n => !n.lida
-      ).length,
-    excluidas:
-      0
-  }
+  const quantidadeConfirmacoes =
+    confirmacoes.length
+
+  const quantidadeSolicitacoes =
+    solicitacoes.length
+
+  const quantidadeNotificacoes =
+    notificacoes.filter(
+      n => !n.lida
+    ).length
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] pb-12">
-      <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button
-          onClick={() =>
-            router.back()
-          }
-        >
-          <ArrowLeft
-            size={22}
-            className="text-gray-700"
-          />
-        </button>
-
-        <h1 className="font-bold text-gray-900 text-lg flex-1">
-          Central de Atendimento
-        </h1>
-      </div>
-
-      <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
-        {(
-          [
-            {
-              key: 'pedidos',
-              label: 'Pedidos'
-            },
-            {
-              key: 'confirmacoes',
-              label: 'Confirmar'
-            },
-            {
-              key: 'notificacoes',
-              label: 'Notificações'
-            },
-            {
-              key: 'excluidas',
-              label: 'Excluídas'
-            }
-          ] as const
-        ).map(t => (
+    <div
+      className="min-h-screen bg-gray-50 pb-24"
+      style={
+        {
+          '--cor-salao': cor
+        } as React.CSSProperties
+      }
+    >
+      {/* CABEÇALHO */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-30">
+        <div className="max-w-xl mx-auto px-4 py-4 flex items-center gap-3">
           <button
-            key={t.key}
-            onClick={() =>
-              setAba(t.key)
-            }
-            className={
-              'relative flex-1 py-3 text-xs font-medium whitespace-nowrap transition-all px-3 ' +
-              (
-                aba === t.key
-                  ? 'border-b-2'
-                  : 'text-gray-400'
-              )
-            }
-            style={
-              aba === t.key
-                ? {
-                    color: cor,
-                    borderColor:
-                      cor
-                  }
-                : {}
-            }
+            type="button"
+            onClick={() => router.back()}
+            className="w-10 h-10 rounded-full flex items-center justify-center bg-gray-50"
           >
-            {t.label}
-
-            {badges[t.key] >
-              0 && (
-              <span
-                className="absolute top-1.5 right-1 w-4 h-4 rounded-full text-white text-[9px] flex items-center justify-center font-bold"
-                style={{
-                  backgroundColor:
-                    cor
-                }}
-              >
-                {badges[t.key]}
-              </span>
-            )}
+            <ArrowLeft
+              size={19}
+              className="text-gray-600"
+            />
           </button>
-        ))}
-      </div>
 
-      <div className="px-4 py-4 flex flex-col gap-3">
-        {aba ===
-          'pedidos' &&
-          (
-            solicitacoes.length ===
-            0 ? (
-              <div className="card text-center py-10">
+          <div className="flex-1 min-w-0">
+            <h1 className="font-bold text-gray-900">
+              Central de Atendimento
+            </h1>
+
+            <p className="text-xs text-gray-400">
+              Gerencie solicitações e atendimentos
+            </p>
+          </div>
+
+          <Bell
+            size={21}
+            style={{
+              color: cor
+            }}
+          />
+        </div>
+      </header>
+
+      {/* ABAS */}
+      <div className="bg-white border-b border-gray-100 sticky top-[73px] z-20">
+        <div className="max-w-xl mx-auto px-3">
+          <div className="flex overflow-x-auto no-scrollbar">
+
+            <button
+              type="button"
+              onClick={() =>
+                setAba('pedidos')
+              }
+              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
+                aba === 'pedidos'
+                  ? 'text-gray-900'
+                  : 'text-gray-400 border-transparent'
+              }`}
+              style={
+                aba === 'pedidos'
+                  ? {
+                      borderColor: cor,
+                      color: cor
+                    }
+                  : {}
+              }
+            >
+              Pedidos
+              {quantidadeSolicitacoes >
+                0 && (
+                <span
+                  className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] text-white"
+                  style={{
+                    backgroundColor: cor
+                  }}
+                >
+                  {quantidadeSolicitacoes}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setAba('confirmacoes')
+              }
+              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
+                aba === 'confirmacoes'
+                  ? 'text-gray-900'
+                  : 'text-gray-400 border-transparent'
+              }`}
+              style={
+                aba === 'confirmacoes'
+                  ? {
+                      borderColor: cor,
+                      color: cor
+                    }
+                  : {}
+              }
+            >
+              Confirmar
+              {quantidadeConfirmacoes >
+                0 && (
+                <span
+                  className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] text-white"
+                  style={{
+                    backgroundColor: cor
+                  }}
+                >
+                  {quantidadeConfirmacoes}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setAba('notificacoes')
+              }
+              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
+                aba === 'notificacoes'
+                  ? 'text-gray-900'
+                  : 'text-gray-400 border-transparent'
+              }`}
+              style={
+                aba === 'notificacoes'
+                  ? {
+                      borderColor: cor,
+                      color: cor
+                    }
+                  : {}
+              }
+            >
+              Notificações
+              {quantidadeNotificacoes >
+                0 && (
+                <span
+                  className="ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] text-white"
+                  style={{
+                    backgroundColor: cor
+                  }}
+                >
+                  {quantidadeNotificacoes}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setAba('excluidas')
+              }
+              className={`flex-1 min-w-[90px] py-3 text-xs font-semibold border-b-2 transition-colors ${
+                aba === 'excluidas'
+                  ? 'text-gray-900'
+                  : 'text-gray-400 border-transparent'
+              }`}
+              style={
+                aba === 'excluidas'
+                  ? {
+                      borderColor: cor,
+                      color: cor
+                    }
+                  : {}
+              }
+            >
+              Excluídas
+            </button>
+
+          </div>
+        </div>
+      </div>
+      {/* CONTEÚDO */}
+      <main className="max-w-xl mx-auto px-4 py-5">
+
+        {/* ─── PEDIDOS ──────────────────────────────────────────────── */}
+        {aba === 'pedidos' && (
+          <div className="space-y-3">
+
+            {solicitacoes.length === 0 ? (
+              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
                 <Calendar
-                  size={36}
-                  className="text-gray-300 mx-auto mb-2"
+                  size={38}
+                  className="mx-auto text-gray-300 mb-3"
                 />
-                <p className="text-gray-400">
-                  Nenhuma solicitação pendente
+
+                <p className="font-semibold text-gray-700">
+                  Nenhum pedido pendente
+                </p>
+
+                <p className="text-xs text-gray-400 mt-1">
+                  Quando uma cliente solicitar um agendamento,
+                  ele aparecerá aqui.
                 </p>
               </div>
             ) : (
               solicitacoes.map(
-                s => {
-                  const dataPreferida =
-                    formatarDataPreferida(s)
-
-                  const periodoPreferido =
-                    formatarPeriodoPreferido(s)
-
-                  return (
+                (solicitacao: any) => (
                   <div
-                    key={s.id}
-                    className="card flex flex-col gap-3"
+                    key={solicitacao.id}
+                    className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm"
                   >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-bold text-gray-900">
-                          {
-                            s
-                              .clientes
-                              ?.nome
-                          }
-                        </p>
+                    <div className="flex items-start gap-3">
 
-                        <p className="text-sm text-gray-500">
-                          {
-                            s
-                              .servicos
-                              ?.nome
-                          }
-                        </p>
-
-                        {/* ─────────────────────────────────────
-                            PREFERÊNCIA DA CLIENTE
-                            Mostra novamente o dia e o período
-                            escolhidos no pedido.
-                           ───────────────────────────────────── */}
-                        {(dataPreferida ||
-                          periodoPreferido) && (
-                          <div className="mt-2 bg-pink-50 rounded-xl px-3 py-2.5">
-                            <p className="text-[11px] font-semibold text-pink-600 uppercase tracking-wide mb-1">
-                              Preferência da cliente
-                            </p>
-
-                            {dataPreferida && (
-                              <div className="flex items-center gap-1.5">
-                                <Calendar
-                                  size={13}
-                                  className="text-pink-500 shrink-0"
-                                />
-
-                                <p className="text-xs text-pink-700 font-medium capitalize">
-                                  {dataPreferida}
-                                </p>
-                              </div>
-                            )}
-
-                            {periodoPreferido && (
-                              <div className="flex items-center gap-1.5 mt-1">
-                                <Clock
-                                  size={13}
-                                  className="text-pink-500 shrink-0"
-                                />
-
-                                <p className="text-xs text-pink-700 font-medium">
-                                  {periodoPreferido}
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        <p className="text-xs text-gray-400 mt-2">
-                          Pedido feito em{' '}
-                          {new Date(
-                            s.created_at
-                          ).toLocaleDateString(
-                            'pt-BR',
-                            {
-                              day: '2-digit',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            }
-                          )}
-                        </p>
+                      <div
+                        className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0"
+                        style={{
+                          backgroundColor: cor
+                        }}
+                      >
+                        {(
+                          solicitacao.clientes
+                            ?.nome ||
+                          'C'
+                        )
+                          .charAt(0)
+                          .toUpperCase()}
                       </div>
 
-                      <span
-                        className={
-                          'text-xs px-2 py-0.5 rounded-full font-medium ' +
-                          (
-                            s.status ===
-                            'horario_sugerido'
-                              ? 'bg-blue-50 text-blue-600'
-                              : 'bg-yellow-50 text-yellow-600'
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-gray-900">
+                          {solicitacao.clientes
+                            ?.nome ||
+                            'Cliente'}
+                        </p>
+
+                        {solicitacao.clientes
+                          ?.telefone && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {
+                              solicitacao
+                                .clientes
+                                .telefone
+                            }
+                          </p>
+                        )}
+
+                        <div className="mt-3 space-y-1.5">
+
+                          {solicitacao.servicos
+                            ?.nome && (
+                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                              <Calendar
+                                size={14}
+                                className="shrink-0"
+                                style={{
+                                  color: cor
+                                }}
+                              />
+
+                              <span>
+                                {
+                                  solicitacao
+                                    .servicos
+                                    .nome
+                                }
+                              </span>
+                            </div>
+                          )}
+
+                          {formatarDataPreferida(
+                            solicitacao
+                          ) && (
+                            <p className="text-xs text-gray-500">
+                              <span className="font-semibold">
+                                Data:
+                              </span>{' '}
+                              {formatarDataPreferida(
+                                solicitacao
+                              )}
+                            </p>
+                          )}
+
+                          {formatarPeriodoPreferido(
+                            solicitacao
+                          ) && (
+                            <p className="text-xs text-gray-500">
+                              <span className="font-semibold">
+                                Período:
+                              </span>{' '}
+                              {formatarPeriodoPreferido(
+                                solicitacao
+                              )}
+                            </p>
+                          )}
+
+                          {solicitacao.observacoes && (
+                            <p className="text-xs text-gray-500 bg-gray-50 rounded-xl p-2.5 mt-2">
+                              {solicitacao.observacoes}
+                            </p>
+                          )}
+
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mt-4">
+
+                      <button
+                        type="button"
+                        disabled={salvando}
+                        onClick={() =>
+                          recusarSolicitacao(
+                            solicitacao
                           )
                         }
+                        className="py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
                       >
-                        {
-                          s.status ===
-                          'horario_sugerido'
-                            ? 'Horários enviados'
-                            : 'Aguardando'
+                        <X size={14} />
+                        Recusar
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={salvando}
+                        onClick={() => {
+                          setModalSugestao(
+                            solicitacao
+                          )
+                        }}
+                        className="py-2.5 rounded-xl border text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
+                        style={{
+                          borderColor: `${cor}55`,
+                          color: cor
+                        }}
+                      >
+                        <Clock size={14} />
+                        Sugerir
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={salvando}
+                        onClick={() =>
+                          aceitarSolicitacao(
+                            solicitacao
+                          )
                         }
-                      </span>
-                    </div>
+                        className="py-2.5 rounded-xl text-white text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1"
+                        style={{
+                          backgroundColor: cor
+                        }}
+                      >
+                        <Check size={14} />
+                        Aceitar
+                      </button>
 
-                    {s.status ===
-                      'horario_sugerido' &&
-                      s.horarios_sugeridos && (
-                        <div className="bg-blue-50 rounded-xl p-3 flex flex-col gap-2">
-                          <div className="flex items-center justify-between">
-                            <p className="text-xs font-medium text-blue-700">
-                              Horários sugeridos:
-                            </p>
-
-                            <button
-                              onClick={() =>
-                                enviarWhatsAppHorarios(
-                                  s
-                                )
-                              }
-                              className="bg-green-600 text-white text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium"
-                            >
-                              <MessageCircle
-                                size={
-                                  13
-                                }
-                              />
-                              Enviar WhatsApp
-                            </button>
-                          </div>
-
-                          {s.horarios_sugeridos.map(
-                            (
-                              h: string,
-                              i: number
-                            ) => (
-                              <div
-                                key={
-                                  i
-                                }
-                                className="flex items-center justify-between bg-white rounded-xl px-3 py-2"
-                              >
-                                <p className="text-xs text-blue-600 font-medium">
-                                  {new Date(
-                                    h
-                                  ).toLocaleDateString(
-                                    'pt-BR',
-                                    {
-                                      weekday:
-                                        'short',
-                                      day: 'numeric',
-                                      month:
-                                        'short',
-                                      hour: '2-digit',
-                                      minute:
-                                        '2-digit'
-                                    }
-                                  )}
-                                </p>
-
-                                <button
-                                  onClick={() =>
-                                    removerHorarioIndividual(
-                                      s,
-                                      h
-                                    )
-                                  }
-                                  className="w-6 h-6 rounded-full bg-red-100 flex items-center justify-center ml-2 shrink-0"
-                                >
-                                  <X
-                                    size={
-                                      12
-                                    }
-                                    className="text-red-500"
-                                  />
-                                </button>
-                              </div>
-                            )
-                          )}
-                        </div>
-                      )}
-
-                    <div className="flex gap-2 flex-wrap">
-                      {s.status ===
-                        'pendente' && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setModalSugestao(
-                                s
-                              )
-                              setHorariosLivres(
-                                [
-                                  '',
-                                  '',
-                                  ''
-                                ]
-                              )
-                            }}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-white text-sm font-medium"
-                            style={{
-                              backgroundColor:
-                                cor
-                            }}
-                          >
-                            <Clock
-                              size={
-                                14
-                              }
-                            />
-                            Sugerir horários
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              recusarSolicitacao(
-                                s
-                              )
-                              enviarWhatsAppCancelamento(
-                                s
-                              )
-                            }}
-                            className="px-4 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium flex items-center gap-1"
-                          >
-                            <X
-                              size={
-                                14
-                              }
-                            />
-                            Recusar / Avisar
-                          </button>
-                        </>
-                      )}
-
-                      {s.status ===
-                        'horario_sugerido' && (
-                        <>
-                          <button
-                            onClick={() => {
-                              setModalSugestao(
-                                s
-                              )
-                              setHorariosLivres(
-                                s.horarios_sugeridos ||
-                                  [
-                                    '',
-                                    '',
-                                    ''
-                                  ]
-                              )
-                            }}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border-2 text-sm font-medium"
-                            style={{
-                              borderColor:
-                                cor,
-                              color:
-                                cor
-                            }}
-                          >
-                            <Clock
-                              size={
-                                14
-                              }
-                            />
-                            Alterar horários
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              cancelarSugestao(
-                                s
-                              )
-                              enviarWhatsAppCancelamento(
-                                s
-                              )
-                            }}
-                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-red-50 text-red-500 text-sm font-medium"
-                          >
-                            <RotateCcw
-                              size={
-                                14
-                              }
-                            />
-                            Retirar oferta
-                          </button>
-                        </>
-                      )}
                     </div>
                   </div>
-                  )
-                }
+                )
               )
-            )
-          )}
+            )}
 
-        {aba ===
-          'confirmacoes' &&
-          (
-            confirmacoes.length ===
-            0 ? (
-              <div className="card text-center py-10">
+          </div>
+        )}
+
+        {/* ─── CONFIRMAR ───────────────────────────────────────────── */}
+        {aba === 'confirmacoes' && (
+          <div className="space-y-3">
+
+            {confirmacoes.length === 0 ? (
+              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
                 <Check
-                  size={36}
-                  className="text-gray-300 mx-auto mb-2"
+                  size={38}
+                  className="mx-auto text-gray-300 mb-3"
                 />
-                <p className="text-gray-400">
-                  Nenhum atendimento para confirmar
+
+                <p className="font-semibold text-gray-700">
+                  Tudo em dia
+                </p>
+
+                <p className="text-xs text-gray-400 mt-1">
+                  Não há atendimentos aguardando confirmação.
                 </p>
               </div>
             ) : (
               confirmacoes.map(
-                ag => (
-                  <div
-                    key={ag.id}
-                    className="card flex flex-col gap-2"
-                  >
-                    <p className="font-bold text-gray-900">
-                      {
-                        ag
-                          .clientes
-                          ?.nome
-                      }
-                    </p>
-
-                    <p className="text-sm text-gray-500">
-                      {
-                        ag
-                          .servicos
-                          ?.nome
-                      }
-                    </p>
-
-                    <p className="text-xs text-gray-400">
-                      {new Date(
-                        ag.data_hora
-                      ).toLocaleDateString(
-                        'pt-BR',
-                        {
-                          weekday:
-                            'long',
-                          day: '2-digit',
-                          month:
-                            'short',
-                          hour: '2-digit',
-                          minute:
-                            '2-digit'
-                        }
-                      )}
-                    </p>
-
-                    <button
-                      onClick={() =>
-                        abrirModalConfirmar(
-                          ag
+                (agendamento: any) => {
+                  const dataHora =
+                    agendamento.data_hora
+                      ? new Date(
+                          agendamento.data_hora
                         )
-                      }
-                      className="w-full py-2.5 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-1.5"
-                      style={{
-                        backgroundColor:
-                          cor
-                      }}
-                    >
-                      <Check
-                        size={
-                          14
-                        }
-                      />
-                      Confirmar atendimento
-                    </button>
-                  </div>
-                )
-              )
-            )
-          )}
+                      : null
 
-        {aba ===
-          'notificacoes' &&
-          (
-            notificacoes.length ===
-            0 ? (
-              <div className="card text-center py-10">
+                  return (
+                    <div
+                      key={agendamento.id}
+                      className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm"
+                    >
+
+                      <div className="flex items-start gap-3">
+
+                        <div
+                          className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0"
+                          style={{
+                            backgroundColor: cor
+                          }}
+                        >
+                          {(
+                            agendamento
+                              .clientes
+                              ?.nome ||
+                            'C'
+                          )
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+
+                          <div className="flex items-start justify-between gap-2">
+
+                            <div className="min-w-0">
+                              <p className="font-bold text-gray-900 truncate">
+                                {agendamento.clientes
+                                  ?.nome ||
+                                  'Cliente'}
+                              </p>
+
+                              {agendamento.clientes
+                                ?.telefone && (
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {
+                                    agendamento
+                                      .clientes
+                                      .telefone
+                                  }
+                                </p>
+                              )}
+                            </div>
+
+                            <span
+                              className="shrink-0 text-[10px] font-semibold px-2 py-1 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  `${cor}12`,
+                                color: cor
+                              }}
+                            >
+                              Aguardando
+                            </span>
+
+                          </div>
+
+                          <div className="mt-3 space-y-1.5">
+
+                            {agendamento.servicos
+                              ?.nome && (
+                              <p className="text-sm font-medium text-gray-700">
+                                {
+                                  agendamento
+                                    .servicos
+                                    .nome
+                                }
+                              </p>
+                            )}
+
+                            {dataHora && (
+                              <div className="flex items-center gap-2 text-xs text-gray-500">
+                                <Calendar
+                                  size={14}
+                                  style={{
+                                    color: cor
+                                  }}
+                                />
+
+                                <span>
+                                  {dataHora.toLocaleDateString(
+                                    'pt-BR',
+                                    {
+                                      weekday:
+                                        'short',
+                                      day: '2-digit',
+                                      month: '2-digit',
+                                      year: 'numeric'
+                                    }
+                                  )}
+                                </span>
+
+                                <Clock
+                                  size={14}
+                                  className="ml-1"
+                                  style={{
+                                    color: cor
+                                  }}
+                                />
+
+                                <span>
+                                  {dataHora.toLocaleTimeString(
+                                    'pt-BR',
+                                    {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    }
+                                  )}
+                                </span>
+                              </div>
+                            )}
+
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* AÇÕES DO ATENDIMENTO */}
+                      <div className="grid grid-cols-2 gap-2 mt-4">
+
+                        {/* NÃO VEIO */}
+                        <button
+                          type="button"
+                          disabled={salvando}
+                          onClick={() =>
+                            iniciarNaoComparecimento(
+                              agendamento
+                            )
+                          }
+                          className="py-3 rounded-2xl border border-gray-200 text-gray-600 text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
+                        >
+                          <X size={15} />
+                          Não veio
+                        </button>
+
+                        {/* CONFIRMAR */}
+                        <button
+                          type="button"
+                          disabled={salvando}
+                          onClick={() =>
+                            abrirModalConfirmar(
+                              agendamento
+                            )
+                          }
+                          className="py-3 rounded-2xl text-white text-xs font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
+                          style={{
+                            backgroundColor: cor
+                          }}
+                        >
+                          <Check size={15} />
+                          Confirmar atendimento
+                        </button>
+
+                      </div>
+
+                    </div>
+                  )
+                }
+              )
+            )}
+
+          </div>
+        )}
+
+        {/* ─── NOTIFICAÇÕES ────────────────────────────────────────── */}
+        {aba === 'notificacoes' && (
+          <div className="space-y-3">
+
+            {notificacoes.length === 0 ? (
+              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
                 <Bell
-                  size={36}
-                  className="text-gray-300 mx-auto mb-2"
+                  size={38}
+                  className="mx-auto text-gray-300 mb-3"
                 />
-                <p className="text-gray-400">
+
+                <p className="font-semibold text-gray-700">
                   Nenhuma notificação
+                </p>
+
+                <p className="text-xs text-gray-400 mt-1">
+                  Você está em dia.
                 </p>
               </div>
             ) : (
               notificacoes.map(
-                n => (
+                (notificacao: any) => (
                   <div
-                    key={n.id}
-                    onClick={() =>
-                      handleClicarNotificacao(
-                        n
-                      )
-                    }
-                    className={
-                      'card flex flex-col gap-1 cursor-pointer transition-colors hover:bg-gray-50 ' +
-                      (!n.lida
-                        ? 'border-l-4'
-                        : '')
-                    }
-                    style={
-                      !n.lida
-                        ? {
-                            borderLeftColor:
-                              cor
-                          }
-                        : {}
-                    }
+                    key={notificacao.id}
+                    className={`bg-white rounded-3xl p-4 border shadow-sm ${
+                      notificacao.lida
+                        ? 'border-gray-100'
+                        : 'border-gray-200'
+                    }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900 text-sm">
-                          {
-                            n.titulo
-                          }
-                        </p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleClicarNotificacao(
+                          notificacao
+                        )
+                      }
+                      className="w-full text-left"
+                    >
+                      <div className="flex items-start gap-3">
 
-                        <p className="text-sm text-gray-500 mt-0.5">
-                          {
-                            n.mensagem
-                          }
-                        </p>
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                          style={{
+                            backgroundColor:
+                              `${cor}12`,
+                            color: cor
+                          }}
+                        >
+                          <Bell size={18} />
+                        </div>
 
-                        <p className="text-xs text-gray-400 mt-1">
-                          {new Date(
-                            n.created_at
-                          ).toLocaleDateString(
-                            'pt-BR',
-                            {
-                              day: '2-digit',
-                              month:
-                                'short',
-                              hour: '2-digit',
-                              minute:
-                                '2-digit'
-                            }
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <p
+                              className={`text-sm ${
+                                notificacao.lida
+                                  ? 'font-medium'
+                                  : 'font-bold'
+                              } text-gray-900`}
+                            >
+                              {notificacao.titulo ||
+                                'Notificação'}
+                            </p>
+
+                            {!notificacao.lida && (
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0 mt-1.5"
+                                style={{
+                                  backgroundColor:
+                                    cor
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                            {notificacao.mensagem}
+                          </p>
+
+                          {notificacao.created_at && (
+                            <p className="text-[10px] text-gray-400 mt-2">
+                              {new Date(
+                                notificacao.created_at
+                              ).toLocaleString(
+                                'pt-BR'
+                              )}
+                            </p>
                           )}
-                        </p>
-                      </div>
+                        </div>
 
+                      </div>
+                    </button>
+
+                    <div className="flex justify-end mt-2">
                       <button
-                        onClick={e => {
-                          e.stopPropagation()
+                        type="button"
+                        onClick={() =>
                           excluirNotificacao(
-                            n.id
+                            notificacao
                           )
-                        }}
-                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
+                        }
+                        className="text-[10px] text-gray-400 flex items-center gap-1 px-2 py-1"
                       >
-                        <Trash2
-                          size={
-                            13
-                          }
-                          className="text-gray-400"
-                        />
+                        <Trash2 size={12} />
+                        Excluir
                       </button>
                     </div>
                   </div>
                 )
               )
-            )
-          )}
+            )}
 
-        {aba ===
-          'excluidas' &&
-          (
-            notificacoesExcluidas.length ===
+          </div>
+        )}
+
+        {/* ─── EXCLUÍDAS ───────────────────────────────────────────── */}
+        {aba === 'excluidas' && (
+          <div className="space-y-3">
+
+            {notificacoesExcluidas.length ===
             0 ? (
-              <div className="card text-center py-10">
+              <div className="bg-white rounded-3xl p-8 text-center border border-gray-100">
                 <Trash2
-                  size={36}
-                  className="text-gray-300 mx-auto mb-2"
+                  size={38}
+                  className="mx-auto text-gray-300 mb-3"
                 />
-                <p className="text-gray-400">
+
+                <p className="font-semibold text-gray-700">
                   Nenhuma notificação excluída
                 </p>
               </div>
             ) : (
               notificacoesExcluidas.map(
-                n => (
+                (notificacao: any) => (
                   <div
-                    key={n.id}
-                    className="card flex flex-col gap-1 opacity-60"
+                    key={notificacao.id}
+                    className="bg-white rounded-3xl p-4 border border-gray-100 shadow-sm"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900 text-sm">
-                          {
-                            n.titulo
-                          }
-                        </p>
+                    <div className="flex items-start gap-3">
 
-                        <p className="text-sm text-gray-500 mt-0.5">
-                          {
-                            n.mensagem
-                          }
-                        </p>
-                      </div>
-
-                      <button
-                        onClick={() =>
-                          restaurarNotificacao(
-                            n.id
-                          )
-                        }
-                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0"
-                      >
-                        <RotateCcw
-                          size={
-                            13
-                          }
+                      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
+                        <Bell
+                          size={18}
                           className="text-gray-400"
                         />
-                      </button>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+
+                        <p className="text-sm font-semibold text-gray-800">
+                          {notificacao.titulo ||
+                            'Notificação'}
+                        </p>
+
+                        <p className="text-xs text-gray-500 mt-1">
+                          {notificacao.mensagem}
+                        </p>
+
+                        {notificacao.created_at && (
+                          <p className="text-[10px] text-gray-400 mt-2">
+                            {new Date(
+                              notificacao.created_at
+                            ).toLocaleString(
+                              'pt-BR'
+                            )}
+                          </p>
+                        )}
+
+                      </div>
+
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        restaurarNotificacao(
+                          notificacao
+                        )
+                      }
+                      className="w-full mt-3 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-semibold flex items-center justify-center gap-1.5"
+                    >
+                      <RotateCcw
+                        size={14}
+                      />
+                      Restaurar
+                    </button>
                   </div>
                 )
               )
-            )
-          )}
-      </div>
+            )}
 
+          </div>
+        )}
+
+      </main>
+      {/* MODAL SUGERIR HORÁRIOS */}
       {modalSugestao && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">
-                {
-                  modalSugestao.status ===
-                  'horario_sugerido'
-                    ? 'Alterar horários'
-                    : 'Sugerir horários'
-                }
-              </h3>
+          <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
+
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-bold text-gray-900 text-lg">
+                  Sugerir horários
+                </h3>
+
+                <p className="text-xs text-gray-400 mt-1">
+                  {modalSugestao.clientes?.nome ||
+                    'Cliente'}
+                </p>
+              </div>
 
               <button
+                type="button"
                 onClick={() =>
-                  setModalSugestao(
-                    null
-                  )
+                  setModalSugestao(null)
                 }
+                className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"
               >
                 <X
-                  size={
-                    20
-                  }
-                  className="text-gray-400"
+                  size={18}
+                  className="text-gray-500"
                 />
               </button>
             </div>
 
-            {horariosLivres.map(
-              (
-                h,
-                i
-              ) => (
-                <div key={i}>
-                  <label className="text-xs font-medium text-gray-500 block mb-1">
-                    Opção {i + 1}
-                  </label>
+            <p className="text-sm text-gray-600 mb-4">
+              Informe até três horários disponíveis para a cliente.
+            </p>
 
-                  <input
-                    type="datetime-local"
-                    className="input-field"
-                    value={h}
-                    onChange={e => {
-                      const n = [
-                        ...horariosLivres
-                      ]
+            <div className="space-y-3">
+              {horariosLivres.map(
+                (horario, index) => (
+                  <div key={index}>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">
+                      Opção {index + 1}
+                    </label>
 
-                      n[i] =
-                        e.target.value
+                    <input
+                      type="datetime-local"
+                      value={horario}
+                      onChange={e => {
+                        const novos =
+                          [...horariosLivres]
 
-                      setHorariosLivres(
-                        n
-                      )
-                    }}
-                    style={{
-                      colorScheme:
-                        'light'
-                    }}
-                  />
-                </div>
-              )
-            )}
+                        novos[index] =
+                          e.target.value
 
-            <div className="flex gap-3">
+                        setHorariosLivres(
+                          novos
+                        )
+                      }}
+                      className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:ring-2"
+                      style={
+                        {
+                          '--tw-ring-color': cor
+                        } as React.CSSProperties
+                      }
+                    />
+                  </div>
+                )
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-5">
               <button
+                type="button"
                 onClick={() =>
-                  setModalSugestao(
-                    null
-                  )
+                  setModalSugestao(null)
                 }
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
+                disabled={salvando}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm disabled:opacity-50"
               >
                 Cancelar
               </button>
 
               <button
-                onClick={() =>
-                  sugerirHorarios(
-                    modalSugestao
-                  )
+                type="button"
+                onClick={
+                  salvarSugestaoHorario
                 }
-                disabled={
-                  salvando ||
-                  !horariosLivres[0]
-                }
-                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40"
+                disabled={salvando}
+                className="flex-1 py-3 rounded-2xl text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{
-                  backgroundColor:
-                    cor
+                  backgroundColor: cor
                 }}
               >
-                {salvando
-                  ? 'Enviando...'
-                  : 'Enviar para cliente'}
+                {salvando ? (
+                  <>
+                    <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    <MessageCircle
+                      size={16}
+                    />
+                    Enviar horários
+                  </>
+                )}
               </button>
             </div>
+
           </div>
         </div>
       )}
 
-      {modalConfirmar && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-gray-900 text-lg">
-                Confirmar atendimento
-              </h3>
+      {/* MODAL CONFIRMAR ATENDIMENTO */}
+      {modalConfirmar &&
+        modalConfirmar.tipo !==
+          'nao_compareceu' && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+            <div className="bg-white w-full rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
 
-              <button
-                onClick={() => {
-                  setModalConfirmar(
-                    null
-                  )
-                  setCoberturas(
-                    []
-                  )
-                }}
-              >
-                <X
-                  size={
-                    20
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-lg">
+                    Confirmar atendimento
+                  </h3>
+
+                  <p className="text-xs text-gray-400 mt-1">
+                    Confirme que o atendimento realmente aconteceu.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setModalConfirmar(
+                      null
+                    )
                   }
-                  className="text-gray-400"
+                  className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center"
+                >
+                  <X
+                    size={18}
+                    className="text-gray-500"
+                  />
+                </button>
+              </div>
+
+              <div className="bg-gray-50 rounded-2xl p-4 mb-4">
+                <p className="font-bold text-gray-900">
+                  {modalConfirmar.clientes
+                    ?.nome ||
+                    'Cliente'}
+                </p>
+
+                {modalConfirmar.servicos
+                  ?.nome && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    {
+                      modalConfirmar
+                        .servicos
+                        .nome
+                    }
+                  </p>
+                )}
+
+                {modalConfirmar.data_hora && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    {new Date(
+                      modalConfirmar.data_hora
+                    ).toLocaleString(
+                      'pt-BR'
+                    )}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">
+                  Serviço realizado
+                </label>
+
+                <input
+                  type="text"
+                  value={servicoRealizado}
+                  onChange={e =>
+                    setServicoRealizado(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Nome do serviço"
+                  className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none"
                 />
-              </button>
+              </div>
+
+              <div className="flex gap-3 mt-5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setModalConfirmar(
+                      null
+                    )
+                  }
+                  disabled={salvando}
+                  className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    confirmarAtendimento
+                  }
+                  disabled={salvando}
+                  className="flex-1 py-3 rounded-2xl text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{
+                    backgroundColor: cor
+                  }}
+                >
+                  {salvando ? (
+                    <>
+                      <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                      Confirmando...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      Confirmar atendimento
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+
+      {/* MODAL NÃO COMPARECEU */}
+      {modalConfirmar?.tipo ===
+        'nao_compareceu' && (
+        <NaoCompareceuModal
+          agendamento={
+            modalConfirmar.agendamento
+          }
+          cor={cor}
+          salvando={salvando}
+          coberturas={coberturas}
+          carregandoCoberturas={
+            carregandoCoberturas
+          }
+          onClose={() =>
+            setModalConfirmar(null)
+          }
+          onConfirmar={(
+            descontarPacote,
+            justificativa
+          ) =>
+            registrarNaoComparecimento(
+              modalConfirmar.agendamento,
+              descontarPacote,
+              justificativa
+            )
+          }
+        />
+      )}
+
+    </div>
+  )
+}
+
+// ─── MODAL DE NÃO COMPARECIMENTO ─────────────────────────────────────────
+
+function NaoCompareceuModal({
+  agendamento,
+  cor,
+  salvando,
+  coberturas,
+  carregandoCoberturas,
+  onClose,
+  onConfirmar
+}: {
+  agendamento: any
+  cor: string
+  salvando: boolean
+  coberturas: CoberturaServico[]
+  carregandoCoberturas: boolean
+  onClose: () => void
+  onConfirmar: (
+    descontarPacote: boolean,
+    justificativa: string
+  ) => void
+}) {
+  const [etapa, setEtapa] = useState<
+    'antecedencia' | 'desconto' | 'justificativa'
+  >('antecedencia')
+
+  const [
+    avisouComAntecedencia,
+    setAvisouComAntecedencia
+  ] = useState<boolean | null>(null)
+
+  const [
+    descontarPacote,
+    setDescontarPacote
+  ] = useState<boolean | null>(null)
+
+  const [
+    justificativa,
+    setJustificativa
+  ] = useState('')
+
+  function escolherAntecedencia(
+    avisou: boolean
+  ) {
+    setAvisouComAntecedencia(
+      avisou
+    )
+
+    if (avisou) {
+      // Se avisou com antecedência,
+      // não há desconto de pacote.
+      setDescontarPacote(false)
+      setEtapa(
+        'justificativa'
+      )
+    } else {
+      // Se não avisou com antecedência,
+      // o salão decide se irá descontar.
+      setEtapa('desconto')
+    }
+  }
+
+  function escolherDesconto(
+    descontar: boolean
+  ) {
+    setDescontarPacote(
+      descontar
+    )
+
+    if (descontar) {
+      // Para descontar, exigimos
+      // uma justificativa escrita.
+      setEtapa(
+        'justificativa'
+      )
+    } else {
+      // Sem desconto, não é necessária
+      // justificativa para o pacote.
+      onConfirmar(
+        false,
+        ''
+      )
+    }
+  }
+
+  function confirmarJustificativa() {
+    if (
+      descontarPacote &&
+      !justificativa.trim()
+    ) {
+      alert(
+        'Escreva uma justificativa antes de descontar a sessão do pacote.'
+      )
+      return
+    }
+
+    onConfirmar(
+      Boolean(descontarPacote),
+      justificativa.trim()
+    )
+  }
+
+  const nomeCliente =
+    agendamento?.clientes?.nome ||
+    'Cliente'
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
+      <div className="bg-white w-full rounded-t-3xl p-6 max-h-[92vh] overflow-y-auto">
+
+        {/* CABEÇALHO */}
+        <div className="flex items-start justify-between gap-3 mb-5">
+          <div>
+            <h3 className="font-bold text-gray-900 text-lg">
+              Não compareceu
+            </h3>
+
+            <p className="text-xs text-gray-400 mt-1">
+              {nomeCliente}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="w-9 h-9 rounded-full bg-gray-50 flex items-center justify-center shrink-0 disabled:opacity-50"
+          >
+            <X
+              size={18}
+              className="text-gray-500"
+            />
+          </button>
+        </div>
+
+        {/* ETAPA 1 — AVISOU? */}
+        {etapa ===
+          'antecedencia' && (
+          <div>
+
+            <div className="bg-gray-50 rounded-2xl p-4 mb-5">
+              <p className="text-sm font-semibold text-gray-800">
+                A cliente avisou o salão sobre a falta com antecedência?
+              </p>
+
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                Considere como "não" quando ela não avisou
+                ou avisou em cima da hora.
+              </p>
             </div>
 
-            <p className="text-sm text-gray-600 font-medium">
-              {
-                modalConfirmar
-                  .clientes
-                  ?.nome
-              }
-            </p>
+            <div className="grid grid-cols-2 gap-3">
+
+              <button
+                type="button"
+                onClick={() =>
+                  escolherAntecedencia(
+                    true
+                  )
+                }
+                className="py-3.5 rounded-2xl border-2 text-sm font-semibold"
+                style={{
+                  borderColor: cor,
+                  color: cor
+                }}
+              >
+                Sim, avisou
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  escolherAntecedencia(
+                    false
+                  )
+                }
+                className="py-3.5 rounded-2xl bg-gray-100 text-gray-700 text-sm font-semibold"
+              >
+                Não avisou
+              </button>
+
+            </div>
+          </div>
+        )}
+
+        {/* ETAPA 2 — DESCONTO */}
+        {etapa === 'desconto' && (
+          <div>
+
+            <div className="bg-gray-50 rounded-2xl p-4 mb-5">
+              <p className="text-sm font-semibold text-gray-800">
+                Deseja descontar as sessões do pacote?
+              </p>
+
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                Como a cliente não avisou com antecedência,
+                você pode optar por descontar as sessões
+                correspondentes aos serviços agendados.
+              </p>
+            </div>
 
             {carregandoCoberturas ? (
-              <div className="flex items-center gap-2 py-2">
+              <div className="py-6 text-center">
                 <div
-                  className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                  className="w-6 h-6 rounded-full border-2 border-gray-200 border-t-current animate-spin mx-auto"
                   style={{
-                    borderColor:
-                      cor
+                    color: cor
                   }}
                 />
 
-                <p className="text-xs text-gray-400">
-                  Verificando pacotes ativos...
+                <p className="text-xs text-gray-400 mt-2">
+                  Verificando pacotes...
                 </p>
               </div>
-            ) : coberturas.length >
-              0 ? (
-              <div className="flex flex-col gap-3">
-                {coberturas.map(
-                  cob => (
-                    <div
-                      key={
-                        cob.servicoId
-                      }
-                      className="bg-gray-50 rounded-2xl p-3 flex flex-col gap-2"
-                    >
-                      <p className="font-semibold text-gray-900 text-sm">
-                        {
-                          cob.servicoNome
-                        }
-                      </p>
-
-                      <select
-                        className="input-field text-sm py-2"
-                        value={
-                          cob.clientePacoteIdSelecionado ||
-                          ''
-                        }
-                        onChange={e =>
-                          alterarPacoteServico(
-                            cob.servicoId,
-                            e.target.value ||
-                              null
-                          )
-                        }
-                      >
-                        <option value="">
-                          Não usar pacote / Sem pacote
-                        </option>
-
-                        {cob.pacotesDisponiveis.map(
-                          op => (
-                            <option
-                              key={
-                                op.clientePacoteId
-                              }
-                              value={
-                                op.clientePacoteId
-                              }
-                            >
-                              {
-                                op.nome
-                              }{' '}
-                              —{' '}
-                              {
-                                op.sessoesRestantes
-                              }{' '}
-                              sessões restantes
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </div>
-                  )
-                )}
-              </div>
             ) : (
-              <p className="text-xs text-red-500">
-                Este cliente não possui pacotes ativos com sessões disponíveis.
-              </p>
+              <>
+                {coberturas.length >
+                  0 && (
+                  <div className="bg-white border border-gray-100 rounded-2xl p-3 mb-4">
+                    <p className="text-xs font-bold text-gray-700 mb-2">
+                      Serviços deste atendimento
+                    </p>
+
+                    <div className="space-y-2">
+                      {coberturas.map(
+                        cobertura => (
+                          <div
+                            key={
+                              cobertura.servicoId
+                            }
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span className="text-xs text-gray-600">
+                              {
+                                cobertura.servicoNome
+                              }
+                            </span>
+
+                            <span
+                              className="text-xs font-semibold"
+                              style={{
+                                color: cor
+                              }}
+                            >
+                              {cobertura.sessoesEquivalentes}{' '}
+                              {cobertura.sessoesEquivalentes ===
+                              1
+                                ? 'sessão'
+                                : 'sessões'}
+                            </span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+
+                  <button
+                    type="button"
+                    disabled={
+                      salvando
+                    }
+                    onClick={() =>
+                      escolherDesconto(
+                        false
+                      )
+                    }
+                    className="py-3.5 rounded-2xl border border-gray-200 text-gray-700 text-sm font-semibold disabled:opacity-50"
+                  >
+                    Não descontar
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      salvando
+                    }
+                    onClick={() =>
+                      escolherDesconto(
+                        true
+                      )
+                    }
+                    className="py-3.5 rounded-2xl text-white text-sm font-semibold disabled:opacity-50"
+                    style={{
+                      backgroundColor:
+                        cor
+                    }}
+                  >
+                    Descontar
+                  </button>
+
+                </div>
+              </>
             )}
 
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">
-                O que foi realizado?
-              </label>
+          </div>
+        )}
 
-              <input
-                className="input-field"
-                value={
-                  servicoRealizado
-                }
+        {/* ETAPA 3 — JUSTIFICATIVA */}
+        {etapa ===
+          'justificativa' && (
+          <div>
+
+            <div className="bg-gray-50 rounded-2xl p-4 mb-4">
+              <p className="text-sm font-semibold text-gray-800">
+                {descontarPacote
+                  ? 'Justificativa do desconto'
+                  : 'Registro do não comparecimento'}
+              </p>
+
+              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                {descontarPacote
+                  ? 'Escreva o motivo que ficará registrado no histórico do pacote e poderá ser consultado pela cliente.'
+                  : avisouComAntecedencia
+                    ? 'O atendimento será registrado como não comparecimento, sem desconto no pacote.'
+                    : 'O atendimento será registrado como não comparecimento, sem desconto no pacote.'}
+              </p>
+            </div>
+
+            {descontarPacote ? (
+              <textarea
+                value={justificativa}
                 onChange={e =>
-                  setServicoRealizado(
+                  setJustificativa(
                     e.target.value
                   )
                 }
+                placeholder="Ex.: Cliente não compareceu ao horário agendado e não avisou o salão com antecedência."
+                className="w-full h-28 resize-none rounded-2xl border border-gray-200 px-4 py-3 text-sm outline-none focus:ring-2"
               />
-            </div>
+            ) : (
+              <div className="bg-gray-50 rounded-2xl p-4">
+                <p className="text-xs text-gray-500">
+                  Nenhuma sessão será descontada do pacote.
+                </p>
+              </div>
+            )}
 
-            <div className="flex gap-3">
+            <div className="flex gap-3 mt-5">
+
               <button
+                type="button"
                 onClick={() => {
-                  setModalConfirmar(
-                    null
-                  )
-                  setCoberturas(
-                    []
-                  )
+                  if (
+                    avisouComAntecedencia ===
+                    false
+                  ) {
+                    setEtapa(
+                      'desconto'
+                    )
+                  } else {
+                    setEtapa(
+                      'antecedencia'
+                    )
+                  }
                 }}
-                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-medium"
+                disabled={salvando}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-gray-600 font-semibold text-sm disabled:opacity-50"
               >
-                Cancelar
+                Voltar
               </button>
 
               <button
+                type="button"
                 onClick={
-                  confirmarAtendimento
+                  confirmarJustificativa
                 }
                 disabled={
                   salvando ||
-                  !servicoRealizado
+                  (Boolean(
+                    descontarPacote
+                  ) &&
+                    !justificativa.trim())
                 }
-                className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-40"
+                className="flex-1 py-3 rounded-2xl text-white font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{
                   backgroundColor:
                     cor
                 }}
               >
-                {salvando
-                  ? 'Salvando...'
-                  : 'Confirmar'}
+                {salvando ? (
+                  <>
+                    <span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <Check size={16} />
+                    Registrar falta
+                  </>
+                )}
               </button>
+
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+      </div>
     </div>
   )
 }
