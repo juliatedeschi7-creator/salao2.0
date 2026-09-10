@@ -45,33 +45,53 @@ export default function NotificacoesDonoPage() {
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
   const [confirmacoes, setConfirmacoes] = useState<any[]>([])
   const [notificacoes, setNotificacoes] = useState<any[]>([])
-  const [notificacoesExcluidas, setNotificacoesExcluidas] = useState<any[]>([])
+  const [notificacoesExcluidas, setNotificacoesExcluidas] =
+    useState<any[]>([])
 
   const [modalSugestao, setModalSugestao] = useState<any>(null)
   const [modalConfirmar, setModalConfirmar] = useState<any>(null)
 
-  const [horariosLivres, setHorariosLivres] = useState(['', '', ''])
-  const [servicoRealizado, setServicoRealizado] = useState('')
+  const [horariosLivres, setHorariosLivres] = useState([
+    '',
+    '',
+    ''
+  ])
 
-  const [salvando, setSalvando] = useState(false)
+  const [servicoRealizado, setServicoRealizado] =
+    useState('')
 
-  const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
-  const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
+  const [salvando, setSalvando] =
+    useState(false)
+
+  const [coberturas, setCoberturas] =
+    useState<CoberturaServico[]>([])
+
+  const [carregandoCoberturas, setCarregandoCoberturas] =
+    useState(false)
 
   // ─── CONTROLE DO PACOTE NA CONFIRMAÇÃO ────────────────────────────────
 
-  const [sessaoJaRegistradaNoPacote, setSessaoJaRegistradaNoPacote] =
-    useState(false)
+  const [
+    sessaoJaRegistradaNoPacote,
+    setSessaoJaRegistradaNoPacote
+  ] = useState(false)
 
-  const [possuiPacoteDisponivel, setPossuiPacoteDisponivel] =
-    useState(false)
+  const [
+    possuiPacoteDisponivel,
+    setPossuiPacoteDisponivel
+  ] = useState(false)
 
-  const [opcaoConfirmacaoPacote, setOpcaoConfirmacaoPacote] = useState<
+  const [
+    opcaoConfirmacaoPacote,
+    setOpcaoConfirmacaoPacote
+  ] = useState<
     'perguntar' | 'dar_baixa' | 'apenas_confirmar'
   >('perguntar')
 
-  const [verificandoPacoteConfirmacao, setVerificandoPacoteConfirmacao] =
-    useState(false)
+  const [
+    verificandoPacoteConfirmacao,
+    setVerificandoPacoteConfirmacao
+  ] = useState(false)
 
   // ─── INICIALIZAÇÃO ────────────────────────────────────────────────────
 
@@ -98,7 +118,8 @@ export default function NotificacoesDonoPage() {
     if (!profile?.id || !profile?.salao_id) return
 
     try {
-      const registration = await navigator.serviceWorker.ready
+      const registration =
+        await navigator.serviceWorker.ready
 
       const vapidKey =
         process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
@@ -121,7 +142,8 @@ export default function NotificacoesDonoPage() {
           })
       }
 
-      const subscriptionJson = subscription.toJSON()
+      const subscriptionJson =
+        subscription.toJSON()
 
       if (
         !subscriptionJson.endpoint ||
@@ -136,33 +158,50 @@ export default function NotificacoesDonoPage() {
         user_id: profile.id,
         salao_id: profile.salao_id,
         subscription: subscriptionJson,
-        updated_at: new Date().toISOString()
+        updated_at:
+          new Date().toISOString()
       }
 
-      const { error: upsertError } = await supabase
+      const {
+        error: upsertError
+      } = await supabase
         .from('push_subscriptions')
         .upsert(
           dadosSubscription,
-          { onConflict: 'user_id' }
+          {
+            onConflict: 'user_id'
+          }
         )
 
       if (!upsertError) return
 
-      const { data: existente } = await supabase
+      const {
+        data: existente
+      } = await supabase
         .from('push_subscriptions')
         .select('id')
-        .eq('profile_id', profile.id)
+        .eq(
+          'profile_id',
+          profile.id
+        )
         .maybeSingle()
 
       if (existente?.id) {
         await supabase
           .from('push_subscriptions')
-          .update(dadosSubscription)
-          .eq('id', existente.id)
+          .update(
+            dadosSubscription
+          )
+          .eq(
+            'id',
+            existente.id
+          )
       } else {
         await supabase
           .from('push_subscriptions')
-          .insert(dadosSubscription)
+          .insert(
+            dadosSubscription
+          )
       }
     } catch (err) {
       console.error(
@@ -177,24 +216,49 @@ export default function NotificacoesDonoPage() {
   async function carregarDados() {
     if (!profile?.salao_id) return
 
-    const { data: sal } = await supabase
+    const {
+      data: sal
+    } = await supabase
       .from('saloes')
       .select('*')
-      .eq('id', profile.salao_id)
+      .eq(
+        'id',
+        profile.salao_id
+      )
       .single()
 
     setSalao(sal)
 
-    const { data: sols } = await supabase
-      .from('solicitacoes_agendamento')
+    const {
+      data: sols
+    } = await supabase
+      .from(
+        'solicitacoes_agendamento'
+      )
       .select(
         '*, clientes(id, nome, email, telefone), servicos(nome, duracao_minutos)'
       )
-      .eq('salao_id', profile.salao_id)
-      .in('status', ['pendente', 'horario_sugerido'])
-      .order('created_at', { ascending: false })
+      .eq(
+        'salao_id',
+        profile.salao_id
+      )
+      .in(
+        'status',
+        [
+          'pendente',
+          'horario_sugerido'
+        ]
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false
+        }
+      )
 
-    setSolicitacoes(sols || [])
+    setSolicitacoes(
+      sols || []
+    )
 
     // IMPORTANTE:
     // NÃO existe filtro de data aqui.
@@ -207,47 +271,99 @@ export default function NotificacoesDonoPage() {
     // Assim, um atendimento de ontem, semana passada ou mês passado
     // continua aparecendo até ser tratado.
 
-    const { data: ags } = await supabase
+    const {
+      data: ags
+    } = await supabase
       .from('agendamentos')
       .select(
         '*, clientes(id, nome, telefone), servicos(nome, id), confirmacoes_atendimento(*)'
       )
-      .eq('salao_id', profile.salao_id)
-      .eq('status', 'confirmado')
-      .order('data_hora', { ascending: true })
+      .eq(
+        'salao_id',
+        profile.salao_id
+      )
+      .eq(
+        'status',
+        'confirmado'
+      )
+      .order(
+        'data_hora',
+        {
+          ascending: true
+        }
+      )
 
     setConfirmacoes(
       (ags || []).filter(
         (a: any) =>
-          !a.confirmacoes_atendimento?.length
+          !a.confirmacoes_atendimento
+            ?.length
       )
     )
 
-    const { data: notifs } = await supabase
+    const {
+      data: notifs
+    } = await supabase
       .from('notificacoes')
       .select('*')
-      .eq('salao_id', profile.salao_id)
-      .eq('destinatario_id', profile.id)
-      .eq('excluida', false)
-      .order('created_at', { ascending: false })
+      .eq(
+        'salao_id',
+        profile.salao_id
+      )
+      .eq(
+        'destinatario_id',
+        profile.id
+      )
+      .eq(
+        'excluida',
+        false
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false
+        }
+      )
 
-    setNotificacoes(notifs || [])
+    setNotificacoes(
+      notifs || []
+    )
 
-    const { data: excluidas } = await supabase
+    const {
+      data: excluidas
+    } = await supabase
       .from('notificacoes')
       .select('*')
-      .eq('salao_id', profile.salao_id)
-      .eq('destinatario_id', profile.id)
-      .eq('excluida', true)
-      .order('created_at', { ascending: false })
+      .eq(
+        'salao_id',
+        profile.salao_id
+      )
+      .eq(
+        'destinatario_id',
+        profile.id
+      )
+      .eq(
+        'excluida',
+        true
+      )
+      .order(
+        'created_at',
+        {
+          ascending: false
+        }
+      )
       .limit(30)
 
-    setNotificacoesExcluidas(excluidas || [])
+    setNotificacoesExcluidas(
+      excluidas || []
+    )
   }
 
   // ─── FORMATADORES DE SOLICITAÇÃO ─────────────────────────────────────
 
-  function formatarDataPreferida(solicitacao: any) {
+  function formatarDataPreferida(
+    solicitacao: any
+  ) {
     const data =
       solicitacao?.data_preferida ??
       solicitacao?.data_desejada ??
@@ -256,38 +372,64 @@ export default function NotificacoesDonoPage() {
 
     if (!data) return null
 
-    const dataString = String(data)
+    const dataString =
+      String(data)
+
     let dataFormatada: Date
 
-    if (/^\d{4}-\d{2}-\d{2}$/.test(dataString)) {
-      const [ano, mes, dia] =
-        dataString.split('-').map(Number)
-
-      dataFormatada = new Date(
-        ano,
-        mes - 1,
-        dia
+    if (
+      /^\d{4}-\d{2}-\d{2}$/.test(
+        dataString
       )
+    ) {
+      const [
+        ano,
+        mes,
+        dia
+      ] =
+        dataString
+          .split('-')
+          .map(Number)
+
+      dataFormatada =
+        new Date(
+          ano,
+          mes - 1,
+          dia
+        )
     } else {
-      dataFormatada = new Date(dataString)
+      dataFormatada =
+        new Date(
+          dataString
+        )
     }
 
-    if (Number.isNaN(dataFormatada.getTime())) {
+    if (
+      Number.isNaN(
+        dataFormatada.getTime()
+      )
+    ) {
       return null
     }
 
     return dataFormatada.toLocaleDateString(
       'pt-BR',
       {
-        weekday: 'long',
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric'
+        weekday:
+          'long',
+        day:
+          '2-digit',
+        month:
+          'long',
+        year:
+          'numeric'
       }
     )
   }
 
-  function formatarPeriodoPreferido(solicitacao: any) {
+  function formatarPeriodoPreferido(
+    solicitacao: any
+  ) {
     const periodo =
       solicitacao?.periodo_preferido ??
       solicitacao?.periodo_desejado ??
@@ -296,25 +438,43 @@ export default function NotificacoesDonoPage() {
 
     if (!periodo) return null
 
-    const valor = String(periodo).trim()
+    const valor =
+      String(periodo).trim()
 
-    const mapa: Record<string, string> = {
-      manha: 'Manhã',
-      manhã: 'Manhã',
-      tarde: 'Tarde',
-      noite: 'Noite',
-      qualquer: 'Qualquer horário',
-      qualquer_horario: 'Qualquer horário',
-      qualquer_horário: 'Qualquer horário',
-      indiferente: 'Qualquer horário'
+    const mapa: Record<
+      string,
+      string
+    > = {
+      manha:
+        'Manhã',
+      manhã:
+        'Manhã',
+      tarde:
+        'Tarde',
+      noite:
+        'Noite',
+      qualquer:
+        'Qualquer horário',
+      qualquer_horario:
+        'Qualquer horário',
+      qualquer_horário:
+        'Qualquer horário',
+      indiferente:
+        'Qualquer horário'
     }
 
-    const normalizado = valor
-      .toLowerCase()
-      .replace(/\s+/g, '_')
+    const normalizado =
+      valor
+        .toLowerCase()
+        .replace(
+          /\s+/g,
+          '_'
+        )
 
     return (
-      mapa[normalizado] ||
+      mapa[
+        normalizado
+      ] ||
       valor.charAt(0).toUpperCase() +
         valor.slice(1)
     )
@@ -322,47 +482,125 @@ export default function NotificacoesDonoPage() {
 
   // ─── NOTIFICAÇÕES ────────────────────────────────────────────────────
 
-  async function handleClicarNotificacao(n: any) {
+  async function handleClicarNotificacao(
+    n: any
+  ) {
     if (!n.lida) {
       await supabase
-        .from('notificacoes')
-        .update({ lida: true })
-        .eq('id', n.id)
-
-      setNotificacoes(prev =>
-        prev.map(item =>
-          item.id === n.id
-            ? { ...item, lida: true }
-            : item
+        .from(
+          'notificacoes'
         )
+        .update({
+          lida: true
+        })
+        .eq(
+          'id',
+          n.id
+        )
+
+      setNotificacoes(
+        prev =>
+          prev.map(
+            item =>
+              item.id === n.id
+                ? {
+                    ...item,
+                    lida: true
+                  }
+                : item
+          )
       )
     }
 
     if (n.url) {
-      router.push(n.url)
+      router.push(
+        n.url
+      )
     }
   }
 
   // ─── PACOTES ─────────────────────────────────────────────────────────
 
-  async function buscarPacotesCliente(clienteNome: string) {
-    if (!clienteNome) return []
+  async function buscarTodosPacotesCliente(
+    clienteNome: string
+  ) {
+    if (!clienteNome)
+      return []
 
-    const { data, error } = await supabase
-      .from('pacotes_clientes_resumo')
+    const {
+      data,
+      error
+    } = await supabase
+      .from(
+        'pacotes_clientes_resumo'
+      )
       .select(
         'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
       )
-      .eq('cliente_nome', clienteNome)
-      .eq('status', 'ativo')
-      .gt('sessoes_restantes', 0)
-      .order('created_at', { ascending: true })
+      .eq(
+        'cliente_nome',
+        clienteNome
+      )
+      .order(
+        'created_at',
+        {
+          ascending: true
+        }
+      )
+
+    if (error) {
+      console.error(
+        'Erro ao buscar todos os pacotes:',
+        error
+      )
+
+      return []
+    }
+
+    return data || []
+  }
+
+  async function buscarPacotesCliente(
+    clienteNome: string
+  ) {
+    if (!clienteNome)
+      return []
+
+    const {
+      data,
+      error
+    } = await supabase
+      .from(
+        'pacotes_clientes_resumo'
+      )
+      .select(
+        'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
+      )
+      .eq(
+        'cliente_nome',
+        clienteNome
+      )
+      .eq(
+        'status',
+        'ativo'
+      )
+      .gt(
+        'sessoes_restantes',
+        0
+      )
+      .order(
+        'created_at',
+        {
+          ascending: true
+        }
+      )
 
     if (error) {
       console.error(
         'Erro ao buscar pacotes:',
         error
       )
+
       return []
     }
 
@@ -377,6 +615,7 @@ export default function NotificacoesDonoPage() {
   // Depois existe uma segunda proteção para o caso de uma sessão ter sido
   // lançada manualmente antes desta funcionalidade existir:
   // procura uma única sessão do mesmo serviço na mesma data.
+
   async function verificarSessaoJaRegistrada(
     agendamento: any
   ) {
@@ -392,40 +631,61 @@ export default function NotificacoesDonoPage() {
       }
     }
 
-    const pacotes = await buscarPacotesCliente(
-      clienteNome
-    )
+    const pacotes =
+      await buscarTodosPacotesCliente(
+        clienteNome
+      )
 
-    let registradaPorId = false
+    const possuiPacote =
+      pacotes.some(
+        (pacote: any) =>
+          pacote.status ===
+            'ativo' &&
+          Number(
+            pacote.sessoes_restantes ||
+              0
+          ) > 0
+      )
+
+    // Primeiro usa o identificador mais seguro:
+    // historico_sessoes[].agendamento_id === agendamento.id
 
     for (const pacote of pacotes) {
       const historico =
-        Array.isArray(pacote.historico_sessoes)
+        Array.isArray(
+          pacote.historico_sessoes
+        )
           ? pacote.historico_sessoes
           : []
 
-      const encontrada = historico.some(
-        (registro: any) =>
-          registro?.agendamento_id &&
-          String(registro.agendamento_id) ===
-            String(agendamento.id)
-      )
+      const encontrada =
+        historico.some(
+          (registro: any) =>
+            registro?.agendamento_id &&
+            String(
+              registro.agendamento_id
+            ) ===
+              String(
+                agendamento.id
+              ) &&
+            registro?.tipo !==
+              'nao_comparecimento' &&
+            registro?.tipo !==
+              'nao_compareceu'
+        )
 
       if (encontrada) {
-        registradaPorId = true
-        break
-      }
-    }
-
-    if (registradaPorId) {
-      return {
-        registrada: true,
-        possuiPacote: true
+        return {
+          registrada: true,
+          possuiPacote
+        }
       }
     }
 
     // Proteção adicional para sessões lançadas manualmente
-    // sem agendamento_id.
+    // sem agendamento_id. Só considera automaticamente registrada
+    // quando existe UMA única correspondência em todo o histórico.
+
     const servicoNome =
       agendamento.servicos?.nome ||
       agendamento.servico_nome ||
@@ -433,20 +693,54 @@ export default function NotificacoesDonoPage() {
 
     const dataAgendamento =
       agendamento.data_hora
-        ? String(agendamento.data_hora).slice(0, 10)
+        ? String(
+            agendamento.data_hora
+          ).slice(0, 10)
         : null
 
-    if (servicoNome && dataAgendamento) {
-      const possiveis: any[] = []
+    const normalizarTexto =
+      (valor: any) =>
+        String(valor || '')
+          .trim()
+          .toLowerCase()
+          .normalize(
+            'NFD'
+          )
+          .replace(
+            /[\u0300-\u036f]/g,
+            ''
+          )
+
+    if (
+      servicoNome &&
+      dataAgendamento
+    ) {
+      const possiveis: any[] =
+        []
 
       for (const pacote of pacotes) {
         const historico =
-          Array.isArray(pacote.historico_sessoes)
+          Array.isArray(
+            pacote.historico_sessoes
+          )
             ? pacote.historico_sessoes
             : []
 
-        for (const registro of historico) {
-          if (registro?.agendamento_id) {
+        for (
+          const registro of historico
+        ) {
+          if (
+            registro?.agendamento_id
+          ) {
+            continue
+          }
+
+          if (
+            registro?.tipo ===
+              'nao_comparecimento' ||
+            registro?.tipo ===
+              'nao_compareceu'
+          ) {
             continue
           }
 
@@ -458,7 +752,9 @@ export default function NotificacoesDonoPage() {
 
           const dataRegistroChave =
             dataRegistro
-              ? String(dataRegistro).slice(0, 10)
+              ? String(
+                  dataRegistro
+                ).slice(0, 10)
               : null
 
           const nomeRegistro =
@@ -467,10 +763,14 @@ export default function NotificacoesDonoPage() {
             ''
 
           if (
-            dataRegistroChave === dataAgendamento &&
-            nomeRegistro &&
-            nomeRegistro.toLowerCase() ===
-              servicoNome.toLowerCase()
+            dataRegistroChave ===
+              dataAgendamento &&
+            normalizarTexto(
+              nomeRegistro
+            ) ===
+              normalizarTexto(
+                servicoNome
+              )
           ) {
             possiveis.push({
               pacote,
@@ -480,20 +780,19 @@ export default function NotificacoesDonoPage() {
         }
       }
 
-      // Só consideramos automaticamente registrada quando existe
-      // UMA única correspondência. Assim evitamos confundir duas sessões
-      // iguais realizadas no mesmo dia.
-      if (possiveis.length === 1) {
+      if (
+        possiveis.length === 1
+      ) {
         return {
           registrada: true,
-          possuiPacote: true
+          possuiPacote
         }
       }
     }
 
     return {
       registrada: false,
-      possuiPacote: pacotes.length > 0
+      possuiPacote
     }
   }
 
@@ -501,15 +800,23 @@ export default function NotificacoesDonoPage() {
     agendamento: any
   ): Promise<CoberturaServico[]> {
     const idsServicos: string[] =
-      Array.isArray(agendamento.servicos_ids) &&
-      agendamento.servicos_ids.length > 0
-        ? [...agendamento.servicos_ids]
+      Array.isArray(
+        agendamento.servicos_ids
+      ) &&
+      agendamento.servicos_ids
+        .length > 0
+        ? [
+            ...agendamento.servicos_ids
+          ]
         : agendamento.servico_id
-          ? [agendamento.servico_id]
+          ? [
+              agendamento.servico_id
+            ]
           : []
 
     if (
-      idsServicos.length === 0 &&
+      idsServicos.length ===
+        0 &&
       agendamento.servicos?.id
     ) {
       idsServicos.push(
@@ -517,7 +824,9 @@ export default function NotificacoesDonoPage() {
       )
     }
 
-    const { data: servicosInfo } = await supabase
+    const {
+      data: servicosInfo
+    } = await supabase
       .from('servicos')
       .select(
         'id, nome, sessoes_equivalentes'
@@ -532,73 +841,100 @@ export default function NotificacoesDonoPage() {
       agendamento.cliente_nome ||
       ''
 
-    if (!clienteNome) return []
+    if (!clienteNome)
+      return []
 
     const pacotesData =
       await buscarPacotesCliente(
         clienteNome
       )
 
-    const opcoesGerais: PacoteOpcao[] =
+    const opcoesGerais:
+      PacoteOpcao[] =
       pacotesData
-        .map((pacote: any) => ({
-          clientePacoteId:
-            pacote.id,
-          nome:
-            pacote.servico ||
-            'Pacote',
-          sessoesRestantes:
-            Number(
-              pacote.sessoes_restantes || 0
-            )
-        }))
+        .map(
+          (pacote: any) => ({
+            clientePacoteId:
+              pacote.id,
+            nome:
+              pacote.servico ||
+              'Pacote',
+            sessoesRestantes:
+              Number(
+                pacote.sessoes_restantes ||
+                  0
+              )
+          })
+        )
         .filter(
           pacote =>
-            pacote.sessoesRestantes > 0
+            pacote.sessoesRestantes >
+            0
         )
 
-    if (idsServicos.length === 0) {
+    if (
+      idsServicos.length ===
+      0
+    ) {
       return [
         {
           servicoId:
             agendamento.servico_id ||
             'geral',
+
           servicoNome:
-            agendamento.servicos?.nome ||
+            agendamento.servicos
+              ?.nome ||
             'Atendimento',
+
           sessoesEquivalentes: 1,
+
           clientePacoteIdSelecionado:
-            opcoesGerais[0]?.clientePacoteId ||
+            opcoesGerais[0]
+              ?.clientePacoteId ||
             null,
+
           pacotesDisponiveis:
             opcoesGerais
         }
       ]
     }
 
-    return idsServicos.map(id => {
-      const srv =
-        (servicosInfo || []).find(
-          (s: any) =>
-            s.id === id
-        )
+    return idsServicos.map(
+      id => {
+        const srv =
+          (
+            servicosInfo ||
+            []
+          ).find(
+            (s: any) =>
+              s.id === id
+          )
 
-      return {
-        servicoId: id,
-        servicoNome:
-          srv?.nome ||
-          'Serviço',
-        sessoesEquivalentes:
-          Number(
-            srv?.sessoes_equivalentes ?? 1
-          ),
-        clientePacoteIdSelecionado:
-          opcoesGerais[0]?.clientePacoteId ||
-          null,
-        pacotesDisponiveis:
-          opcoesGerais
+        return {
+          servicoId:
+            id,
+
+          servicoNome:
+            srv?.nome ||
+            'Serviço',
+
+          sessoesEquivalentes:
+            Number(
+              srv?.sessoes_equivalentes ??
+                1
+            ),
+
+          clientePacoteIdSelecionado:
+            opcoesGerais[0]
+              ?.clientePacoteId ||
+            null,
+
+          pacotesDisponiveis:
+            opcoesGerais
+        }
       }
-    })
+    )
   }
 
   // ─── ABRIR CONFIRMAÇÃO ───────────────────────────────────────────────
@@ -606,17 +942,32 @@ export default function NotificacoesDonoPage() {
   async function abrirModalConfirmar(
     agendamento: any
   ) {
-    setVerificandoPacoteConfirmacao(true)
+    setVerificandoPacoteConfirmacao(
+      true
+    )
 
-    setModalConfirmar(null)
-    setSessaoJaRegistradaNoPacote(false)
-    setPossuiPacoteDisponivel(false)
-    setOpcaoConfirmacaoPacote('perguntar')
+    setModalConfirmar(
+      null
+    )
+
+    setSessaoJaRegistradaNoPacote(
+      false
+    )
+
+    setPossuiPacoteDisponivel(
+      false
+    )
+
+    setOpcaoConfirmacaoPacote(
+      'perguntar'
+    )
+
     setCoberturas([])
+
     setServicoRealizado(
       agendamento.servicos?.nome ||
-      agendamento.servico_nome ||
-      ''
+        agendamento.servico_nome ||
+        ''
     )
 
     try {
@@ -633,7 +984,9 @@ export default function NotificacoesDonoPage() {
         resultado.possuiPacote
       )
 
-      if (resultado.registrada) {
+      if (
+        resultado.registrada
+      ) {
         setOpcaoConfirmacaoPacote(
           'apenas_confirmar'
         )
@@ -645,7 +998,9 @@ export default function NotificacoesDonoPage() {
             agendamento
           )
 
-        setCoberturas(dados)
+        setCoberturas(
+          dados
+        )
       }
     } catch (error) {
       console.error(
@@ -653,8 +1008,13 @@ export default function NotificacoesDonoPage() {
         error
       )
     } finally {
-      setVerificandoPacoteConfirmacao(false)
-      setModalConfirmar(agendamento)
+      setVerificandoPacoteConfirmacao(
+        false
+      )
+
+      setModalConfirmar(
+        agendamento
+      )
     }
   }
 
@@ -663,10 +1023,16 @@ export default function NotificacoesDonoPage() {
   async function verificarConfirmacaoAtendimento(
     agendamentoId: string
   ) {
-    if (!profile?.salao_id) return false
+    if (!profile?.salao_id)
+      return false
 
-    const { data, error } = await supabase
-      .from('confirmacoes_atendimento')
+    const {
+      data,
+      error
+    } = await supabase
+      .from(
+        'confirmacoes_atendimento'
+      )
       .select('id')
       .eq(
         'agendamento_id',
@@ -683,6 +1049,7 @@ export default function NotificacoesDonoPage() {
         'Erro ao verificar confirmação:',
         error
       )
+
       return false
     }
 
@@ -694,7 +1061,8 @@ export default function NotificacoesDonoPage() {
   async function darBaixaPacoteAtendimento(
     agendamento: any
   ) {
-    if (!profile?.salao_id) return
+    if (!profile?.salao_id)
+      return
 
     const clienteNome =
       agendamento.clientes?.nome ||
@@ -716,49 +1084,67 @@ export default function NotificacoesDonoPage() {
       return
     }
 
-    // PROTEÇÃO ABSOLUTA:
-    // se este agendamento já estiver no histórico, não desconta novamente.
-    for (const pacote of pacotes) {
-      const historico =
-        Array.isArray(pacote.historico_sessoes)
-          ? pacote.historico_sessoes
-          : []
+    const historicos =
+      pacotes.flatMap(
+        (pacote: any) =>
+          Array.isArray(
+            pacote.historico_sessoes
+          )
+            ? pacote.historico_sessoes.map(
+                (registro: any) => ({
+                  ...registro,
+                  pacote_id:
+                    pacote.id
+                })
+              )
+            : []
+      )
 
-      const jaExiste =
-        historico.some(
-          (registro: any) =>
+    const jaRegistrado =
+      historicos.some(
+        (registro: any) =>
+          registro?.agendamento_id &&
+          String(
+            registro.agendamento_id
+          ) ===
             String(
-              registro?.agendamento_id || ''
-            ) === String(agendamento.id)
-        )
+              agendamento.id
+            ) &&
+          registro?.tipo !==
+            'nao_comparecimento' &&
+          registro?.tipo !==
+            'nao_compareceu'
+      )
 
-      if (jaExiste) {
-        return
-      }
+    if (jaRegistrado) {
+      return
     }
 
-    const coberturasAtuais =
-      coberturas.length > 0
+    const dadosCoberturas =
+      coberturas.length
         ? coberturas
         : await montarCoberturas(
             agendamento
           )
 
-    const dataRegistro =
-      new Date().toISOString()
-
-    for (const cobertura of coberturasAtuais) {
-      let quantidadeRestante =
+    for (
+      const cobertura of dadosCoberturas
+    ) {
+      let quantidade =
         Number(
-          cobertura.sessoesEquivalentes || 1
+          cobertura.sessoesEquivalentes ||
+            1
         )
 
-      if (quantidadeRestante <= 0) {
+      if (
+        quantidade <= 0
+      ) {
         continue
       }
 
-      let pacoteSelecionado =
-        cobertura.clientePacoteIdSelecionado
+      let pacote =
+        cobertura
+          .clientePacoteIdSelecionado
           ? pacotes.find(
               (p: any) =>
                 p.id ===
@@ -766,128 +1152,98 @@ export default function NotificacoesDonoPage() {
             )
           : null
 
-      if (!pacoteSelecionado) {
-        pacoteSelecionado =
+      if (!pacote) {
+        pacote =
           pacotes.find(
             (p: any) =>
               Number(
-                p.sessoes_restantes || 0
-              ) >= quantidadeRestante
+                p.sessoes_restantes ||
+                  0
+              ) >= quantidade
           ) ||
           pacotes.find(
             (p: any) =>
               Number(
-                p.sessoes_restantes || 0
+                p.sessoes_restantes ||
+                  0
               ) > 0
           )
       }
 
-      while (
-        quantidadeRestante > 0 &&
-        pacoteSelecionado
-      ) {
-        const restantesAntes =
-          Number(
-            pacoteSelecionado.sessoes_restantes || 0
-          )
+      if (!pacote)
+        continue
 
-        if (restantesAntes <= 0) {
-          pacoteSelecionado =
-            pacotes.find(
-              (p: any) =>
-                Number(
-                  p.sessoes_restantes || 0
-                ) > 0 &&
-                p.id !==
-                  pacoteSelecionado.id
-            ) || null
-
-          continue
-        }
-
-        const desconto = Math.min(
-          quantidadeRestante,
-          restantesAntes
+      const restantes =
+        Number(
+          pacote.sessoes_restantes ||
+            0
         )
 
-        const restantesDepois =
-          restantesAntes - desconto
+      if (
+        restantes <= 0
+      ) {
+        continue
+      }
 
-        const historico =
-          Array.isArray(
-            pacoteSelecionado.historico_sessoes
-          )
-            ? [
-                ...pacoteSelecionado.historico_sessoes
-              ]
-            : []
+      const desconto =
+        Math.min(
+          quantidade,
+          restantes
+        )
 
-        // Segunda proteção antes de alterar o pacote.
-        const duplicado =
-          historico.some(
-            (registro: any) =>
-              String(
-                registro?.agendamento_id || ''
-              ) === String(agendamento.id)
-          )
+      const historico =
+        Array.isArray(
+          pacote.historico_sessoes
+        )
+          ? [
+              ...pacote.historico_sessoes
+            ]
+          : []
 
-        if (duplicado) {
-          return
-        }
+      historico.push({
+        tipo:
+          'sessao_realizada',
+        data:
+          new Date().toISOString(),
+        quantidade:
+          desconto,
+        servico:
+          cobertura.servicoNome,
+        sessoes_equivalentes:
+          cobertura.sessoesEquivalentes,
+        agendamento_id:
+          agendamento.id
+      })
 
-        historico.push({
-          tipo: 'sessao_realizada',
-          data: dataRegistro,
-          quantidade: desconto,
-          servico:
-            cobertura.servicoNome,
-          sessoes_equivalentes:
-            cobertura.sessoesEquivalentes,
-          agendamento_id:
-            agendamento.id
+      const restantesDepois =
+        restantes -
+        desconto
+
+      const {
+        error
+      } = await supabase
+        .from(
+          'pacotes_clientes_resumo'
+        )
+        .update({
+          sessoes_restantes:
+            restantesDepois,
+
+          status:
+            restantesDepois <= 0
+              ? 'concluido'
+              : 'ativo',
+
+          historico_sessoes:
+            historico
         })
+        .eq(
+          'id',
+          pacote.id
+        )
 
-        const { error } =
-          await supabase
-            .from(
-              'pacotes_clientes_resumo'
-            )
-            .update({
-              sessoes_restantes:
-                restantesDepois,
-              status:
-                restantesDepois <= 0
-                  ? 'concluido'
-                  : 'ativo',
-              historico_sessoes:
-                historico
-            })
-            .eq(
-              'id',
-              pacoteSelecionado.id
-            )
-
-        if (error) {
-          throw error
-        }
-
-        pacoteSelecionado.sessoes_restantes =
-          restantesDepois
-
-        quantidadeRestante -=
-          desconto
-
-        if (
-          quantidadeRestante > 0
-        ) {
-          pacoteSelecionado =
-            pacotes.find(
-              (p: any) =>
-                Number(
-                  p.sessoes_restantes || 0
-                ) > 0
-            ) || null
-        }
+      if (error) {
+        throw error
       }
     }
   }
@@ -896,8 +1252,8 @@ export default function NotificacoesDonoPage() {
 
   async function confirmarAtendimento() {
     if (
-      !modalConfirmar ||
-      !profile?.salao_id
+      !profile?.salao_id ||
+      !modalConfirmar
     ) {
       return
     }
@@ -909,6 +1265,7 @@ export default function NotificacoesDonoPage() {
         modalConfirmar
 
       // Primeiro verifica se já foi confirmado.
+
       const jaConfirmado =
         await verificarConfirmacaoAtendimento(
           agendamento.id
@@ -919,13 +1276,18 @@ export default function NotificacoesDonoPage() {
           'Este atendimento já foi confirmado anteriormente. Nenhuma nova baixa foi realizada.'
         )
 
-        setModalConfirmar(null)
+        setModalConfirmar(
+          null
+        )
+
         await carregarDados()
+
         return
       }
 
       // Se escolheu dar baixa, a função possui proteção própria
       // contra duplicidade.
+
       if (
         opcaoConfirmacaoPacote ===
           'dar_baixa' &&
@@ -937,15 +1299,21 @@ export default function NotificacoesDonoPage() {
       }
 
       const {
-        data: confirmacaoCriada,
-        error: erroConfirmacao
+        data:
+          confirmacaoCriada,
+        error:
+          erroConfirmacao
       } = await supabase
-        .from('confirmacoes_atendimento')
+        .from(
+          'confirmacoes_atendimento'
+        )
         .insert({
           agendamento_id:
             agendamento.id,
+
           salao_id:
             profile.salao_id,
+
           confirmado_por:
             profile.id
         })
@@ -954,6 +1322,7 @@ export default function NotificacoesDonoPage() {
 
       if (erroConfirmacao) {
         // 23505 = registro duplicado.
+
         if (
           erroConfirmacao.code ===
           '23505'
@@ -962,8 +1331,12 @@ export default function NotificacoesDonoPage() {
             'Este atendimento já havia sido confirmado. Nenhuma nova confirmação foi criada.'
           )
 
-          setModalConfirmar(null)
+          setModalConfirmar(
+            null
+          )
+
           await carregarDados()
+
           return
         }
 
@@ -977,11 +1350,13 @@ export default function NotificacoesDonoPage() {
       }
 
       const {
-        error: erroAgendamento
+        error:
+          erroAgendamento
       } = await supabase
         .from('agendamentos')
         .update({
-          status: 'concluido'
+          status:
+            'concluido'
         })
         .eq(
           'id',
@@ -999,29 +1374,39 @@ export default function NotificacoesDonoPage() {
       await notificar({
         salao_id:
           profile.salao_id,
+
         tipo:
           'atendimento_confirmado',
+
         titulo:
           'Atendimento confirmado',
+
         mensagem: `O atendimento de ${
-          agendamento.clientes?.nome ||
+          agendamento.clientes
+            ?.nome ||
           'cliente'
         } foi confirmado.`,
+
         destinatario_id:
           agendamento.cliente_id ||
           null,
-        url: '/cliente'
+
+        url:
+          '/cliente'
       })
 
-      setConfirmacoes(prev =>
-        prev.filter(
-          item =>
-            item.id !==
-            agendamento.id
-        )
+      setConfirmacoes(
+        prev =>
+          prev.filter(
+            item =>
+              item.id !==
+              agendamento.id
+          )
       )
 
-      setModalConfirmar(null)
+      setModalConfirmar(
+        null
+      )
 
       await carregarDados()
     } catch (error: any) {
@@ -1038,7 +1423,6 @@ export default function NotificacoesDonoPage() {
       setSalvando(false)
     }
   }
-
   // ─── NÃO COMPARECEU ──────────────────────────────────────────────────
 
   async function iniciarNaoComparecimento(
@@ -1053,10 +1437,9 @@ export default function NotificacoesDonoPage() {
     setCarregandoCoberturas(true)
 
     try {
-      const dados =
-        await montarCoberturas(
-          agendamento
-        )
+      const dados = await montarCoberturas(
+        agendamento
+      )
 
       setCoberturas(dados)
     } catch (error) {
@@ -1186,13 +1569,18 @@ export default function NotificacoesDonoPage() {
     const dataRegistro =
       new Date().toISOString()
 
-    for (const cobertura of coberturasAtuais) {
+    for (
+      const cobertura
+      of coberturasAtuais
+    ) {
       let quantidadeRestante =
         Number(
           cobertura.sessoesEquivalentes || 1
         )
 
-      if (quantidadeRestante <= 0) {
+      if (
+        quantidadeRestante <= 0
+      ) {
         continue
       }
 
@@ -1211,7 +1599,8 @@ export default function NotificacoesDonoPage() {
             (p: any) =>
               Number(
                 p.sessoes_restantes || 0
-              ) >= quantidadeRestante
+              ) >=
+              quantidadeRestante
           ) ||
           pacotes.find(
             (p: any) =>
@@ -1227,10 +1616,13 @@ export default function NotificacoesDonoPage() {
       ) {
         const restantesAntes =
           Number(
-            pacoteSelecionado.sessoes_restantes || 0
+            pacoteSelecionado.sessoes_restantes ||
+              0
           )
 
-        if (restantesAntes <= 0) {
+        if (
+          restantesAntes <= 0
+        ) {
           pacoteSelecionado =
             pacotes.find(
               (p: any) =>
@@ -1244,13 +1636,15 @@ export default function NotificacoesDonoPage() {
           continue
         }
 
-        const desconto = Math.min(
-          quantidadeRestante,
-          restantesAntes
-        )
+        const desconto =
+          Math.min(
+            quantidadeRestante,
+            restantesAntes
+          )
 
         const restantesDepois =
-          restantesAntes - desconto
+          restantesAntes -
+          desconto
 
         const historico =
           Array.isArray(
@@ -1266,8 +1660,12 @@ export default function NotificacoesDonoPage() {
           historico.some(
             (registro: any) =>
               String(
-                registro?.agendamento_id || ''
-              ) === String(agendamento.id)
+                registro?.agendamento_id ||
+                  ''
+              ) ===
+              String(
+                agendamento.id
+              )
           )
 
         if (jaRegistrado) {
@@ -1278,15 +1676,23 @@ export default function NotificacoesDonoPage() {
         historico.push({
           tipo:
             'nao_comparecimento',
-          data: dataRegistro,
-          quantidade: desconto,
+
+          data:
+            dataRegistro,
+
+          quantidade:
+            desconto,
+
           servico:
             cobertura.servicoNome,
+
           sessoes_equivalentes:
             cobertura.sessoesEquivalentes,
+
           justificativa:
             justificativa ||
             'Não comparecimento sem aviso prévio.',
+
           agendamento_id:
             agendamento.id
         })
@@ -1300,10 +1706,12 @@ export default function NotificacoesDonoPage() {
           .update({
             sessoes_restantes:
               restantesDepois,
+
             status:
               restantesDepois <= 0
                 ? 'concluido'
                 : 'ativo',
+
             historico_sessoes:
               historico
           })
@@ -1329,7 +1737,8 @@ export default function NotificacoesDonoPage() {
             pacotes.find(
               (p: any) =>
                 Number(
-                  p.sessoes_restantes || 0
+                  p.sessoes_restantes ||
+                    0
                 ) > 0
             ) || null
         }
@@ -1359,12 +1768,19 @@ export default function NotificacoesDonoPage() {
         .insert({
           salao_id:
             profile.salao_id,
+
           cliente_id:
             solicitacao.cliente_id,
+
           servico_id:
             solicitacao.servico_id,
-          data_hora: dataHora,
-          status: 'confirmado',
+
+          data_hora:
+            dataHora,
+
+          status:
+            'confirmado',
+
           observacoes:
             solicitacao.observacoes ||
             null
@@ -1389,18 +1805,24 @@ export default function NotificacoesDonoPage() {
       await notificar({
         salao_id:
           profile.salao_id,
+
         tipo:
           'solicitacao_aceita',
+
         titulo:
           'Agendamento confirmado',
+
         mensagem: `O agendamento de ${
           solicitacao.clientes?.nome ||
           'cliente'
         } foi confirmado.`,
+
         destinatario_id:
           solicitacao.cliente_id ||
           null,
-        url: '/cliente'
+
+        url:
+          '/cliente'
       })
 
       setSolicitacoes(prev =>
@@ -1432,35 +1854,22 @@ export default function NotificacoesDonoPage() {
   ) {
     if (!profile?.salao_id) return
 
-    const motivo =
-      window.prompt(
-        'Informe o motivo da recusa:'
-      )
-
-    if (motivo === null) return
-
     setSalvando(true)
 
     try {
-      const { error } =
-        await supabase
-          .from(
-            'solicitacoes_agendamento'
-          )
-          .update({
-            status:
-              'recusado',
-            motivo_recusa:
-              motivo || null
-          })
-          .eq(
-            'id',
-            solicitacao.id
-          )
-          .eq(
-            'salao_id',
-            profile.salao_id
-          )
+      const {
+        error
+      } = await supabase
+        .from(
+          'solicitacoes_agendamento'
+        )
+        .update({
+          status: 'recusado'
+        })
+        .eq(
+          'id',
+          solicitacao.id
+        )
 
       if (error) {
         throw error
@@ -1469,18 +1878,24 @@ export default function NotificacoesDonoPage() {
       await notificar({
         salao_id:
           profile.salao_id,
+
         tipo:
           'solicitacao_recusada',
+
         titulo:
-          'Solicitação recusada',
+          'Solicitação de agendamento recusada',
+
         mensagem: `A solicitação de ${
           solicitacao.clientes?.nome ||
           'cliente'
-        } foi recusada.`,
+        } não pôde ser aceita neste momento.`,
+
         destinatario_id:
           solicitacao.cliente_id ||
           null,
-        url: '/cliente'
+
+        url:
+          '/cliente'
       })
 
       setSolicitacoes(prev =>
@@ -1507,89 +1922,128 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── SUGESTÃO DE HORÁRIOS ────────────────────────────────────────────
+  // ─── SUGESTÕES ───────────────────────────────────────────────────────
 
-  async function salvarSugestaoHorario() {
-    if (
-      !modalSugestao ||
-      !profile?.salao_id
-    ) {
-      return
-    }
-
-    const horarios =
-      horariosLivres.filter(
-        h => h.trim()
-      )
-
-    if (!horarios.length) {
-      alert(
-        'Informe pelo menos um horário.'
-      )
-      return
-    }
+  async function aceitarSugestao(
+    sugestao: any
+  ) {
+    if (!profile?.salao_id) return
 
     setSalvando(true)
 
     try {
-      const { error } =
-        await supabase
-          .from(
-            'solicitacoes_agendamento'
-          )
-          .update({
-            status:
-              'horario_sugerido',
-            horarios_sugeridos:
-              horarios
-          })
-          .eq(
-            'id',
-            modalSugestao.id
-          )
-          .eq(
-            'salao_id',
-            profile.salao_id
-          )
+      const clienteNovo =
+        sugestao.cliente_novo_id
 
-      if (error) {
-        throw error
+      const clientePendente =
+        sugestao.cliente_pendente_id
+
+      if (
+        !clienteNovo ||
+        !clientePendente
+      ) {
+        throw new Error(
+          'Sugestão de cliente inválida.'
+        )
       }
 
-      await notificar({
-        salao_id:
-          profile.salao_id,
-        tipo:
-          'horarios_sugeridos',
-        titulo:
-          'Novos horários disponíveis',
-        mensagem: `O salão enviou novos horários para ${
-          modalSugestao.clientes?.nome ||
-          'você'
-        }.`,
-        destinatario_id:
-          modalSugestao.cliente_id ||
-          null,
-        url: '/cliente'
-      })
+      await supabase
+        .from(
+          'sugestoes_mesclagem'
+        )
+        .delete()
+        .eq(
+          'id',
+          sugestao.id
+        )
+
+      await supabase
+        .from(
+          'clientes'
+        )
+        .update({
+          status:
+            'mesclado'
+        })
+        .eq(
+          'id',
+          clientePendente
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
+        )
 
       setModalSugestao(null)
-      setHorariosLivres([
-        '',
-        '',
-        ''
-      ])
 
       await carregarDados()
     } catch (error: any) {
       console.error(
-        'Erro ao salvar sugestão:',
+        'Erro ao aceitar sugestão:',
         error
       )
 
       alert(
         error?.message ||
-          'Não foi possível enviar os horários.'
+          'Não foi possível processar a sugestão.'
+      )
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  async function ignorarSugestao(
+    sugestao: any
+  ) {
+    if (!profile?.salao_id) return
+
+    setSalvando(true)
+
+    try {
+      const clienteId =
+        sugestao.cliente_pendente_id
+
+      if (clienteId) {
+        await supabase
+          .from(
+            'clientes'
+          )
+          .update({
+            ignorar_duplicado:
+              true
+          })
+          .eq(
+            'id',
+            clienteId
+          )
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
+      }
+
+      await supabase
+        .from(
+          'sugestoes_mesclagem'
+        )
+        .delete()
+        .eq(
+          'id',
+          sugestao.id
+        )
+
+      setModalSugestao(null)
+
+      await carregarDados()
+    } catch (error: any) {
+      console.error(
+        'Erro ao ignorar sugestão:',
+        error
+      )
+
+      alert(
+        error?.message ||
+          'Não foi possível ignorar a sugestão.'
       )
     } finally {
       setSalvando(false)
@@ -1604,43 +2058,35 @@ export default function NotificacoesDonoPage() {
     if (!profile?.salao_id) return
 
     try {
-      const { error } =
-        await supabase
-          .from('notificacoes')
-          .update({
-            excluida: true
-          })
-          .eq(
-            'id',
-            notificacao.id
-          )
-          .eq(
-            'salao_id',
-            profile.salao_id
-          )
-
-      if (error) throw error
-
-      setNotificacoes(prev =>
-        prev.filter(
-          item =>
-            item.id !==
-            notificacao.id
+      const {
+        error
+      } = await supabase
+        .from(
+          'notificacoes'
         )
-      )
+        .update({
+          excluida:
+            true
+        })
+        .eq(
+          'id',
+          notificacao.id
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
+        )
 
-      setNotificacoesExcluidas(
-        prev => [
-          notificacao,
-          ...prev.filter(
-            item =>
-              item.id !==
-              notificacao.id
-          )
-        ]
-      )
+      if (error) {
+        throw error
+      }
+
+      await carregarDados()
     } catch (error: any) {
-      console.error(error)
+      console.error(
+        'Erro ao excluir notificação:',
+        error
+      )
 
       alert(
         error?.message ||
@@ -1655,41 +2101,35 @@ export default function NotificacoesDonoPage() {
     if (!profile?.salao_id) return
 
     try {
-      const { error } =
-        await supabase
-          .from('notificacoes')
-          .update({
-            excluida: false
-          })
-          .eq(
-            'id',
-            notificacao.id
-          )
-          .eq(
-            'salao_id',
-            profile.salao_id
-          )
+      const {
+        error
+      } = await supabase
+        .from(
+          'notificacoes'
+        )
+        .update({
+          excluida:
+            false
+        })
+        .eq(
+          'id',
+          notificacao.id
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
+        )
 
-      if (error) throw error
+      if (error) {
+        throw error
+      }
 
-      setNotificacoesExcluidas(
-        prev =>
-          prev.filter(
-            item =>
-              item.id !==
-              notificacao.id
-          )
-      )
-
-      setNotificacoes(prev => [
-        {
-          ...notificacao,
-          excluida: false
-        },
-        ...prev
-      ])
+      await carregarDados()
     } catch (error: any) {
-      console.error(error)
+      console.error(
+        'Erro ao restaurar notificação:',
+        error
+      )
 
       alert(
         error?.message ||
@@ -1697,87 +2137,67 @@ export default function NotificacoesDonoPage() {
       )
     }
   }
-
-  async function limparNotificacoes() {
-    if (
-      !profile?.salao_id ||
-      notificacoes.length === 0
-    ) {
-      return
-    }
-
-    if (
-      !window.confirm(
-        'Deseja excluir todas as notificações?'
-      )
-    ) {
-      return
-    }
-
-    try {
-      const { error } =
-        await supabase
-          .from('notificacoes')
-          .update({
-            excluida: true
-          })
-          .eq(
-            'salao_id',
-            profile.salao_id
-          )
-          .eq(
-            'destinatario_id',
-            profile.id
-          )
-          .eq(
-            'excluida',
-            false
-          )
-
-      if (error) throw error
-
-      await carregarDados()
-    } catch (error: any) {
-      console.error(error)
-
-      alert(
-        error?.message ||
-          'Não foi possível limpar as notificações.'
-      )
-    }
-  }
-
-  // ─── FORMATADORES ────────────────────────────────────────────────────
+  // ─── FORMATAÇÃO ──────────────────────────────────────────────────────
 
   function formatarDataHora(
-    valor: string | null | undefined
+    dataHora: string
   ) {
-    if (!valor) return ''
+    if (!dataHora) return ''
 
-    const data = new Date(valor)
+    const data =
+      new Date(dataHora)
 
-    if (Number.isNaN(data.getTime())) {
-      return ''
-    }
-
-    return (
-      data.toLocaleDateString(
-        'pt-BR',
-        {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric'
-        }
-      ) +
-      ' às ' +
-      data.toLocaleTimeString(
-        'pt-BR',
-        {
-          hour: '2-digit',
-          minute: '2-digit'
-        }
-      )
+    return data.toLocaleString(
+      'pt-BR',
+      {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }
     )
+  }
+
+  function formatarData(
+    data: string
+  ) {
+    if (!data) return ''
+
+    return new Date(
+      data
+    ).toLocaleDateString(
+      'pt-BR'
+    )
+  }
+
+  function formatarMoeda(
+    valor: number
+  ) {
+    return Number(
+      valor || 0
+    ).toLocaleString(
+      'pt-BR',
+      {
+        style: 'currency',
+        currency: 'BRL'
+      }
+    )
+  }
+
+  function normalizarTexto(
+    texto: string
+  ) {
+    return String(
+      texto || ''
+    )
+      .normalize('NFD')
+      .replace(
+        /[\u0300-\u036f]/g,
+        ''
+      )
+      .toLowerCase()
+      .trim()
   }
 
   function obterNomeCliente(
@@ -1787,6 +2207,16 @@ export default function NotificacoesDonoPage() {
       item?.clientes?.nome ||
       item?.cliente_nome ||
       'Cliente'
+    )
+  }
+
+  function obterNomeServico(
+    item: any
+  ) {
+    return (
+      item?.servicos?.nome ||
+      item?.servico_nome ||
+      'Serviço'
     )
   }
 
@@ -1800,1672 +2230,1345 @@ export default function NotificacoesDonoPage() {
     )
   }
 
-  function abrirWhatsApp(
-    telefone: string
+  // ─── RENDERIZAÇÃO DOS ITENS ──────────────────────────────────────────
+
+  function renderCliente(
+    item: any
   ) {
-    if (!telefone) return
-
-    const numero =
-      telefone.replace(/\D/g, '')
-
-    if (!numero) return
-
-    const numeroFinal =
-      numero.startsWith('55')
-        ? numero
-        : `55${numero}`
-
-    window.open(
-      `https://wa.me/${numeroFinal}`,
-      '_blank'
-    )
-  }
-
-  // ─── LOADING ─────────────────────────────────────────────────────────
-
-  if (loading || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#f8faf8]">
-        <div className="text-center">
-          <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-[#6f8f72] animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">
-            Carregando...
+      <div className="flex items-center gap-3 min-w-0">
+        <div
+          className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-white font-semibold"
+          style={{
+            backgroundColor:
+              corSalao
+          }}
+        >
+          {obterNomeCliente(
+            item
+          )
+            .charAt(0)
+            .toUpperCase()}
+        </div>
+
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-800 truncate">
+            {obterNomeCliente(
+              item
+            )}
+          </p>
+
+          <p className="text-xs text-gray-500 truncate">
+            {obterTelefoneCliente(
+              item
+            ) ||
+              'Telefone não informado'}
           </p>
         </div>
       </div>
     )
   }
 
-  const quantidadeSolicitacoes =
-    solicitacoes.length
+  function renderDataAgendamento(
+    item: any
+  ) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-gray-600">
+        <CalendarDays
+          size={15}
+        />
 
-  const quantidadeConfirmacoes =
-    confirmacoes.length
+        <span>
+          {formatarDataHora(
+            item.data_hora
+          )}
+        </span>
+      </div>
+    )
+  }
 
-  const quantidadeNotificacoes =
-    notificacoes.filter(
-      n => !n.lida
-    ).length
+  // ─── TABS ────────────────────────────────────────────────────────────
 
-  return (
-    <div className="min-h-screen bg-[#f8faf8] text-[#26352a]">
+  function TabButton({
+    id,
+    label,
+    icon: Icon,
+    quantidade
+  }: {
+    id:
+      | 'pedidos'
+      | 'confirmacoes'
+      | 'notificacoes'
+      | 'excluidas'
 
-      {/* HEADER */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#e8eee9]">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
-          <div className="flex items-center gap-3">
+    label: string
+
+    icon: any
+
+    quantidade?: number
+  }) {
+    const ativo =
+      aba === id
+
+    return (
+      <button
+        type="button"
+        onClick={() =>
+          setAba(id)
+        }
+        className={`
+          flex items-center justify-center gap-2
+          px-4 py-2.5
+          rounded-xl
+          text-sm font-medium
+          transition-all
+          whitespace-nowrap
+          ${
+            ativo
+              ? 'text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-100'
+          }
+        `}
+        style={
+          ativo
+            ? {
+                backgroundColor:
+                  corSalao
+              }
+            : undefined
+        }
+      >
+        <Icon size={17} />
+
+        <span>
+          {label}
+        </span>
+
+        {typeof quantidade ===
+          'number' &&
+          quantidade > 0 && (
+            <span
+              className={`
+                min-w-[20px]
+                h-5
+                px-1.5
+                rounded-full
+                text-[11px]
+                font-bold
+                flex
+                items-center
+                justify-center
+                ${
+                  ativo
+                    ? 'bg-white/20 text-white'
+                    : 'bg-gray-100 text-gray-600'
+                }
+              `}
+            >
+              {quantidade}
+            </span>
+          )}
+      </button>
+    )
+  }
+
+  // ─── CARD DE CONFIRMAÇÃO ─────────────────────────────────────────────
+
+  function CardConfirmacao({
+    agendamento
+  }: {
+    agendamento: any
+  }) {
+    const nome =
+      obterNomeCliente(
+        agendamento
+      )
+
+    const servico =
+      obterNomeServico(
+        agendamento
+      )
+
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            {renderCliente(
+              agendamento
+            )}
+
+            <span className="shrink-0 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-semibold">
+              Aguardando
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm text-gray-700">
+              <Scissors
+                size={15}
+              />
+
+              <span>
+                {servico}
+              </span>
+            </div>
+
+            {renderDataAgendamento(
+              agendamento
+            )}
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => router.back()}
-              className="w-10 h-10 rounded-full bg-[#f3f7f3] flex items-center justify-center text-[#617963]"
+              onClick={() =>
+                iniciarConfirmacao(
+                  agendamento
+                )
+              }
+              className="h-11 rounded-xl text-white text-sm font-semibold disabled:opacity-50 transition-opacity"
+              style={{
+                backgroundColor:
+                  corSalao
+              }}
+              disabled={
+                salvando
+              }
             >
-              <ArrowLeft size={19} />
+              Confirmar
             </button>
 
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
-                Central de Atendimento
-              </h1>
-
-              <p className="text-xs sm:text-sm text-gray-500 mt-0.5 truncate">
-                {salao?.nome ||
-                  'Gerencie seus atendimentos'}
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                iniciarNaoComparecimento(
+                  agendamento
+                )
+              }
+              className="h-11 rounded-xl bg-red-50 text-red-600 text-sm font-semibold hover:bg-red-100 transition-colors"
+              disabled={
+                salvando
+              }
+            >
+              Não veio
+            </button>
           </div>
         </div>
-      </header>
+      </div>
+    )
+  }
 
-      {/* ABAS */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-5">
-        <div className="bg-white rounded-2xl border border-[#e8eee9] p-1.5 flex gap-1 overflow-x-auto">
+  // ─── CARD DE PEDIDO ──────────────────────────────────────────────────
 
-          <TabButton
-            ativo={aba === 'pedidos'}
+  function CardSolicitacao({
+    solicitacao
+  }: {
+    solicitacao: any
+  }) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="flex items-start justify-between gap-3">
+          {renderCliente(
+            solicitacao
+          )}
+
+          <span className="shrink-0 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-semibold">
+            Novo pedido
+          </span>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {solicitacao.data_hora && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <CalendarDays
+                size={15}
+              />
+
+              <span>
+                {formatarDataHora(
+                  solicitacao.data_hora
+                )}
+              </span>
+            </div>
+          )}
+
+          {(solicitacao.servicos?.nome ||
+            solicitacao.servico_nome) && (
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <Scissors
+                size={15}
+              />
+
+              <span>
+                {solicitacao.servicos?.nome ||
+                  solicitacao.servico_nome}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {solicitacao.observacoes && (
+          <div className="mt-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-600">
+            {solicitacao.observacoes}
+          </div>
+        )}
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
             onClick={() =>
-              setAba('pedidos')
+              aceitarSolicitacao(
+                solicitacao
+              )
             }
-            icon={<Calendar size={16} />}
-            label="Pedidos"
-            quantidade={
-              quantidadeSolicitacoes
-            }
-          />
+            className="h-11 rounded-xl text-white text-sm font-semibold"
+            style={{
+              backgroundColor:
+                corSalao
+            }}
+            disabled={salvando}
+          >
+            Aceitar
+          </button>
 
-          <TabButton
-            ativo={
-              aba === 'confirmacoes'
-            }
+          <button
+            type="button"
             onClick={() =>
-              setAba('confirmacoes')
+              recusarSolicitacao(
+                solicitacao
+              )
             }
-            icon={<Check size={16} />}
-            label="Confirmar"
-            quantidade={
-              quantidadeConfirmacoes
-            }
-          />
-
-          <TabButton
-            ativo={
-              aba === 'notificacoes'
-            }
-            onClick={() =>
-              setAba('notificacoes')
-            }
-            icon={<Bell size={16} />}
-            label="Notificações"
-            quantidade={
-              quantidadeNotificacoes
-            }
-          />
-
-          <TabButton
-            ativo={
-              aba === 'excluidas'
-            }
-            onClick={() =>
-              setAba('excluidas')
-            }
-            icon={<Trash2 size={16} />}
-            label="Excluídas"
-            quantidade={
-              notificacoesExcluidas.length
-            }
-          />
-
+            className="h-11 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200"
+            disabled={salvando}
+          >
+            Recusar
+          </button>
         </div>
       </div>
+    )
+  }
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+  // ─── CARD DE NOTIFICAÇÃO ─────────────────────────────────────────────
 
-        {/* PEDIDOS */}
-        {aba === 'pedidos' && (
-          <section>
-            <div className="mb-5">
-              <h2 className="text-lg font-semibold">
-                Solicitações de agendamento
-              </h2>
+  function CardNotificacao({
+    notificacao,
+    excluida = false
+  }: {
+    notificacao: any
+    excluida?: boolean
+  }) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div className="flex items-start gap-3">
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+            style={{
+              backgroundColor:
+                `${corSalao}18`,
+              color:
+                corSalao
+            }}
+          >
+            <Bell
+              size={18}
+            />
+          </div>
 
-              <p className="text-sm text-gray-500 mt-1">
-                Pedidos enviados pelas clientes.
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold text-gray-800">
+                {notificacao.titulo ||
+                  'Notificação'}
               </p>
+
+              <span className="text-[11px] text-gray-400 shrink-0">
+                {notificacao.created_at
+                  ? formatarData(
+                      notificacao.created_at
+                    )
+                  : ''}
+              </span>
             </div>
 
-            {solicitacoes.length === 0 ? (
-              <EmptyState
-                icon={<Calendar size={30} />}
-                title="Nenhuma solicitação pendente"
-                text="Novos pedidos aparecerão aqui."
+            <p className="mt-1 text-sm text-gray-600 leading-relaxed">
+              {notificacao.mensagem ||
+                ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 flex justify-end">
+          {excluida ? (
+            <button
+              type="button"
+              onClick={() =>
+                restaurarNotificacao(
+                  notificacao
+                )
+              }
+              className="text-sm font-medium"
+              style={{
+                color:
+                  corSalao
+              }}
+            >
+              Restaurar
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() =>
+                excluirNotificacao(
+                  notificacao
+                )
+              }
+              className="text-sm text-gray-500 hover:text-red-500"
+            >
+              Excluir
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ─── CONTEÚDO DAS ABAS ───────────────────────────────────────────────
+
+  function renderConteudo() {
+    if (aba === 'confirmacoes') {
+      if (!confirmacoes.length) {
+        return (
+          <EstadoVazio
+            icon={
+              <CheckCircle2
+                size={30}
               />
-            ) : (
-              <div className="space-y-4">
-                {solicitacoes.map(
-                  (solicitacao: any) => (
-                    <div
-                      key={solicitacao.id}
-                      className="bg-white border border-[#e8eee9] rounded-2xl p-4 sm:p-5 shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
+            }
+            titulo="Tudo em dia"
+            descricao="Não há atendimentos aguardando confirmação."
+          />
+        )
+      }
 
-                        <div>
-                          <h3 className="font-semibold">
-                            {obterNomeCliente(
-                              solicitacao
-                            )}
-                          </h3>
-
-                          {solicitacao.clientes?.telefone && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              {
-                                solicitacao.clientes.telefone
-                              }
-                            </p>
-                          )}
-                        </div>
-
-                        {solicitacao.status ===
-                          'horario_sugerido' && (
-                          <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#fff5df] text-[#946b1c] text-xs font-medium">
-                            Horários sugeridos
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-                        <InfoBox
-                          label="Serviço"
-                          value={
-                            solicitacao.servicos?.nome ||
-                            solicitacao.servico_nome ||
-                            'Serviço'
-                          }
-                        />
-
-                        <InfoBox
-                          label="Data desejada"
-                          value={
-                            formatarDataPreferida(
-                              solicitacao
-                            ) ||
-                            'Não informada'
-                          }
-                        />
-
-                        <InfoBox
-                          label="Período"
-                          value={
-                            formatarPeriodoPreferido(
-                              solicitacao
-                            ) ||
-                            'Não informado'
-                          }
-                        />
-
-                        {solicitacao.observacoes && (
-                          <InfoBox
-                            label="Observações"
-                            value={
-                              solicitacao.observacoes
-                            }
-                          />
-                        )}
-                      </div>
-
-                      {Array.isArray(
-                        solicitacao.horarios_sugeridos
-                      ) &&
-                        solicitacao.horarios_sugeridos.length >
-                          0 && (
-                          <div className="mt-4 rounded-xl bg-[#f3f7f3] p-3">
-                            <p className="text-xs font-semibold text-[#58705b] mb-2">
-                              Horários enviados
-                            </p>
-
-                            <div className="flex flex-wrap gap-2">
-                              {solicitacao.horarios_sugeridos.map(
-                                (
-                                  horario: string,
-                                  index: number
-                                ) => (
-                                  <span
-                                    key={index}
-                                    className="px-3 py-1.5 bg-white border border-[#dfe8df] rounded-lg text-sm"
-                                  >
-                                    {horario}
-                                  </span>
-                                )
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                      <div className="mt-5 flex flex-col sm:flex-row gap-2">
-
-                        <button
-                          type="button"
-                          disabled={salvando}
-                          onClick={() =>
-                            aceitarSolicitacao(
-                              solicitacao
-                            )
-                          }
-                          className="flex-1 h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold disabled:opacity-50"
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            <Check size={17} />
-                            Aceitar
-                          </span>
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={salvando}
-                          onClick={() => {
-                            setModalSugestao(
-                              solicitacao
-                            )
-                            setHorariosLivres([
-                              '',
-                              '',
-                              ''
-                            ])
-                          }}
-                          className="flex-1 h-11 rounded-xl border border-[#dbe5dc] bg-white text-[#58705b] text-sm font-semibold disabled:opacity-50"
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            <Clock size={17} />
-                            Sugerir horários
-                          </span>
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={salvando}
-                          onClick={() =>
-                            recusarSolicitacao(
-                              solicitacao
-                            )
-                          }
-                          className="h-11 px-5 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold disabled:opacity-50"
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            <X size={17} />
-                            Recusar
-                          </span>
-                        </button>
-
-                      </div>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* CONFIRMAÇÕES */}
-        {aba === 'confirmacoes' && (
-          <section>
-
-            <div className="mb-5">
-              <h2 className="text-lg font-semibold">
-                Confirmar atendimentos
-              </h2>
-
-              <p className="text-sm text-gray-500 mt-1">
-                Confirme quem realmente compareceu ou registre o não comparecimento.
-              </p>
-            </div>
-
-            {confirmacoes.length === 0 ? (
-              <EmptyState
-                icon={<Check size={30} />}
-                title="Tudo em dia"
-                text="Não há atendimentos aguardando confirmação."
+      return (
+        <div className="grid gap-3">
+          {confirmacoes.map(
+            agendamento => (
+              <CardConfirmacao
+                key={
+                  agendamento.id
+                }
+                agendamento={
+                  agendamento
+                }
               />
-            ) : (
-              <div className="space-y-4">
+            )
+          )}
+        </div>
+      )
+    }
 
-                {confirmacoes.map(
-                  (agendamento: any) => (
-                    <div
-                      key={agendamento.id}
-                      className="bg-white border border-[#e8eee9] rounded-2xl p-4 sm:p-5 shadow-sm"
-                    >
+    if (aba === 'pedidos') {
+      if (!solicitacoes.length) {
+        return (
+          <EstadoVazio
+            icon={
+              <Inbox
+                size={30}
+              />
+            }
+            titulo="Nenhum pedido"
+            descricao="Novas solicitações de agendamento aparecerão aqui."
+          />
+        )
+      }
 
-                      <div className="flex items-start justify-between gap-3">
+      return (
+        <div className="grid gap-3">
+          {solicitacoes.map(
+            solicitacao => (
+              <CardSolicitacao
+                key={
+                  solicitacao.id
+                }
+                solicitacao={
+                  solicitacao
+                }
+              />
+            )
+          )}
+        </div>
+      )
+    }
 
-                        <div className="min-w-0">
+    if (aba === 'notificacoes') {
+      if (!notificacoes.length) {
+        return (
+          <EstadoVazio
+            icon={
+              <Bell
+                size={30}
+              />
+            }
+            titulo="Nenhuma notificação"
+            descricao="Você está em dia."
+          />
+        )
+      }
 
-                          <h3 className="font-semibold">
-                            {obterNomeCliente(
-                              agendamento
-                            )}
-                          </h3>
+      return (
+        <div className="grid gap-3">
+          {notificacoes.map(
+            notificacao => (
+              <CardNotificacao
+                key={
+                  notificacao.id
+                }
+                notificacao={
+                  notificacao
+                }
+              />
+            )
+          )}
+        </div>
+      )
+    }
 
-                          {obterTelefoneCliente(
-                            agendamento
-                          ) && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                abrirWhatsApp(
-                                  obterTelefoneCliente(
-                                    agendamento
-                                  )
-                                )
-                              }
-                              className="mt-1 inline-flex items-center gap-1.5 text-xs text-[#5d8062] hover:underline"
-                            >
-                              <MessageCircle
-                                size={13}
-                              />
-                              {
-                                obterTelefoneCliente(
-                                  agendamento
-                                )
-                              }
-                            </button>
-                          )}
+    if (!notificacoesExcluidas.length) {
+      return (
+        <EstadoVazio
+          icon={
+            <Trash2
+              size={30}
+            />
+          }
+          titulo="Lixeira vazia"
+          descricao="As notificações excluídas aparecerão aqui."
+        />
+      )
+    }
 
-                        </div>
-
-                        <span className="shrink-0 px-2.5 py-1 rounded-full bg-[#fff5df] text-[#946b1c] text-xs font-medium">
-                          Aguardando
-                        </span>
-
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-
-                        <InfoBox
-                          label="Data"
-                          value={formatarDataHora(
-                            agendamento.data_hora
-                          )}
-                        />
-
-                        <InfoBox
-                          label="Serviço"
-                          value={
-                            agendamento.servicos?.nome ||
-                            agendamento.servico_nome ||
-                            'Atendimento'
-                          }
-                        />
-
-                      </div>
-
-                      <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2">
-
-                        <button
-                          type="button"
-                          disabled={salvando}
-                          onClick={() =>
-                            iniciarNaoComparecimento(
-                              agendamento
-                            )
-                          }
-                          className="h-11 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold disabled:opacity-50"
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            <X size={17} />
-                            Não veio
-                          </span>
-                        </button>
-
-                        <button
-                          type="button"
-                          disabled={
-                            salvando ||
-                            verificandoPacoteConfirmacao
-                          }
-                          onClick={() =>
-                            abrirModalConfirmar(
-                              agendamento
-                            )
-                          }
-                          className="h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold disabled:opacity-50"
-                        >
-                          <span className="flex items-center justify-center gap-2">
-                            <Check size={17} />
-                            Confirmar atendimento
-                          </span>
-                        </button>
-
-                      </div>
-                    </div>
-                  )
-                )}
-
-              </div>
-            )}
-          </section>
+    return (
+      <div className="grid gap-3">
+        {notificacoesExcluidas.map(
+          notificacao => (
+            <CardNotificacao
+              key={
+                notificacao.id
+              }
+              notificacao={
+                notificacao
+              }
+              excluida
+            />
+          )
         )}
+      </div>
+    )
+  }
 
-        {/* NOTIFICAÇÕES */}
-        {aba === 'notificacoes' && (
-          <section>
+  // ─── ESTADO VAZIO ────────────────────────────────────────────────────
 
-            <div className="flex items-center justify-between gap-3 mb-5">
+  function EstadoVazio({
+    icon,
+    titulo,
+    descricao
+  }: {
+    icon: React.ReactNode
+    titulo: string
+    descricao: string
+  }) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-100 p-8 text-center">
+        <div
+          className="w-14 h-14 mx-auto rounded-full flex items-center justify-center"
+          style={{
+            backgroundColor:
+              `${corSalao}15`,
+            color:
+              corSalao
+          }}
+        >
+          {icon}
+        </div>
 
+        <h3 className="mt-4 text-base font-semibold text-gray-800">
+          {titulo}
+        </h3>
+
+        <p className="mt-1 text-sm text-gray-500">
+          {descricao}
+        </p>
+      </div>
+    )
+  }
+
+  // ─── MODAL DE ATENDIMENTO ────────────────────────────────────────────
+
+  function ModalAtendimento() {
+    if (!modalConfirmar) {
+      return null
+    }
+
+    const agendamento =
+      modalConfirmar.agendamento
+
+    const ehNaoCompareceu =
+      modalConfirmar.tipo ===
+      'nao_compareceu'
+
+    const clienteNome =
+      obterNomeCliente(
+        agendamento
+      )
+
+    const servicoNome =
+      obterNomeServico(
+        agendamento
+      )
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+        <div
+          className="absolute inset-0 bg-black/40"
+          onClick={() => {
+            if (!salvando) {
+              setModalConfirmar(
+                null
+              )
+            }
+          }}
+        />
+
+        <div className="relative w-full sm:max-w-lg max-h-[92vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl">
+          <div className="p-5 border-b border-gray-100">
+            <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold">
-                  Notificações
+                <h2 className="text-lg font-bold text-gray-800">
+                  {ehNaoCompareceu
+                    ? 'Registrar não comparecimento'
+                    : 'Confirmar atendimento'}
                 </h2>
 
-                <p className="text-sm text-gray-500 mt-1">
-                  Avisos e atualizações do salão.
-                </p>
-              </div>
-
-              {notificacoes.length > 0 && (
-                <button
-                  type="button"
-                  onClick={
-                    limparNotificacoes
-                  }
-                  className="text-xs font-medium text-[#9b5e5e] hover:underline"
-                >
-                  Limpar tudo
-                </button>
-              )}
-
-            </div>
-
-            {notificacoes.length === 0 ? (
-              <EmptyState
-                icon={<Bell size={30} />}
-                title="Nenhuma notificação"
-                text="Você está em dia."
-              />
-            ) : (
-              <div className="space-y-3">
-
-                {notificacoes.map(
-                  (notificacao: any) => (
-                    <div
-                      key={
-                        notificacao.id
-                      }
-                      className={`bg-white border rounded-2xl p-4 ${
-                        notificacao.lida
-                          ? 'border-[#e8eee9]'
-                          : 'border-[#d9e6da] shadow-sm'
-                      }`}
-                    >
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleClicarNotificacao(
-                            notificacao
-                          )
-                        }
-                        className="w-full text-left"
-                      >
-
-                        <div className="flex gap-3">
-
-                          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#eaf2ea] text-[#638067]">
-                            <Bell size={18} />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-
-                            <div className="flex items-start justify-between gap-2">
-
-                              <p className="font-semibold text-sm">
-                                {
-                                  notificacao.titulo
-                                }
-                              </p>
-
-                              {!notificacao.lida && (
-                                <span className="w-2 h-2 rounded-full bg-[#6f8f72] shrink-0 mt-1.5" />
-                              )}
-
-                            </div>
-
-                            <p className="text-sm text-gray-600 mt-1">
-                              {
-                                notificacao.mensagem
-                              }
-                            </p>
-
-                            {notificacao.created_at && (
-                              <p className="text-[11px] text-gray-400 mt-2">
-                                {formatarDataHora(
-                                  notificacao.created_at
-                                )}
-                              </p>
-                            )}
-
-                          </div>
-
-                        </div>
-
-                      </button>
-
-                      <div className="mt-3 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            excluirNotificacao(
-                              notificacao
-                            )
-                          }
-                          className="text-xs text-gray-400 hover:text-[#9b5e5e]"
-                        >
-                          Excluir
-                        </button>
-                      </div>
-
-                    </div>
-                  )
-                )}
-
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* EXCLUÍDAS */}
-        {aba === 'excluidas' && (
-          <section>
-
-            <div className="mb-5">
-              <h2 className="text-lg font-semibold">
-                Notificações excluídas
-              </h2>
-
-              <p className="text-sm text-gray-500 mt-1">
-                Notificações que foram removidas da central.
-              </p>
-            </div>
-
-            {notificacoesExcluidas.length === 0 ? (
-              <EmptyState
-                icon={<Trash2 size={30} />}
-                title="Nenhuma notificação excluída"
-              />
-            ) : (
-              <div className="space-y-3">
-
-                {notificacoesExcluidas.map(
-                  (notificacao: any) => (
-                    <div
-                      key={
-                        notificacao.id
-                      }
-                      className="bg-white border border-[#e8eee9] rounded-2xl p-4"
-                    >
-
-                      <div className="flex gap-3">
-
-                        <div className="w-10 h-10 rounded-full bg-[#f2f5f2] text-gray-400 flex items-center justify-center shrink-0">
-                          <Trash2 size={18} />
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-
-                          <p className="font-semibold text-sm">
-                            {
-                              notificacao.titulo
-                            }
-                          </p>
-
-                          <p className="text-sm text-gray-600 mt-1">
-                            {
-                              notificacao.mensagem
-                            }
-                          </p>
-
-                          {notificacao.created_at && (
-                            <p className="text-[11px] text-gray-400 mt-2">
-                              {formatarDataHora(
-                                notificacao.created_at
-                              )}
-                            </p>
-                          )}
-
-                        </div>
-
-                      </div>
-
-                      <div className="mt-3 flex justify-end">
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            restaurarNotificacao(
-                              notificacao
-                            )
-                          }
-                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#58705b]"
-                        >
-                          <RotateCcw size={13} />
-                          Restaurar
-                        </button>
-
-                      </div>
-
-                    </div>
-                  )
-                )}
-
-              </div>
-            )}
-          </section>
-        )}
-
-      </main>
-
-      {/* MODAL SUGERIR HORÁRIOS */}
-      {modalSugestao && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
-
-          <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden">
-
-            <div className="p-5 border-b border-[#edf0ed] flex items-center justify-between">
-
-              <div>
-                <h3 className="font-semibold text-lg">
-                  Sugerir horários
-                </h3>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  {obterNomeCliente(
-                    modalSugestao
-                  )}
+                <p className="mt-1 text-sm text-gray-500">
+                  {clienteNome}
+                  {' · '}
+                  {servicoNome}
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() =>
-                  setModalSugestao(null)
-                }
-                className="w-9 h-9 rounded-full bg-[#f4f6f4] flex items-center justify-center text-gray-500"
-              >
-                <X size={18} />
-              </button>
-
-            </div>
-
-            <div className="p-5">
-
-              <p className="text-sm text-gray-600 mb-4">
-                Informe até três horários que podem funcionar para a cliente.
-              </p>
-
-              <div className="space-y-3">
-
-                {horariosLivres.map(
-                  (
-                    horario,
-                    index
-                  ) => (
-                    <div key={index}>
-
-                      <label className="text-xs font-medium text-gray-500 mb-1.5 block">
-                        Horário {index + 1}
-                      </label>
-
-                      <input
-                        type="datetime-local"
-                        value={horario}
-                        onChange={e => {
-                          const novos = [
-                            ...horariosLivres
-                          ]
-
-                          novos[index] =
-                            e.target.value
-
-                          setHorariosLivres(
-                            novos
-                          )
-                        }}
-                        className="w-full h-11 rounded-xl border border-[#dfe7df] px-3 text-sm outline-none"
-                      />
-
-                    </div>
-                  )
-                )}
-
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-2">
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModalSugestao(null)
-                  }
-                  className="h-11 rounded-xl border border-[#dfe5df] text-sm font-semibold text-gray-600"
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  type="button"
-                  disabled={salvando}
-                  onClick={
-                    salvarSugestaoHorario
-                  }
-                  className="h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold disabled:opacity-50"
-                >
-                  Enviar horários
-                </button>
-
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CONFIRMAR / NÃO COMPARECEU */}
-      {modalConfirmar && (
-        <ModalAtendimento
-          modalConfirmar={
-            modalConfirmar
-          }
-          salvando={
-            salvando
-          }
-          servicoRealizado={
-            servicoRealizado
-          }
-          setServicoRealizado={
-            setServicoRealizado
-          }
-          coberturas={
-            coberturas
-          }
-          carregandoCoberturas={
-            carregandoCoberturas
-          }
-          sessaoJaRegistradaNoPacote={
-            sessaoJaRegistradaNoPacote
-          }
-          possuiPacoteDisponivel={
-            possuiPacoteDisponivel
-          }
-          opcaoConfirmacaoPacote={
-            opcaoConfirmacaoPacote
-          }
-          setOpcaoConfirmacaoPacote={
-            setOpcaoConfirmacaoPacote
-          }
-          verificandoPacoteConfirmacao={
-            verificandoPacoteConfirmacao
-          }
-          onClose={() =>
-            setModalConfirmar(null)
-          }
-          onConfirmar={
-            confirmarAtendimento
-          }
-          onNaoComparecimento={
-            registrarNaoComparecimento
-          }
-        />
-      )}
-
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// COMPONENTES AUXILIARES
-// ────────────────────────────────────────────────────────────────────────
-
-function TabButton({
-  ativo,
-  onClick,
-  icon,
-  label,
-  quantidade
-}: any) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-        ativo
-          ? 'bg-[#6f8f72] text-white shadow-sm'
-          : 'text-gray-600 hover:bg-[#f4f7f4]'
-      }`}
-    >
-      <span className="flex items-center justify-center gap-2">
-        {icon}
-
-        {label}
-
-        {quantidade > 0 && (
-          <span
-            className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
-              ativo
-                ? 'bg-white/20 text-white'
-                : 'bg-[#edf3ed] text-[#58705b]'
-            }`}
-          >
-            {quantidade}
-          </span>
-        )}
-      </span>
-    </button>
-  )
-}
-
-function InfoBox({
-  label,
-  value
-}: any) {
-  return (
-    <div className="rounded-xl bg-[#f7faf7] p-3">
-      <p className="text-[11px] uppercase tracking-wide text-gray-400">
-        {label}
-      </p>
-
-      <p className="text-sm font-medium mt-1">
-        {value}
-      </p>
-    </div>
-  )
-}
-
-function EmptyState({
-  icon,
-  title,
-  text
-}: any) {
-  return (
-    <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
-      <div className="mx-auto text-gray-300 mb-3 w-fit">
-        {icon}
-      </div>
-
-      <p className="font-medium text-gray-700">
-        {title}
-      </p>
-
-      {text && (
-        <p className="text-sm text-gray-500 mt-1">
-          {text}
-        </p>
-      )}
-    </div>
-  )
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// MODAL DE ATENDIMENTO
-// ────────────────────────────────────────────────────────────────────────
-
-function ModalAtendimento({
-  modalConfirmar,
-  salvando,
-  servicoRealizado,
-  setServicoRealizado,
-  coberturas,
-  carregandoCoberturas,
-  sessaoJaRegistradaNoPacote,
-  possuiPacoteDisponivel,
-  opcaoConfirmacaoPacote,
-  setOpcaoConfirmacaoPacote,
-  verificandoPacoteConfirmacao,
-  onClose,
-  onConfirmar,
-  onNaoComparecimento
-}: any) {
-
-  const [
-    etapaNaoCompareceu,
-    setEtapaNaoCompareceu
-  ] = useState<
-    'pergunta_aviso' |
-    'pergunta_pacote' |
-    'justificativa'
-  >('pergunta_aviso')
-
-  const [
-    avisouComAntecedencia,
-    setAvisouComAntecedencia
-  ] = useState<boolean | null>(null)
-
-  const [
-    descontarPacote,
-    setDescontarPacote
-  ] = useState<boolean | null>(null)
-
-  const [
-    justificativa,
-    setJustificativa
-  ] = useState('')
-
-  const isNaoComparecimento =
-    modalConfirmar?.tipo ===
-    'nao_compareceu'
-
-  const agendamento =
-    isNaoComparecimento
-      ? modalConfirmar?.agendamento
-      : modalConfirmar
-
-  useEffect(() => {
-    if (isNaoComparecimento) {
-      setEtapaNaoCompareceu(
-        'pergunta_aviso'
-      )
-
-      setAvisouComAntecedencia(
-        null
-      )
-
-      setDescontarPacote(
-        null
-      )
-
-      setJustificativa('')
-    }
-  }, [
-    modalConfirmar?.agendamento?.id,
-    isNaoComparecimento
-  ])
-
-  function fechar() {
-    if (salvando) return
-    onClose()
-  }
-
-  function selecionarAviso(
-    avisou: boolean
-  ) {
-    setAvisouComAntecedencia(
-      avisou
-    )
-
-    if (avisou) {
-      setDescontarPacote(false)
-      setJustificativa('')
-
-      onNaoComparecimento(
-        modalConfirmar.agendamento,
-        false,
-        ''
-      )
-
-      return
-    }
-
-    setEtapaNaoCompareceu(
-      'pergunta_pacote'
-    )
-  }
-
-  function selecionarDesconto(
-    descontar: boolean
-  ) {
-    setDescontarPacote(
-      descontar
-    )
-
-    if (!descontar) {
-      onNaoComparecimento(
-        modalConfirmar.agendamento,
-        false,
-        ''
-      )
-
-      return
-    }
-
-    setEtapaNaoCompareceu(
-      'justificativa'
-    )
-  }
-
-  function confirmarJustificativa() {
-    const texto =
-      justificativa.trim()
-
-    if (!texto) {
-      alert(
-        'Escreva uma justificativa antes de descontar as sessões do pacote.'
-      )
-      return
-    }
-
-    onNaoComparecimento(
-      modalConfirmar.agendamento,
-      true,
-      texto
-    )
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-black/45 flex items-end sm:items-center justify-center p-0 sm:p-4">
-
-      <div className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
-
-        {/* CABEÇALHO */}
-
-        <div className="p-5 border-b border-[#edf0ed] flex items-start justify-between gap-3">
-
-          <div className="min-w-0">
-
-            <h3 className="text-lg font-semibold text-[#26352a]">
-              {isNaoComparecimento
-                ? 'Registrar não comparecimento'
-                : 'Confirmar atendimento'}
-            </h3>
-
-            <p className="text-sm text-gray-500 mt-1">
-              {agendamento?.clientes?.nome ||
-                'Cliente'}
-            </p>
-
-          </div>
-
-          <button
-            type="button"
-            onClick={fechar}
-            disabled={salvando}
-            className="w-9 h-9 rounded-full bg-[#f4f6f4] flex items-center justify-center text-gray-500 shrink-0 disabled:opacity-50"
-          >
-            <X size={18} />
-          </button>
-
-        </div>
-
-        <div className="overflow-y-auto p-5">
-
-          {/* ───────────────── CONFIRMAR ───────────────── */}
-
-          {!isNaoComparecimento ? (
-            <div>
-
-              <div className="rounded-2xl bg-[#f5f8f5] p-4">
-
-                <p className="text-xs uppercase tracking-wide text-gray-400">
-                  Serviço realizado
-                </p>
-
-                <input
-                  type="text"
-                  value={servicoRealizado}
-                  onChange={e =>
-                    setServicoRealizado(
-                      e.target.value
+                onClick={() => {
+                  if (!salvando) {
+                    setModalConfirmar(
+                      null
                     )
                   }
-                  className="w-full mt-2 h-11 rounded-xl border border-[#dfe7df] bg-white px-3 text-sm outline-none"
-                  placeholder="Nome do serviço"
+                }}
+                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"
+              >
+                <X
+                  size={18}
                 />
-
-              </div>
-
-              {verificandoPacoteConfirmacao ? (
-                <div className="mt-5 rounded-2xl bg-[#f7faf7] p-5 text-center">
-
-                  <div className="w-7 h-7 rounded-full border-4 border-gray-200 border-t-[#6f8f72] animate-spin mx-auto mb-3" />
-
-                  <p className="text-sm font-medium text-gray-700">
-                    Verificando o histórico do pacote...
-                  </p>
-
-                </div>
-              ) : sessaoJaRegistradaNoPacote ? (
-
-                /* CASO ESPECIAL:
-                   a sessão já foi lançada anteriormente */
-                <div className="mt-5">
-
-                  <div className="rounded-2xl bg-[#edf7ee] border border-[#cfe2d1] p-4">
-
-                    <div className="flex items-start gap-3">
-
-                      <div className="w-9 h-9 rounded-full bg-[#dceedd] text-[#58705b] flex items-center justify-center shrink-0">
-                        <Check size={18} />
-                      </div>
-
-                      <div>
-
-                        <p className="text-sm font-semibold text-[#4f6f53]">
-                          Sessão já registrada no pacote
-                        </p>
-
-                        <p className="text-xs text-[#69806c] mt-1">
-                          Esta sessão já foi lançada anteriormente no histórico do pacote. O sistema não fará uma nova baixa.
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                  </div>
-
-                  <div className="mt-4 rounded-2xl border border-[#e3ebe3] p-4">
-
-                    <p className="text-sm text-gray-600">
-                      Você pode apenas confirmar o atendimento para concluir este agendamento.
-                    </p>
-
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={salvando}
-                    onClick={() => {
-                      setOpcaoConfirmacaoPacote(
-                        'apenas_confirmar'
-                      )
-
-                      onConfirmar()
-                    }}
-                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
-                  >
-                    {salvando
-                      ? 'Salvando...'
-                      : 'Apenas confirmar atendimento'}
-                  </button>
-
-                </div>
-
-              ) : possuiPacoteDisponivel ? (
-
-                /* EXISTE PACOTE, MAS A SESSÃO AINDA NÃO FOI LANÇADA */
-                <div className="mt-5">
-
-                  <p className="text-sm font-semibold text-gray-700 mb-3">
-                    Como deseja registrar o atendimento?
-                  </p>
-
-                  <div className="grid grid-cols-1 gap-3">
-
-                    <button
-                      type="button"
-                      disabled={salvando}
-                      onClick={() =>
-                        setOpcaoConfirmacaoPacote(
-                          'dar_baixa'
-                        )
-                      }
-                      className={`text-left rounded-2xl border-2 p-4 transition ${
-                        opcaoConfirmacaoPacote ===
-                        'dar_baixa'
-                          ? 'border-[#6f8f72] bg-[#f1f7f1]'
-                          : 'border-[#e4e9e4] bg-white'
-                      }`}
-                    >
-
-                      <div className="flex items-center gap-3">
-
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            opcaoConfirmacaoPacote ===
-                            'dar_baixa'
-                              ? 'bg-[#6f8f72] text-white'
-                              : 'bg-[#f1f4f1] text-[#58705b]'
-                          }`}
-                        >
-                          <Check size={18} />
-                        </div>
-
-                        <div>
-
-                          <p className="text-sm font-semibold text-gray-800">
-                            Dar baixa no pacote
-                          </p>
-
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            Registrar a sessão realizada e descontar do pacote.
-                          </p>
-
-                        </div>
-
-                      </div>
-
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={salvando}
-                      onClick={() =>
-                        setOpcaoConfirmacaoPacote(
-                          'apenas_confirmar'
-                        )
-                      }
-                      className={`text-left rounded-2xl border-2 p-4 transition ${
-                        opcaoConfirmacaoPacote ===
-                        'apenas_confirmar'
-                          ? 'border-[#6f8f72] bg-[#f1f7f1]'
-                          : 'border-[#e4e9e4] bg-white'
-                      }`}
-                    >
-
-                      <div className="flex items-center gap-3">
-
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                            opcaoConfirmacaoPacote ===
-                            'apenas_confirmar'
-                              ? 'bg-[#6f8f72] text-white'
-                              : 'bg-[#f1f4f1] text-[#58705b]'
-                          }`}
-                        >
-                          <Check size={18} />
-                        </div>
-
-                        <div>
-
-                          <p className="text-sm font-semibold text-gray-800">
-                            Apenas confirmar atendimento
-                          </p>
-
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            Concluir o atendimento sem alterar o pacote.
-                          </p>
-
-                        </div>
-
-                      </div>
-
-                    </button>
-
-                  </div>
-
-                  {opcaoConfirmacaoPacote ===
-                    'dar_baixa' && (
-                    <div className="mt-4 rounded-2xl bg-[#f7faf7] p-4">
-
-                      <p className="text-xs font-semibold text-[#58705b] mb-3">
-                        Sessões que serão descontadas
-                      </p>
-
-                      {carregandoCoberturas ? (
-                        <p className="text-sm text-gray-500">
-                          Verificando pacotes disponíveis...
-                        </p>
-                      ) : coberturas.length ===
-                        0 ? (
-                        <p className="text-sm text-gray-500">
-                          Nenhuma cobertura de pacote encontrada.
-                        </p>
-                      ) : (
-                        <div className="space-y-2">
-
-                          {coberturas.map(
-                            (
-                              cobertura: CoberturaServico
-                            ) => (
-                              <div
-                                key={
-                                  cobertura.servicoId
-                                }
-                                className="flex items-center justify-between gap-3 bg-white rounded-xl p-3"
-                              >
-
-                                <span className="text-sm font-medium">
-                                  {
-                                    cobertura.servicoNome
-                                  }
-                                </span>
-
-                                <span className="text-xs text-[#58705b] font-semibold">
-                                  {
-                                    cobertura.sessoesEquivalentes
-                                  }{' '}
-                                  sessão(ões)
-                                </span>
-
-                              </div>
-                            )
-                          )}
-
-                        </div>
-                      )}
-
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    disabled={
-                      salvando ||
-                      carregandoCoberturas ||
-                      opcaoConfirmacaoPacote ===
-                        'perguntar'
-                    }
-                    onClick={onConfirmar}
-                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
-                  >
-                    {salvando
-                      ? 'Salvando...'
-                      : opcaoConfirmacaoPacote ===
-                        'dar_baixa'
-                        ? 'Dar baixa e confirmar atendimento'
-                        : 'Apenas confirmar atendimento'}
-                  </button>
-
-                </div>
-
-              ) : (
-
-                /* SEM PACOTE */
-                <div className="mt-5">
-
-                  <div className="rounded-2xl border border-[#e3ebe3] p-4">
-
-                    <p className="text-sm font-semibold text-gray-700">
-                      Sem pacote ativo
-                    </p>
-
-                    <p className="text-xs text-gray-500 mt-1">
-                      O atendimento será apenas confirmado e concluído.
-                    </p>
-
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={salvando}
-                    onClick={() => {
-                      setOpcaoConfirmacaoPacote(
-                        'apenas_confirmar'
-                      )
-
-                      onConfirmar()
-                    }}
-                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
-                  >
-                    {salvando
-                      ? 'Salvando...'
-                      : 'Confirmar atendimento'}
-                  </button>
-
-                </div>
-              )}
-
+              </button>
             </div>
+          </div>
 
-          ) : (
-
-            /* ───────────────── NÃO COMPARECIMENTO ───────────────── */
-
-            <div>
-
-              {etapaNaoCompareceu ===
-                'pergunta_aviso' && (
+          <div className="p-5 space-y-5">
+            {!ehNaoCompareceu && (
+              <>
                 <div>
-
-                  <div className="rounded-2xl bg-[#fff8ec] p-4 mb-5">
-
-                    <p className="text-sm font-semibold text-[#765d29]">
-                      A cliente avisou o salão sobre a falta com antecedência?
-                    </p>
-
-                    <p className="text-xs text-[#8c7441] mt-1.5">
-                      Se avisou em cima da hora ou não avisou, considere como falta sem aviso prévio.
-                    </p>
-
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-3">
-
-                    <button
-                      type="button"
-                      disabled={salvando}
-                      onClick={() =>
-                        selecionarAviso(
-                          true
-                        )
-                      }
-                      className="min-h-12 rounded-xl border border-[#dbe7dc] bg-[#f7fbf7] text-[#58705b] font-semibold text-sm"
-                    >
-                      Sim, avisou com antecedência
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={salvando}
-                      onClick={() =>
-                        selecionarAviso(
-                          false
-                        )
-                      }
-                      className="min-h-12 rounded-xl border border-[#eadada] bg-[#fff8f8] text-[#9b5e5e] font-semibold text-sm"
-                    >
-                      Não, não avisou / avisou em cima da hora
-                    </button>
-
-                  </div>
-
-                </div>
-              )}
-
-              {etapaNaoCompareceu ===
-                'pergunta_pacote' && (
-                <div>
-
-                  <div className="rounded-2xl bg-[#fff8ec] p-4 mb-5">
-
-                    <p className="text-sm font-semibold text-[#765d29]">
-                      Deseja descontar a falta do pacote da cliente?
-                    </p>
-
-                    <p className="text-xs text-[#8c7441] mt-1.5">
-                      O sistema considerará todos os serviços do agendamento e suas respectivas sessões equivalentes.
-                    </p>
-
-                  </div>
-
-                  {coberturas.length >
-                    0 && (
-                    <div className="mb-5 space-y-2">
-
-                      {coberturas.map(
-                        (
-                          cobertura: CoberturaServico
-                        ) => (
-                          <div
-                            key={
-                              cobertura.servicoId
-                            }
-                            className="rounded-xl bg-[#f7faf7] p-3"
-                          >
-
-                            <div className="flex items-center justify-between gap-3">
-
-                              <span className="text-sm font-medium">
-                                {
-                                  cobertura.servicoNome
-                                }
-                              </span>
-
-                              <span className="text-xs text-gray-500">
-                                {
-                                  cobertura.sessoesEquivalentes
-                                }{' '}
-                                sessão(ões)
-                              </span>
-
-                            </div>
-
-                          </div>
-                        )
-                      )}
-
-                    </div>
-                  )}
-
-                  {carregandoCoberturas && (
-                    <p className="text-sm text-gray-500 mb-4">
-                      Verificando os pacotes disponíveis...
-                    </p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-
-                    <button
-                      type="button"
-                      disabled={
-                        salvando ||
-                        carregandoCoberturas
-                      }
-                      onClick={() =>
-                        selecionarDesconto(
-                          false
-                        )
-                      }
-                      className="h-12 rounded-xl border border-[#dfe5df] text-gray-600 font-semibold text-sm disabled:opacity-50"
-                    >
-                      Não descontar
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={
-                        salvando ||
-                        carregandoCoberturas
-                      }
-                      onClick={() =>
-                        selecionarDesconto(
-                          true
-                        )
-                      }
-                      className="h-12 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
-                    >
-                      Sim, descontar
-                    </button>
-
-                  </div>
-
-                </div>
-              )}
-
-              {etapaNaoCompareceu ===
-                'justificativa' && (
-                <div>
-
-                  <div className="rounded-2xl bg-[#fff8ec] p-4 mb-5">
-
-                    <p className="text-sm font-semibold text-[#765d29]">
-                      Justificativa do desconto
-                    </p>
-
-                    <p className="text-xs text-[#8c7441] mt-1.5">
-                      Escreva o motivo pelo qual as sessões serão descontadas. Essa justificativa ficará registrada no histórico do pacote.
-                    </p>
-
-                  </div>
-
-                  <label className="block">
-
-                    <span className="text-xs font-semibold text-gray-500">
-                      Justificativa
-                    </span>
-
-                    <textarea
-                      value={justificativa}
-                      onChange={e =>
-                        setJustificativa(
-                          e.target.value
-                        )
-                      }
-                      rows={5}
-                      placeholder="Ex.: Cliente não compareceu e não avisou o salão com antecedência."
-                      className="w-full mt-2 rounded-xl border border-[#dfe7df] px-3 py-3 text-sm outline-none resize-none"
-                    />
-
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Serviço realizado
                   </label>
 
-                  <div className="mt-4 rounded-xl bg-[#f7faf7] p-3">
-
-                    <p className="text-xs text-gray-500">
-                      Serviços que serão considerados:
-                    </p>
-
-                    <div className="mt-2 space-y-1.5">
-
-                      {coberturas.map(
-                        (
-                          cobertura: CoberturaServico
-                        ) => (
-                          <div
-                            key={
-                              cobertura.servicoId
-                            }
-                            className="flex items-center justify-between gap-3 text-sm"
-                          >
-
-                            <span>
-                              {
-                                cobertura.servicoNome
-                              }
-                            </span>
-
-                            <span className="font-medium text-[#58705b]">
-                              {
-                                cobertura.sessoesEquivalentes
-                              }{' '}
-                              sessão(ões)
-                            </span>
-
-                          </div>
-                        )
-                      )}
-
-                    </div>
-
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={salvando}
-                    onClick={
-                      confirmarJustificativa
+                  <input
+                    value={
+                      servicoRealizado
                     }
-                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
-                  >
-                    {salvando
-                      ? 'Salvando...'
-                      : 'Registrar falta e descontar pacote'}
-                  </button>
-
+                    onChange={e =>
+                      setServicoRealizado(
+                        e.target
+                          .value
+                      )
+                    }
+                    placeholder="Digite o serviço realizado"
+                    className="w-full h-12 rounded-xl border border-gray-200 px-4 text-sm outline-none focus:ring-2"
+                    style={{
+                      ['--tw-ring-color' as any]:
+                        `${corSalao}40`
+                    }}
+                  />
                 </div>
-              )}
 
-            </div>
-          )}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Horários vagos
+                  </label>
 
+                  <div className="grid grid-cols-3 gap-2">
+                    {horariosLivres.map(
+                      (
+                        horario,
+                        index
+                      ) => (
+                        <input
+                          key={
+                            index
+                          }
+                          type="time"
+                          value={
+                            horario
+                          }
+                          onChange={e => {
+                            const novos =
+                              [
+                                ...horariosLivres
+                              ]
+
+                            novos[
+                              index
+                            ] =
+                              e.target.value
+
+                            setHorariosLivres(
+                              novos
+                            )
+                          }}
+                          className="h-11 rounded-xl border border-gray-200 px-3 text-sm"
+                        />
+                      )
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {ehNaoCompareceu && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Motivo / observação
+                </label>
+
+                <textarea
+                  id="justificativa-nao-comparecimento"
+                  rows={4}
+                  defaultValue=""
+                  placeholder="Ex.: cliente não compareceu e não avisou."
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm resize-none outline-none"
+                />
+              </div>
+            )}
+
+            {ehNaoCompareceu ? (
+              <ModalNaoComparecimento
+                agendamento={
+                  agendamento
+                }
+              />
+            ) : (
+              <ModalConfirmacaoPacote
+                agendamento={
+                  agendamento
+                }
+              />
+            )}
+          </div>
         </div>
       </div>
+    )
+  }
+  function ModalConfirmacaoPacote({
+    agendamento
+  }: {
+    agendamento: any
+  }) {
+    const [opcao, setOpcao] =
+      useState<
+        'perguntar' |
+        'dar_baixa' |
+        'apenas_confirmar'
+      >(opcaoConfirmacaoPacote)
+
+    const pacoteDisponivel =
+      possuiPacoteDisponivel
+
+    return (
+      <div className="space-y-4">
+        {verificandoPacoteConfirmacao ? (
+          <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">
+            Verificando pacote da cliente...
+          </div>
+        ) : pacoteDisponivel ? (
+          <>
+            <div>
+              <p className="text-sm font-semibold text-gray-700">
+                Este atendimento possui
+                pacote disponível.
+              </p>
+
+              <p className="mt-1 text-xs text-gray-500">
+                O que deseja fazer com
+                esta confirmação?
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setOpcao(
+                    'dar_baixa'
+                  )
+                }
+                className={`w-full rounded-xl border p-4 text-left transition-all ${
+                  opcao ===
+                  'dar_baixa'
+                    ? 'border-2'
+                    : 'border-gray-200'
+                }`}
+                style={
+                  opcao ===
+                  'dar_baixa'
+                    ? {
+                        borderColor:
+                          corSalao,
+                        backgroundColor:
+                          `${corSalao}08`
+                      }
+                    : undefined
+                }
+              >
+                <p className="font-semibold text-gray-800 text-sm">
+                  Dar baixa no pacote
+                </p>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Confirma o atendimento
+                  e desconta uma sessão
+                  do pacote.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setOpcao(
+                    'apenas_confirmar'
+                  )
+                }
+                className={`w-full rounded-xl border p-4 text-left transition-all ${
+                  opcao ===
+                  'apenas_confirmar'
+                    ? 'border-2'
+                    : 'border-gray-200'
+                }`}
+                style={
+                  opcao ===
+                  'apenas_confirmar'
+                    ? {
+                        borderColor:
+                          corSalao,
+                        backgroundColor:
+                          `${corSalao}08`
+                      }
+                    : undefined
+                }
+              >
+                <p className="font-semibold text-gray-800 text-sm">
+                  Apenas confirmar
+                </p>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Confirma o atendimento
+                  sem descontar sessão.
+                </p>
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="rounded-xl bg-gray-50 p-4">
+            <p className="text-sm font-semibold text-gray-700">
+              Sem pacote disponível
+            </p>
+
+            <p className="mt-1 text-xs text-gray-500">
+              O atendimento será
+              confirmado normalmente.
+            </p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={salvando}
+          onClick={() =>
+            confirmarAtendimento(
+              agendamento,
+              pacoteDisponivel &&
+                opcao ===
+                  'dar_baixa'
+            )
+          }
+          className="w-full h-12 rounded-xl text-white font-semibold text-sm disabled:opacity-50"
+          style={{
+            backgroundColor:
+              corSalao
+          }}
+        >
+          {salvando
+            ? 'Salvando...'
+            : 'Confirmar atendimento'}
+        </button>
+      </div>
+    )
+  }
+
+  function ModalNaoComparecimento({
+    agendamento
+  }: {
+    agendamento: any
+  }) {
+    const [
+      descontarPacote,
+      setDescontarPacote
+    ] = useState(
+      possuiPacoteDisponivel
+    )
+
+    const [
+      justificativa,
+      setJustificativa
+    ] = useState(
+      'Não comparecimento sem aviso prévio.'
+    )
+
+    useEffect(() => {
+      setDescontarPacote(
+        possuiPacoteDisponivel
+      )
+    }, [
+      possuiPacoteDisponivel
+    ])
+
+    return (
+      <div className="space-y-4">
+        {verificandoPacoteConfirmacao ? (
+          <div className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">
+            Verificando pacote da cliente...
+          </div>
+        ) : (
+          <>
+            {possuiPacoteDisponivel ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setDescontarPacote(
+                    !descontarPacote
+                  )
+                }
+                className={`w-full rounded-xl border p-4 text-left transition-all ${
+                  descontarPacote
+                    ? 'border-2'
+                    : 'border-gray-200'
+                }`}
+                style={
+                  descontarPacote
+                    ? {
+                        borderColor:
+                          corSalao,
+                        backgroundColor:
+                          `${corSalao}08`
+                      }
+                    : undefined
+                }
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className="w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5"
+                    style={
+                      descontarPacote
+                        ? {
+                            backgroundColor:
+                              corSalao,
+                            borderColor:
+                              corSalao
+                          }
+                        : undefined
+                    }
+                  >
+                    {descontarPacote && (
+                      <Check
+                        size={14}
+                        className="text-white"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="font-semibold text-sm text-gray-800">
+                      Descontar sessão
+                      do pacote
+                    </p>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      O não comparecimento
+                      será registrado no
+                      histórico do pacote.
+                    </p>
+                  </div>
+                </div>
+              </button>
+            ) : (
+              <div className="rounded-xl bg-gray-50 p-4">
+                <p className="text-sm font-semibold text-gray-700">
+                  Sem pacote disponível
+                </p>
+
+                <p className="mt-1 text-xs text-gray-500">
+                  Nenhuma sessão será
+                  descontada.
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Motivo / observação
+              </label>
+
+              <textarea
+                value={
+                  justificativa
+                }
+                onChange={e =>
+                  setJustificativa(
+                    e.target.value
+                  )
+                }
+                rows={4}
+                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm resize-none outline-none focus:ring-2"
+                style={{
+                  ['--tw-ring-color' as any]:
+                    `${corSalao}40`
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={salvando}
+              onClick={() =>
+                registrarNaoComparecimento(
+                  agendamento,
+                  descontarPacote,
+                  justificativa
+                )
+              }
+              className="w-full h-12 rounded-xl bg-red-500 text-white font-semibold text-sm disabled:opacity-50"
+            >
+              {salvando
+                ? 'Salvando...'
+                : 'Registrar não comparecimento'}
+            </button>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // ─── MODAL DE SUGESTÃO ───────────────────────────────────────────────
+
+  function ModalSugestao() {
+    if (!modalSugestao) {
+      return null
+    }
+
+    const clienteNovo =
+      modalSugestao.cliente_novo
+
+    const clientePendente =
+      modalSugestao.cliente_pendente
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+        <div
+          className="absolute inset-0 bg-black/40"
+          onClick={() => {
+            if (!salvando) {
+              setModalSugestao(
+                null
+              )
+            }
+          }}
+        />
+
+        <div className="relative w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl">
+          <div className="p-5 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">
+                  Possível duplicidade
+                </h2>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  Encontramos clientes
+                  que podem ser a mesma
+                  pessoa.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!salvando) {
+                    setModalSugestao(
+                      null
+                    )
+                  }
+                }}
+                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"
+              >
+                <X
+                  size={18}
+                />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-3">
+            <div className="rounded-2xl border border-gray-200 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Cliente principal
+              </p>
+
+              <p className="mt-1 font-semibold text-gray-800">
+                {clienteNovo?.nome ||
+                  'Cliente'}
+              </p>
+
+              {clienteNovo?.telefone && (
+                <p className="mt-1 text-sm text-gray-500">
+                  {clienteNovo.telefone}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-center">
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center"
+                style={{
+                  backgroundColor:
+                    `${corSalao}15`,
+                  color:
+                    corSalao
+                }}
+              >
+                <ArrowDown
+                  size={17}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Possível duplicado
+              </p>
+
+              <p className="mt-1 font-semibold text-gray-800">
+                {clientePendente?.nome ||
+                  'Cliente'}
+              </p>
+
+              {clientePendente?.telefone && (
+                <p className="mt-1 text-sm text-gray-500">
+                  {clientePendente.telefone}
+                </p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <button
+                type="button"
+                disabled={salvando}
+                onClick={() =>
+                  ignorarSugestao(
+                    modalSugestao
+                  )
+                }
+                className="h-11 rounded-xl bg-gray-100 text-gray-700 text-sm font-semibold"
+              >
+                Não são duplicados
+              </button>
+
+              <button
+                type="button"
+                disabled={salvando}
+                onClick={() =>
+                  aceitarSugestao(
+                    modalSugestao
+                  )
+                }
+                className="h-11 rounded-xl text-white text-sm font-semibold"
+                style={{
+                  backgroundColor:
+                    corSalao
+                }}
+              >
+                Mesclar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── LAYOUT PRINCIPAL ────────────────────────────────────────────────
+
+  if (carregando) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8f8f8]">
+        <div
+          className="w-8 h-8 rounded-full border-2 border-gray-200 animate-spin"
+          style={{
+            borderTopColor:
+              corSalao
+          }}
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="min-h-screen bg-[#f8f8f8] text-gray-800"
+      style={{
+        ['--cor-salao' as any]:
+          corSalao
+      }}
+    >
+      <div className="max-w-4xl mx-auto px-4 py-5 sm:px-6">
+        <div className="mb-5">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                router.back()
+              }
+              className="w-10 h-10 rounded-xl bg-white border border-gray-100 flex items-center justify-center text-gray-600 shadow-sm"
+            >
+              <ArrowLeft
+                size={19}
+              />
+            </button>
+
+            <div>
+              <h1 className="text-xl font-bold text-gray-800">
+                Central de Atendimento
+              </h1>
+
+              <p className="text-sm text-gray-500 mt-0.5">
+                Organize os atendimentos
+                do seu salão
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-2 mb-5 overflow-x-auto">
+          <div className="flex gap-1 min-w-max">
+            <TabButton
+              id="pedidos"
+              label="Pedidos"
+              icon={Inbox}
+              quantidade={
+                solicitacoes.length
+              }
+            />
+
+            <TabButton
+              id="confirmacoes"
+              label="Confirmar"
+              icon={CheckCircle2}
+              quantidade={
+                confirmacoes.length
+              }
+            />
+
+            <TabButton
+              id="notificacoes"
+              label="Notificações"
+              icon={Bell}
+              quantidade={
+                notificacoes.length
+              }
+            />
+
+            <TabButton
+              id="excluidas"
+              label="Excluídas"
+              icon={Trash2}
+              quantidade={
+                notificacoesExcluidas.length
+              }
+            />
+          </div>
+        </div>
+
+        {aba ===
+          'confirmacoes' && (
+          <div className="mb-4">
+            <div
+              className="rounded-2xl p-4"
+              style={{
+                backgroundColor:
+                  `${corSalao}0A`,
+                border:
+                  `1px solid ${corSalao}20`
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                  style={{
+                    backgroundColor:
+                      `${corSalao}18`,
+                    color:
+                      corSalao
+                  }}
+                >
+                  <Info
+                    size={18}
+                  />
+                </div>
+
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">
+                    Atendimentos aguardando
+                    confirmação
+                  </p>
+
+                  <p className="mt-1 text-xs text-gray-500 leading-relaxed">
+                    Os atendimentos permanecem
+                    nesta lista até que você
+                    escolha <strong>Confirmar</strong>{' '}
+                    ou <strong>Não veio</strong>.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {renderConteudo()}
+      </div>
+
+      <ModalAtendimento />
+      <ModalSugestao />
     </div>
   )
 }
+
+export default NotificacoesSalaoCompleto
