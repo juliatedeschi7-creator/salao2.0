@@ -629,28 +629,6 @@ const { data: ags } = await supabase
     agendamento: any
   ) {
     if (!profile?.salao_id) return
-    const clienteNome =
-      agendamento.clientes?.nome ||
-      agendamento.cliente_nome ||
-      ''
-    if (!clienteNome) {
-      throw new Error(
-        'Não foi possível identificar a cliente.'
-      )
-    }
-    const pacotes =
-      await buscarPacotesCliente(
-        clienteNome
-      )
-    if (!pacotes.length) {
-      return
-    }
-    // PROTEÇÃO ABSOLUTA:
-    // se este agendamento já estiver no histórico, não desconta novamente.
-  async function darBaixaPacoteAtendimento(
-    agendamento: any
-  ) {
-    if (!profile?.salao_id) return
 
     const clienteNome =
       agendamento.clientes?.nome ||
@@ -848,6 +826,9 @@ const { data: ags } = await supabase
     }
   }
 
+  // ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
+
+  async function confirmarAtendimento() {
   // ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
 
   async function confirmarAtendimento() {
