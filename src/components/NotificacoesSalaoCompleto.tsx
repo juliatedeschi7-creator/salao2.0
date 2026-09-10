@@ -824,138 +824,148 @@ const { data: ags } = await supabase
       }
     }
   }
-  // ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
-  async function confirmarAtendimento() {
-    if (
-      !modalConfirmar ||
-      !profile?.salao_id
-    ) {
+// ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
+async function confirmarAtendimento() {
+  if (
+    !modalConfirmar ||
+    !profile?.salao_id
+  ) {
+    return
+  }
+
+  setSalvando(true)
+
+  try {
+    const agendamento = modalConfirmar
+
+    // Primeiro verifica se já foi confirmado.
+    const jaConfirmado =
+      await verificarConfirmacaoAtendimento(
+        agendamento.id
+      )
+
+    if (jaConfirmado) {
+      alert(
+        'Este atendimento já foi confirmado anteriormente. Nenhuma nova baixa foi realizada.'
+      )
+      setModalConfirmar(null)
+      await carregarDados()
       return
     }
-    setSalvando(true)
-    try {
-      const agendamento =
-        modalConfirmar
-      // Primeiro verifica se já foi confirmado.
-      const jaConfirmado =
-        await verificarConfirmacaoAtendimento(
-          agendamento.id
+
+    // Se escolheu dar baixa, a função possui proteção própria
+    // contra duplicidade.
+    if (
+      opcaoConfirmacaoPacote ===
+        'dar_baixa' &&
+      !sessaoJaRegistradaNoPacote
+    ) {
+      await darBaixaPacoteAtendimento(
+        agendamento
+      )
+    }
+
+    const {
+      data: confirmacaoCriada,
+      error: erroConfirmacao
+    } = await supabase
+      .from('confirmacoes_atendimento')
+      .insert({
+        agendamento_id:
+          agendamento.id,
+        salao_id:
+          profile.salao_id,
+        confirmado_por:
+          profile.id
+      })
+      .select()
+      .single()
+
+    if (erroConfirmacao) {
+      // 23505 = registro duplicado.
+      if (
+        erroConfirmacao.code ===
+        '23505'
+      ) {
+        alert(
+          'Este atendimento já havia sido confirmado. Nenhuma nova confirmação foi criada.'
         )
-      if (jaConfirmado) {
-  alert(
-    'Este atendimento já foi confirmado anteriormente. Nenhuma nova baixa foi realizada.'
-  )
-  setModalConfirmar(null)
-  await carregarDados()
-  return
-}
         setModalConfirmar(null)
         await carregarDados()
         return
       }
-      // Se escolheu dar baixa, a função possui proteção própria
-      // contra duplicidade.
-      if (
-        opcaoConfirmacaoPacote ===
-          'dar_baixa' &&
-        !sessaoJaRegistradaNoPacote
-      ) {
-        await darBaixaPacoteAtendimento(
-          agendamento
-        )
-      }
-      const {
-        data: confirmacaoCriada,
-        error: erroConfirmacao
-      } = await supabase
-        .from('confirmacoes_atendimento')
-        .insert({
-          agendamento_id:
-            agendamento.id,
-          salao_id:
-            profile.salao_id,
-          confirmado_por:
-            profile.id
-        })
-        .select()
-        .single()
-      if (erroConfirmacao) {
-        // 23505 = registro duplicado.
-        if (
-          erroConfirmacao.code ===
-          '23505'
-        ) {
-          alert(
-            'Este atendimento já havia sido confirmado. Nenhuma nova confirmação 
-foi criada.'
-          )
-          setModalConfirmar(null)
-          await carregarDados()
-          return
-        }
-        throw erroConfirmacao
-      }
-      if (!confirmacaoCriada) {
-        throw new Error(
-          'Não foi possível registrar a confirmação.'
-        )
-      }
-      const {
-        error: erroAgendamento
-      } = await supabase
-        .from('agendamentos')
-        .update({
-          status: 'concluido'
-        })
-        .eq(
-          'id',
-          agendamento.id
-        )
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
-      if (erroAgendamento) {
-        throw erroAgendamento
-      }
-      await notificar({
-        salao_id:
-          profile.salao_id,
-        tipo:
-          'atendimento_confirmado',
-        titulo:
-          'Atendimento confirmado',
-        mensagem: `O atendimento de ${
-          agendamento.clientes?.nome ||
-          'cliente'
-        } foi confirmado.`,
-        destinatario_id:
-          agendamento.cliente_id ||
-          null,
-        url: '/cliente'
-      })
-      setConfirmacoes(prev =>
-        prev.filter(
-          item =>
-            item.id !==
-            agendamento.id
-        )
-      )
-      setModalConfirmar(null)
-      await carregarDados()
-    } catch (error: any) {
-      console.error(
-        'Erro ao confirmar atendimento:',
-        error
-      )
-      alert(
-        error?.message ||
-          'Não foi possível confirmar o atendimento.'
-      )
-    } finally {
-      setSalvando(false)
+
+      throw erroConfirmacao
     }
+
+    if (!confirmacaoCriada) {
+      throw new Error(
+        'Não foi possível registrar a confirmação.'
+      )
+    }
+
+    const {
+      error: erroAgendamento
+    } = await supabase
+      .from('agendamentos')
+      .update({
+        status: 'concluido'
+      })
+      .eq(
+        'id',
+        agendamento.id
+      )
+      .eq(
+        'salao_id',
+        profile.salao_id
+      )
+
+    if (erroAgendamento) {
+      throw erroAgendamento
+    }
+
+    await notificar({
+      salao_id:
+        profile.salao_id,
+      tipo:
+        'atendimento_confirmado',
+      titulo:
+        'Atendimento confirmado',
+      mensagem: `O atendimento de ${
+        agendamento.clientes?.nome ||
+        'cliente'
+      } foi confirmado.`,
+      destinatario_id:
+        agendamento.cliente_id ||
+        null,
+      url: '/cliente'
+    })
+
+    setConfirmacoes(prev =>
+      prev.filter(
+        item =>
+          item.id !==
+          agendamento.id
+      )
+    )
+
+    setModalConfirmar(null)
+
+    await carregarDados()
+  } catch (error: any) {
+    console.error(
+      'Erro ao confirmar atendimento:',
+      error
+    )
+
+    alert(
+      error?.message ||
+        'Não foi possível confirmar o atendimento.'
+    )
+  } finally {
+    setSalvando(false)
   }
+}
   // ─── NÃO COMPARECEU ──────────────────────────────────────────────────
   async function iniciarNaoComparecimento(
     agendamento: any
