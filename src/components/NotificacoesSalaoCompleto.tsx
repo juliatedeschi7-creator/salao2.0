@@ -299,14 +299,13 @@ const { data: ags } = await supabase
 
   async function buscarPacotesCliente(clienteNome: string) {
     if (!clienteNome) return []
-    const { data, error } = await supabase
-      .from('pacotes_clientes_resumo')
-      .select(
-        'id, cliente_nome, servico, sessoes_total, sessoes_restantes, 
-data_sessao, created_at, status, historico_sessoes'
-      )
-      .eq('cliente_nome', clienteNome)
-      .eq('status', 'ativo')
+ const { data, error } = await supabase
+  .from('pacotes_clientes_resumo')
+  .select(
+    'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
+  )
+  .eq('cliente_nome', clienteNome)
+  .eq('status', 'ativo')
       .gt('sessoes_restantes', 0)
       .order('created_at', { ascending: true })
     if (error) {
