@@ -147,13 +147,10 @@ export default function NotificacoesDonoPage() {
       .single()
     setSalao(sal)
     const { data: sols } = await supabase
-      .from('solicitacoes_agendamento')
-      .select(
-        '*, clientes(id, nome, email, telefone), servicos(nome, 
-duracao_minutos)'
-      )
-      .eq('salao_id', profile.salao_id)
-      .in('status', ['pendente', 'horario_sugerido'])
+  .from('solicitacoes_agendamento')
+  .select('*, clientes(id, nome, email, telefone), servicos(nome, duracao_minutos)')
+  .eq('salao_id', profile.salao_id)
+  .in('status', ['pendente', 'horario_sugerido'])
       .order('created_at', { ascending: false })
     setSolicitacoes(sols || [])
     // IMPORTANTE:
