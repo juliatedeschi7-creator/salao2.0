@@ -647,11 +647,39 @@ const { data: ags } = await supabase
     }
     // PROTEÇÃO ABSOLUTA:
     // se este agendamento já estiver no histórico, não desconta novamente.
+  async function darBaixaPacoteAtendimento(
+    agendamento: any
+  ) {
+    if (!profile?.salao_id) return
+
+    const clienteNome =
+      agendamento.clientes?.nome ||
+      agendamento.cliente_nome ||
+      ''
+
+    if (!clienteNome) {
+      throw new Error(
+        'Não foi possível identificar a cliente.'
+      )
+    }
+
+    const pacotes =
+      await buscarPacotesCliente(
+        clienteNome
+      )
+
+    if (!pacotes.length) {
+      return
+    }
+
+    // PROTEÇÃO ABSOLUTA:
+    // se este agendamento já estiver no histórico, não desconta novamente.
     for (const pacote of pacotes) {
       const historico =
         Array.isArray(pacote.historico_sessoes)
           ? pacote.historico_sessoes
           : []
+
       const jaExiste =
         historico.some(
           (registro: any) =>
@@ -659,26 +687,32 @@ const { data: ags } = await supabase
               registro?.agendamento_id || ''
             ) === String(agendamento.id)
         )
+
       if (jaExiste) {
         return
       }
     }
+
     const coberturasAtuais =
       coberturas.length > 0
         ? coberturas
         : await montarCoberturas(
             agendamento
           )
+
     const dataRegistro =
       new Date().toISOString()
+
     for (const cobertura of coberturasAtuais) {
       let quantidadeRestante =
         Number(
           cobertura.sessoesEquivalentes || 1
         )
+
       if (quantidadeRestante <= 0) {
         continue
       }
+
       let pacoteSelecionado =
         cobertura.clientePacoteIdSelecionado
           ? pacotes.find(
@@ -687,6 +721,7 @@ const { data: ags } = await supabase
                 cobertura.clientePacoteIdSelecionado
             )
           : null
+
       if (!pacoteSelecionado) {
         pacoteSelecionado =
           pacotes.find(
@@ -702,6 +737,7 @@ const { data: ags } = await supabase
               ) > 0
           )
       }
+
       while (
         quantidadeRestante > 0 &&
         pacoteSelecionado
@@ -710,6 +746,7 @@ const { data: ags } = await supabase
           Number(
             pacoteSelecionado.sessoes_restantes || 0
           )
+
         if (restantesAntes <= 0) {
           pacoteSelecionado =
             pacotes.find(
@@ -720,14 +757,18 @@ const { data: ags } = await supabase
                 p.id !==
                   pacoteSelecionado.id
             ) || null
+
           continue
         }
+
         const desconto = Math.min(
           quantidadeRestante,
           restantesAntes
         )
+
         const restantesDepois =
           restantesAntes - desconto
+
         const historico =
           Array.isArray(
             pacoteSelecionado.historico_sessoes
@@ -736,6 +777,7 @@ const { data: ags } = await supabase
                 ...pacoteSelecionado.historico_sessoes
               ]
             : []
+
         // Segunda proteção antes de alterar o pacote.
         const duplicado =
           historico.some(
@@ -744,9 +786,11 @@ const { data: ags } = await supabase
                 registro?.agendamento_id || ''
               ) === String(agendamento.id)
           )
+
         if (duplicado) {
           return
         }
+
         historico.push({
           tipo: 'sessao_realizada',
           data: dataRegistro,
@@ -758,6 +802,7 @@ const { data: ags } = await supabase
           agendamento_id:
             agendamento.id
         })
+
         const { error } =
           await supabase
             .from(
@@ -777,13 +822,17 @@ const { data: ags } = await supabase
               'id',
               pacoteSelecionado.id
             )
+
         if (error) {
           throw error
         }
+
         pacoteSelecionado.sessoes_restantes =
           restantesDepois
+
         quantidadeRestante -=
           desconto
+
         if (
           quantidadeRestante > 0
         ) {
@@ -798,46 +847,10 @@ const { data: ags } = await supabase
       }
     }
   }
-          pacotes.find(
-            (p: any) =>
-              Number(
-                p.sessoes_restantes || 0
-              ) > 0
-          )
-      }
-      while (
-        quantidadeRestante > 0 &&
-        pacoteSelecionado
-      ) {
-        const restantesAntes =
-          Number(
-            pacoteSelecionado.sessoes_restantes || 0
-          )
-        if (restantesAntes <= 0) {
-          pacoteSelecionado =
-            pacotes.find(
-              (p: any) =>
-                Number(
-                  p.sessoes_restantes || 0
-                ) > 0 &&
-                p.id !==
-                  pacoteSelecionado.id
-            ) || null
-          continue
-        }
-        const desconto = Math.min(
-          quantidadeRestante,
-          restantesAntes
-        )
-        const restantesDepois =
-          restantesAntes - desconto
-        const historico =
-          Array.isArray(
-            pacoteSelecionado.historico_sessoes
-          )
-            ? [
-                ...pacoteSelecionado.historico_sessoes
-              ]
+
+  // ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
+
+  async function confirmarAtendimento() {
             : []
         // Segunda proteção antes de alterar o pacote.
         const duplicado =
