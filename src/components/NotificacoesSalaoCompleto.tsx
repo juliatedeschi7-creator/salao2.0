@@ -624,7 +624,6 @@ const { data: ags } = await supabase
     }
     return !!data?.length
   }
-  // ─── DAR BAIXA NO PACOTE ─────────────────────────────────────────────
   async function darBaixaPacoteAtendimento(
     agendamento: any
   ) {
@@ -827,10 +826,6 @@ const { data: ags } = await supabase
   }
 
   // ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
-
-  async function confirmarAtendimento() {
-  // ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
-
   async function confirmarAtendimento() {
             : []
         // Segunda proteção antes de alterar o pacote.
