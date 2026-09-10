@@ -842,10 +842,13 @@ const { data: ags } = await supabase
           agendamento.id
         )
       if (jaConfirmado) {
-        alert(
-          'Este atendimento já foi confirmado anteriormente. Nenhuma nova baixa 
-foi realizada.'
-        )
+  alert(
+    'Este atendimento já foi confirmado anteriormente. Nenhuma nova baixa foi realizada.'
+  )
+  setModalConfirmar(null)
+  await carregarDados()
+  return
+}
         setModalConfirmar(null)
         await carregarDados()
         return
