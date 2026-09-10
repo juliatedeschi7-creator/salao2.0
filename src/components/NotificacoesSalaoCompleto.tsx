@@ -18,7 +18,6 @@ import {
   MessageCircle
 } from 'lucide-react'
 
-// ─── Tipos ────────────────────────────────────────────────────────────────
 type PacoteOpcao = {
   clientePacoteId: string
   nome: string
@@ -34,12 +33,9 @@ type CoberturaServico = {
 }
 
 export default function NotificacoesDonoPage() {
-  console.log(
-    '🚀 [TESTE] A página NotificacoesDonoPage foi renderizada!'
-  )
-
   const { profile, loading } = useAuth()
   const router = useRouter()
+
   const [salao, setSalao] = useState<any>(null)
 
   const [aba, setAba] = useState<
@@ -62,7 +58,22 @@ export default function NotificacoesDonoPage() {
   const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
   const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
 
-  // ─── Inicialização ──────────────────────────────────────────────────────
+  // ─── CONTROLE DO PACOTE NA CONFIRMAÇÃO ────────────────────────────────
+
+  const [sessaoJaRegistradaNoPacote, setSessaoJaRegistradaNoPacote] =
+    useState(false)
+
+  const [possuiPacoteDisponivel, setPossuiPacoteDisponivel] =
+    useState(false)
+
+  const [opcaoConfirmacaoPacote, setOpcaoConfirmacaoPacote] = useState<
+    'perguntar' | 'dar_baixa' | 'apenas_confirmar'
+  >('perguntar')
+
+  const [verificandoPacoteConfirmacao, setVerificandoPacoteConfirmacao] =
+    useState(false)
+
+  // ─── INICIALIZAÇÃO ────────────────────────────────────────────────────
 
   useEffect(() => {
     if (loading) return
@@ -78,65 +89,23 @@ export default function NotificacoesDonoPage() {
     }
   }, [loading, profile])
 
-  // ─── Push ───────────────────────────────────────────────────────────────
+  // ─── PUSH ─────────────────────────────────────────────────────────────
 
   async function registrarPushNotification() {
-    console.log(
-      '🔔 [PUSH] 1 - Iniciando registro de Push Notification...'
-    )
-
-    if (typeof window === 'undefined') {
-      console.log(
-        '🔔 [PUSH] X - Window não definido (SSR)'
-      )
-      return
-    }
-
-    if (!('serviceWorker' in navigator)) {
-      console.log(
-        '🔔 [PUSH] X - Service Worker não suportado neste navegador'
-      )
-      return
-    }
-
-    if (!('PushManager' in window)) {
-      console.log(
-        '🔔 [PUSH] X - PushManager não suportado neste navegador'
-      )
-      return
-    }
-
-    if (!profile?.id || !profile?.salao_id) {
-      console.log(
-        '🔔 [PUSH] X - Profile ainda não disponível'
-      )
-      return
-    }
+    if (typeof window === 'undefined') return
+    if (!('serviceWorker' in navigator)) return
+    if (!('PushManager' in window)) return
+    if (!profile?.id || !profile?.salao_id) return
 
     try {
-      console.log(
-        '🔔 [PUSH] 2 - Aguardando serviceWorker.ready...'
-      )
-
-      const registration =
-        await navigator.serviceWorker.ready
-
-      console.log(
-        '🔔 [PUSH] 3 - Service Worker pronto:',
-        registration
-      )
+      const registration = await navigator.serviceWorker.ready
 
       const vapidKey =
         process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 
-      console.log(
-        '🔔 [PUSH] 4 - VAPID Public Key presente?',
-        !!vapidKey
-      )
-
       if (!vapidKey) {
         console.error(
-          '🔔 [PUSH] X - NEXT_PUBLIC_VAPID_PUBLIC_KEY não está definida!'
+          'NEXT_PUBLIC_VAPID_PUBLIC_KEY não está definida.'
         )
         return
       }
@@ -144,172 +113,66 @@ export default function NotificacoesDonoPage() {
       let subscription =
         await registration.pushManager.getSubscription()
 
-      if (subscription) {
-        console.log(
-          '🔔 [PUSH] 5 - Subscription existente encontrada'
-        )
-      } else {
-        console.log(
-          '🔔 [PUSH] 5 - Nenhuma subscription existente. Criando nova...'
-        )
-
+      if (!subscription) {
         subscription =
           await registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey:
-              vapidKey,
+            applicationServerKey: vapidKey
           })
-
-        console.log(
-          '🔔 [PUSH] 6 - Nova subscription criada com sucesso'
-        )
       }
 
-      const subscriptionJson =
-        subscription.toJSON()
-
-      console.log(
-        '🔔 [PUSH] Subscription:',
-        {
-          endpoint:
-            subscriptionJson.endpoint,
-          expirationTime:
-            subscriptionJson.expirationTime,
-          possuiP256dh:
-            !!subscriptionJson.keys?.p256dh,
-          possuiAuth:
-            !!subscriptionJson.keys?.auth,
-        }
-      )
+      const subscriptionJson = subscription.toJSON()
 
       if (
         !subscriptionJson.endpoint ||
         !subscriptionJson.keys?.p256dh ||
         !subscriptionJson.keys?.auth
       ) {
-        console.error(
-          '🔔 [PUSH] X - Subscription incompleta ou inválida'
-        )
         return
       }
-
-      console.log(
-        '🔔 [PUSH] 7 - Salvando subscription no Supabase...'
-      )
 
       const dadosSubscription = {
         profile_id: profile.id,
         user_id: profile.id,
         salao_id: profile.salao_id,
         subscription: subscriptionJson,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       }
 
-      const {
-        data: subscriptionSalva,
-        error: upsertError,
-      } = await supabase
+      const { error: upsertError } = await supabase
         .from('push_subscriptions')
         .upsert(
           dadosSubscription,
-          {
-            onConflict: 'user_id',
-          }
-        )
-        .select(
-          'id, profile_id, user_id, salao_id, subscription'
-        )
-        .single()
-
-      if (upsertError) {
-        console.error(
-          '🔔 [PUSH] ERRO ao salvar subscription pelo user_id:',
-          upsertError
+          { onConflict: 'user_id' }
         )
 
-        const {
-          data: existente,
-          error: existenteError,
-        } = await supabase
+      if (!upsertError) return
+
+      const { data: existente } = await supabase
+        .from('push_subscriptions')
+        .select('id')
+        .eq('profile_id', profile.id)
+        .maybeSingle()
+
+      if (existente?.id) {
+        await supabase
           .from('push_subscriptions')
-          .select('id')
-          .eq(
-            'profile_id',
-            profile.id
-          )
-          .maybeSingle()
-
-        if (existenteError) {
-          console.error(
-            '🔔 [PUSH] Erro ao procurar subscription existente:',
-            existenteError
-          )
-        }
-
-        if (existente?.id) {
-          const {
-            error: updateError,
-          } = await supabase
-            .from('push_subscriptions')
-            .update(
-              dadosSubscription
-            )
-            .eq(
-              'id',
-              existente.id
-            )
-
-          if (updateError) {
-            console.error(
-              '🔔 [PUSH] ERRO no fallback de atualização:',
-              updateError
-            )
-          } else {
-            console.log(
-              '🔔 [PUSH] Subscription atualizada pelo profile_id'
-            )
-          }
-        } else {
-          const {
-            error: insertError,
-          } = await supabase
-            .from('push_subscriptions')
-            .insert(
-              dadosSubscription
-            )
-
-          if (insertError) {
-            console.error(
-              '🔔 [PUSH] ERRO ao inserir subscription no fallback:',
-              insertError
-            )
-          } else {
-            console.log(
-              '🔔 [PUSH] Subscription criada pelo fallback'
-            )
-          }
-        }
-
-        return
+          .update(dadosSubscription)
+          .eq('id', existente.id)
+      } else {
+        await supabase
+          .from('push_subscriptions')
+          .insert(dadosSubscription)
       }
-
-      console.log(
-        '🔔 [PUSH] 8 - Subscription salva com sucesso:',
-        subscriptionSalva
-      )
-
-      console.log(
-        '🔔 [PUSH] Registro concluído com sucesso.'
-      )
-    } catch (err: any) {
+    } catch (err) {
       console.error(
-        '🔔 [PUSH] ERRO crítico ao registrar push:',
+        'Erro ao registrar push:',
         err
       )
     }
   }
 
-  // ─── Carregar dados ─────────────────────────────────────────────────────
+  // ─── CARREGAR DADOS ──────────────────────────────────────────────────
 
   async function carregarDados() {
     if (!profile?.salao_id) return
@@ -322,9 +185,6 @@ export default function NotificacoesDonoPage() {
 
     setSalao(sal)
 
-    // Solicitações
-    // Mantemos o select original (*) para não retirar nenhum campo
-    // utilizado pela tela, incluindo data/período escolhidos pela cliente.
     const { data: sols } = await supabase
       .from('solicitacoes_agendamento')
       .select(
@@ -336,20 +196,16 @@ export default function NotificacoesDonoPage() {
 
     setSolicitacoes(sols || [])
 
-    // ─── CONFIRMAÇÕES ─────────────────────────────────────────────────────
-    //
     // IMPORTANTE:
-    // Não existe mais limite de data aqui.
+    // NÃO existe filtro de data aqui.
     //
-    // O atendimento permanece na aba "Confirmar" enquanto:
+    // O atendimento permanece na aba Confirmar enquanto:
+    // - pertence ao salão;
+    // - está confirmado;
+    // - não possui confirmação de atendimento.
     //
-    // 1. pertencer ao salão;
-    // 2. estiver com status "confirmado";
-    // 3. ainda não possuir registro em
-    //    confirmacoes_atendimento.
-    //
-    // Portanto, se passar 1 dia, 1 semana ou mais,
-    // ele continuará aparecendo até ser tratado.
+    // Assim, um atendimento de ontem, semana passada ou mês passado
+    // continua aparecendo até ser tratado.
 
     const { data: ags } = await supabase
       .from('agendamentos')
@@ -358,7 +214,7 @@ export default function NotificacoesDonoPage() {
       )
       .eq('salao_id', profile.salao_id)
       .eq('status', 'confirmado')
-      .order('data_hora')
+      .order('data_hora', { ascending: true })
 
     setConfirmacoes(
       (ags || []).filter(
@@ -367,7 +223,6 @@ export default function NotificacoesDonoPage() {
       )
     )
 
-    // Notificações
     const { data: notifs } = await supabase
       .from('notificacoes')
       .select('*')
@@ -378,7 +233,6 @@ export default function NotificacoesDonoPage() {
 
     setNotificacoes(notifs || [])
 
-    // Notificações excluídas
     const { data: excluidas } = await supabase
       .from('notificacoes')
       .select('*')
@@ -391,7 +245,7 @@ export default function NotificacoesDonoPage() {
     setNotificacoesExcluidas(excluidas || [])
   }
 
-  // ─── Formatação da preferência da cliente ──────────────────────────────
+  // ─── FORMATADORES DE SOLICITAÇÃO ─────────────────────────────────────
 
   function formatarDataPreferida(solicitacao: any) {
     const data =
@@ -402,9 +256,7 @@ export default function NotificacoesDonoPage() {
 
     if (!data) return null
 
-    // Evita problemas de fuso quando o banco retorna somente YYYY-MM-DD.
     const dataString = String(data)
-
     let dataFormatada: Date
 
     if (/^\d{4}-\d{2}-\d{2}$/.test(dataString)) {
@@ -468,7 +320,7 @@ export default function NotificacoesDonoPage() {
     )
   }
 
-  // ─── Notificações ──────────────────────────────────────────────────────
+  // ─── NOTIFICAÇÕES ────────────────────────────────────────────────────
 
   async function handleClicarNotificacao(n: any) {
     if (!n.lida) {
@@ -491,7 +343,159 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── PACOTES ────────────────────────────────────────────────────────────
+  // ─── PACOTES ─────────────────────────────────────────────────────────
+
+  async function buscarPacotesCliente(clienteNome: string) {
+    if (!clienteNome) return []
+
+    const { data, error } = await supabase
+      .from('pacotes_clientes_resumo')
+      .select(
+        'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
+      )
+      .eq('cliente_nome', clienteNome)
+      .eq('status', 'ativo')
+      .gt('sessoes_restantes', 0)
+      .order('created_at', { ascending: true })
+
+    if (error) {
+      console.error(
+        'Erro ao buscar pacotes:',
+        error
+      )
+      return []
+    }
+
+    return data || []
+  }
+
+  // Verifica se esta sessão já foi lançada anteriormente no pacote.
+  //
+  // Primeiro usa o identificador mais seguro:
+  // historico_sessoes[].agendamento_id === agendamento.id
+  //
+  // Depois existe uma segunda proteção para o caso de uma sessão ter sido
+  // lançada manualmente antes desta funcionalidade existir:
+  // procura uma única sessão do mesmo serviço na mesma data.
+  async function verificarSessaoJaRegistrada(
+    agendamento: any
+  ) {
+    const clienteNome =
+      agendamento.clientes?.nome ||
+      agendamento.cliente_nome ||
+      ''
+
+    if (!clienteNome) {
+      return {
+        registrada: false,
+        possuiPacote: false
+      }
+    }
+
+    const pacotes = await buscarPacotesCliente(
+      clienteNome
+    )
+
+    let registradaPorId = false
+
+    for (const pacote of pacotes) {
+      const historico =
+        Array.isArray(pacote.historico_sessoes)
+          ? pacote.historico_sessoes
+          : []
+
+      const encontrada = historico.some(
+        (registro: any) =>
+          registro?.agendamento_id &&
+          String(registro.agendamento_id) ===
+            String(agendamento.id)
+      )
+
+      if (encontrada) {
+        registradaPorId = true
+        break
+      }
+    }
+
+    if (registradaPorId) {
+      return {
+        registrada: true,
+        possuiPacote: true
+      }
+    }
+
+    // Proteção adicional para sessões lançadas manualmente
+    // sem agendamento_id.
+    const servicoNome =
+      agendamento.servicos?.nome ||
+      agendamento.servico_nome ||
+      ''
+
+    const dataAgendamento =
+      agendamento.data_hora
+        ? String(agendamento.data_hora).slice(0, 10)
+        : null
+
+    if (servicoNome && dataAgendamento) {
+      const possiveis: any[] = []
+
+      for (const pacote of pacotes) {
+        const historico =
+          Array.isArray(pacote.historico_sessoes)
+            ? pacote.historico_sessoes
+            : []
+
+        for (const registro of historico) {
+          if (registro?.agendamento_id) {
+            continue
+          }
+
+          const dataRegistro =
+            registro?.data ||
+            registro?.data_sessao ||
+            registro?.data_registro ||
+            null
+
+          const dataRegistroChave =
+            dataRegistro
+              ? String(dataRegistro).slice(0, 10)
+              : null
+
+          const nomeRegistro =
+            registro?.servico ||
+            registro?.servico_nome ||
+            ''
+
+          if (
+            dataRegistroChave === dataAgendamento &&
+            nomeRegistro &&
+            nomeRegistro.toLowerCase() ===
+              servicoNome.toLowerCase()
+          ) {
+            possiveis.push({
+              pacote,
+              registro
+            })
+          }
+        }
+      }
+
+      // Só consideramos automaticamente registrada quando existe
+      // UMA única correspondência. Assim evitamos confundir duas sessões
+      // iguais realizadas no mesmo dia.
+      if (possiveis.length === 1) {
+        return {
+          registrada: true,
+          possuiPacote: true
+        }
+      }
+    }
+
+    return {
+      registrada: false,
+      possuiPacote: pacotes.length > 0
+    }
+  }
 
   async function montarCoberturas(
     agendamento: any
@@ -528,49 +532,15 @@ export default function NotificacoesDonoPage() {
       agendamento.cliente_nome ||
       ''
 
-    if (!clienteNome) {
-      console.error(
-        'Não foi possível identificar o nome do cliente.'
-      )
-      return []
-    }
+    if (!clienteNome) return []
 
-    const {
-      data: pacotesData,
-      error: pacotesError
-    } = await supabase
-      .from('pacotes_clientes_resumo')
-      .select(
-        'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
-      )
-      .eq(
-        'cliente_nome',
+    const pacotesData =
+      await buscarPacotesCliente(
         clienteNome
       )
-      .eq(
-        'status',
-        'ativo'
-      )
-      .gt(
-        'sessoes_restantes',
-        0
-      )
-      .order(
-        'created_at',
-        {
-          ascending: true
-        }
-      )
-
-    if (pacotesError) {
-      console.error(
-        'Erro ao consultar pacotes_clientes_resumo:',
-        pacotesError
-      )
-    }
 
     const opcoesGerais: PacoteOpcao[] =
-      (pacotesData || [])
+      pacotesData
         .map((pacote: any) => ({
           clientePacoteId:
             pacote.id,
@@ -579,14 +549,12 @@ export default function NotificacoesDonoPage() {
             'Pacote',
           sessoesRestantes:
             Number(
-              pacote.sessoes_restantes ??
-                0
+              pacote.sessoes_restantes || 0
             )
         }))
         .filter(
           pacote =>
-            pacote.sessoesRestantes >
-            0
+            pacote.sessoesRestantes > 0
         )
 
     if (idsServicos.length === 0) {
@@ -600,10 +568,8 @@ export default function NotificacoesDonoPage() {
             'Atendimento',
           sessoesEquivalentes: 1,
           clientePacoteIdSelecionado:
-            opcoesGerais.length > 0
-              ? opcoesGerais[0]
-                  .clientePacoteId
-              : null,
+            opcoesGerais[0]?.clientePacoteId ||
+            null,
           pacotesDisponiveis:
             opcoesGerais
         }
@@ -624,76 +590,419 @@ export default function NotificacoesDonoPage() {
           'Serviço',
         sessoesEquivalentes:
           Number(
-            srv?.sessoes_equivalentes ??
-              1
+            srv?.sessoes_equivalentes ?? 1
           ),
         clientePacoteIdSelecionado:
-          opcoesGerais.length > 0
-            ? opcoesGerais[0]
-                .clientePacoteId
-            : null,
+          opcoesGerais[0]?.clientePacoteId ||
+          null,
         pacotesDisponiveis:
           opcoesGerais
       }
     })
   }
 
-  // ─── CONFIRMAR ATENDIMENTO ──────────────────────────────────────────────
+  // ─── ABRIR CONFIRMAÇÃO ───────────────────────────────────────────────
 
-  async function abrirModalConfirmar(agendamento: any) {
-    setModalConfirmar(agendamento)
+  async function abrirModalConfirmar(
+    agendamento: any
+  ) {
+    setVerificandoPacoteConfirmacao(true)
 
+    setModalConfirmar(null)
+    setSessaoJaRegistradaNoPacote(false)
+    setPossuiPacoteDisponivel(false)
+    setOpcaoConfirmacaoPacote('perguntar')
+    setCoberturas([])
     setServicoRealizado(
       agendamento.servicos?.nome ||
       agendamento.servico_nome ||
       ''
     )
+
+    try {
+      const resultado =
+        await verificarSessaoJaRegistrada(
+          agendamento
+        )
+
+      setSessaoJaRegistradaNoPacote(
+        resultado.registrada
+      )
+
+      setPossuiPacoteDisponivel(
+        resultado.possuiPacote
+      )
+
+      if (resultado.registrada) {
+        setOpcaoConfirmacaoPacote(
+          'apenas_confirmar'
+        )
+      } else if (
+        resultado.possuiPacote
+      ) {
+        const dados =
+          await montarCoberturas(
+            agendamento
+          )
+
+        setCoberturas(dados)
+      }
+    } catch (error) {
+      console.error(
+        'Erro ao verificar pacote:',
+        error
+      )
+    } finally {
+      setVerificandoPacoteConfirmacao(false)
+      setModalConfirmar(agendamento)
+    }
   }
 
+  // ─── VERIFICAÇÃO DUPLA DA CONFIRMAÇÃO ────────────────────────────────
+
+  async function verificarConfirmacaoAtendimento(
+    agendamentoId: string
+  ) {
+    if (!profile?.salao_id) return false
+
+    const { data, error } = await supabase
+      .from('confirmacoes_atendimento')
+      .select('id')
+      .eq(
+        'agendamento_id',
+        agendamentoId
+      )
+      .eq(
+        'salao_id',
+        profile.salao_id
+      )
+      .limit(1)
+
+    if (error) {
+      console.error(
+        'Erro ao verificar confirmação:',
+        error
+      )
+      return false
+    }
+
+    return !!data?.length
+  }
+
+  // ─── DAR BAIXA NO PACOTE ─────────────────────────────────────────────
+
+  async function darBaixaPacoteAtendimento(
+    agendamento: any
+  ) {
+    if (!profile?.salao_id) return
+
+    const clienteNome =
+      agendamento.clientes?.nome ||
+      agendamento.cliente_nome ||
+      ''
+
+    if (!clienteNome) {
+      throw new Error(
+        'Não foi possível identificar a cliente.'
+      )
+    }
+
+    const pacotes =
+      await buscarPacotesCliente(
+        clienteNome
+      )
+
+    if (!pacotes.length) {
+      return
+    }
+
+    // PROTEÇÃO ABSOLUTA:
+    // se este agendamento já estiver no histórico, não desconta novamente.
+    for (const pacote of pacotes) {
+      const historico =
+        Array.isArray(pacote.historico_sessoes)
+          ? pacote.historico_sessoes
+          : []
+
+      const jaExiste =
+        historico.some(
+          (registro: any) =>
+            String(
+              registro?.agendamento_id || ''
+            ) === String(agendamento.id)
+        )
+
+      if (jaExiste) {
+        return
+      }
+    }
+
+    const coberturasAtuais =
+      coberturas.length > 0
+        ? coberturas
+        : await montarCoberturas(
+            agendamento
+          )
+
+    const dataRegistro =
+      new Date().toISOString()
+
+    for (const cobertura of coberturasAtuais) {
+      let quantidadeRestante =
+        Number(
+          cobertura.sessoesEquivalentes || 1
+        )
+
+      if (quantidadeRestante <= 0) {
+        continue
+      }
+
+      let pacoteSelecionado =
+        cobertura.clientePacoteIdSelecionado
+          ? pacotes.find(
+              (p: any) =>
+                p.id ===
+                cobertura.clientePacoteIdSelecionado
+            )
+          : null
+
+      if (!pacoteSelecionado) {
+        pacoteSelecionado =
+          pacotes.find(
+            (p: any) =>
+              Number(
+                p.sessoes_restantes || 0
+              ) >= quantidadeRestante
+          ) ||
+          pacotes.find(
+            (p: any) =>
+              Number(
+                p.sessoes_restantes || 0
+              ) > 0
+          )
+      }
+
+      while (
+        quantidadeRestante > 0 &&
+        pacoteSelecionado
+      ) {
+        const restantesAntes =
+          Number(
+            pacoteSelecionado.sessoes_restantes || 0
+          )
+
+        if (restantesAntes <= 0) {
+          pacoteSelecionado =
+            pacotes.find(
+              (p: any) =>
+                Number(
+                  p.sessoes_restantes || 0
+                ) > 0 &&
+                p.id !==
+                  pacoteSelecionado.id
+            ) || null
+
+          continue
+        }
+
+        const desconto = Math.min(
+          quantidadeRestante,
+          restantesAntes
+        )
+
+        const restantesDepois =
+          restantesAntes - desconto
+
+        const historico =
+          Array.isArray(
+            pacoteSelecionado.historico_sessoes
+          )
+            ? [
+                ...pacoteSelecionado.historico_sessoes
+              ]
+            : []
+
+        // Segunda proteção antes de alterar o pacote.
+        const duplicado =
+          historico.some(
+            (registro: any) =>
+              String(
+                registro?.agendamento_id || ''
+              ) === String(agendamento.id)
+          )
+
+        if (duplicado) {
+          return
+        }
+
+        historico.push({
+          tipo: 'sessao_realizada',
+          data: dataRegistro,
+          quantidade: desconto,
+          servico:
+            cobertura.servicoNome,
+          sessoes_equivalentes:
+            cobertura.sessoesEquivalentes,
+          agendamento_id:
+            agendamento.id
+        })
+
+        const { error } =
+          await supabase
+            .from(
+              'pacotes_clientes_resumo'
+            )
+            .update({
+              sessoes_restantes:
+                restantesDepois,
+              status:
+                restantesDepois <= 0
+                  ? 'concluido'
+                  : 'ativo',
+              historico_sessoes:
+                historico
+            })
+            .eq(
+              'id',
+              pacoteSelecionado.id
+            )
+
+        if (error) {
+          throw error
+        }
+
+        pacoteSelecionado.sessoes_restantes =
+          restantesDepois
+
+        quantidadeRestante -=
+          desconto
+
+        if (
+          quantidadeRestante > 0
+        ) {
+          pacoteSelecionado =
+            pacotes.find(
+              (p: any) =>
+                Number(
+                  p.sessoes_restantes || 0
+                ) > 0
+            ) || null
+        }
+      }
+    }
+  }
+
+  // ─── CONFIRMAR ATENDIMENTO ───────────────────────────────────────────
+
   async function confirmarAtendimento() {
-    if (!modalConfirmar || !profile?.salao_id) return
+    if (
+      !modalConfirmar ||
+      !profile?.salao_id
+    ) {
+      return
+    }
 
     setSalvando(true)
 
     try {
-      const agendamento = modalConfirmar
+      const agendamento =
+        modalConfirmar
 
-      const { error: erroConfirmacao } =
-        await supabase
-          .from('confirmacoes_atendimento')
-          .insert({
-            agendamento_id: agendamento.id,
-            salao_id: profile.salao_id,
-            confirmado_por: profile.id
-          })
+      // Primeiro verifica se já foi confirmado.
+      const jaConfirmado =
+        await verificarConfirmacaoAtendimento(
+          agendamento.id
+        )
+
+      if (jaConfirmado) {
+        alert(
+          'Este atendimento já foi confirmado anteriormente. Nenhuma nova baixa foi realizada.'
+        )
+
+        setModalConfirmar(null)
+        await carregarDados()
+        return
+      }
+
+      // Se escolheu dar baixa, a função possui proteção própria
+      // contra duplicidade.
+      if (
+        opcaoConfirmacaoPacote ===
+          'dar_baixa' &&
+        !sessaoJaRegistradaNoPacote
+      ) {
+        await darBaixaPacoteAtendimento(
+          agendamento
+        )
+      }
+
+      const {
+        data: confirmacaoCriada,
+        error: erroConfirmacao
+      } = await supabase
+        .from('confirmacoes_atendimento')
+        .insert({
+          agendamento_id:
+            agendamento.id,
+          salao_id:
+            profile.salao_id,
+          confirmado_por:
+            profile.id
+        })
+        .select()
+        .single()
 
       if (erroConfirmacao) {
+        // 23505 = registro duplicado.
+        if (
+          erroConfirmacao.code ===
+          '23505'
+        ) {
+          alert(
+            'Este atendimento já havia sido confirmado. Nenhuma nova confirmação foi criada.'
+          )
+
+          setModalConfirmar(null)
+          await carregarDados()
+          return
+        }
+
         throw erroConfirmacao
       }
 
-      const { error: erroAgendamento } =
-        await supabase
-          .from('agendamentos')
-          .update({
-            status: 'concluido'
-          })
-          .eq(
-            'id',
-            agendamento.id
-          )
-          .eq(
-            'salao_id',
-            profile.salao_id
-          )
+      if (!confirmacaoCriada) {
+        throw new Error(
+          'Não foi possível registrar a confirmação.'
+        )
+      }
+
+      const {
+        error: erroAgendamento
+      } = await supabase
+        .from('agendamentos')
+        .update({
+          status: 'concluido'
+        })
+        .eq(
+          'id',
+          agendamento.id
+        )
+        .eq(
+          'salao_id',
+          profile.salao_id
+        )
 
       if (erroAgendamento) {
         throw erroAgendamento
       }
 
       await notificar({
-        salao_id: profile.salao_id,
-        tipo: 'atendimento_confirmado',
-        titulo: 'Atendimento confirmado',
+        salao_id:
+          profile.salao_id,
+        tipo:
+          'atendimento_confirmado',
+        titulo:
+          'Atendimento confirmado',
         mensagem: `O atendimento de ${
           agendamento.clientes?.nome ||
           'cliente'
@@ -715,7 +1024,6 @@ export default function NotificacoesDonoPage() {
       setModalConfirmar(null)
 
       await carregarDados()
-
     } catch (error: any) {
       console.error(
         'Erro ao confirmar atendimento:',
@@ -731,7 +1039,7 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── NÃO COMPARECEU ────────────────────────────────────────────────────
+  // ─── NÃO COMPARECEU ──────────────────────────────────────────────────
 
   async function iniciarNaoComparecimento(
     agendamento: any
@@ -771,8 +1079,6 @@ export default function NotificacoesDonoPage() {
     setSalvando(true)
 
     try {
-      // Se a opção for descontar pacote,
-      // primeiro processamos os descontos.
       if (descontarPacote) {
         await aplicarDescontosPacotes(
           agendamento,
@@ -780,8 +1086,6 @@ export default function NotificacoesDonoPage() {
         )
       }
 
-      // O atendimento passa para
-      // "nao_compareceu".
       const {
         error: erroAgendamento
       } = await supabase
@@ -803,9 +1107,12 @@ export default function NotificacoesDonoPage() {
       }
 
       await notificar({
-        salao_id: profile.salao_id,
-        tipo: 'nao_compareceu',
-        titulo: 'Atendimento não realizado',
+        salao_id:
+          profile.salao_id,
+        tipo:
+          'nao_compareceu',
+        titulo:
+          'Atendimento não realizado',
         mensagem: `O atendimento de ${
           agendamento.clientes?.nome ||
           'cliente'
@@ -813,7 +1120,8 @@ export default function NotificacoesDonoPage() {
         destinatario_id:
           agendamento.cliente_id ||
           null,
-        url: '/cliente/pacotes'
+        url:
+          '/cliente/pacotes'
       })
 
       setConfirmacoes(prev =>
@@ -827,7 +1135,6 @@ export default function NotificacoesDonoPage() {
       setModalConfirmar(null)
 
       await carregarDados()
-
     } catch (error: any) {
       console.error(
         'Erro ao registrar não comparecimento:',
@@ -843,7 +1150,7 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── DESCONTO DOS PACOTES ──────────────────────────────────────────────
+  // ─── DESCONTO POR NÃO COMPARECIMENTO ─────────────────────────────────
 
   async function aplicarDescontosPacotes(
     agendamento: any,
@@ -862,38 +1169,12 @@ export default function NotificacoesDonoPage() {
       )
     }
 
-    const { data: pacotes, error } =
-      await supabase
-        .from('pacotes_clientes_resumo')
-        .select(
-          'id, cliente_nome, servico, sessoes_total, sessoes_restantes, data_sessao, created_at, status, historico_sessoes'
-        )
-        .eq(
-          'cliente_nome',
-          clienteNome
-        )
-        .eq(
-          'status',
-          'ativo'
-        )
-        .gt(
-          'sessoes_restantes',
-          0
-        )
-        .order(
-          'created_at',
-          {
-            ascending: true
-          }
-        )
+    const pacotes =
+      await buscarPacotesCliente(
+        clienteNome
+      )
 
-    if (error) {
-      throw error
-    }
-
-    if (!pacotes?.length) {
-      return
-    }
+    if (!pacotes.length) return
 
     const coberturasAtuais =
       coberturas.length > 0
@@ -905,168 +1186,158 @@ export default function NotificacoesDonoPage() {
     const dataRegistro =
       new Date().toISOString()
 
-    // Cada serviço do agendamento possui sua própria quantidade de
-    // sessões equivalentes.
-    //
-    // O desconto precisa considerar TODOS os serviços agendados.
-
     for (const cobertura of coberturasAtuais) {
       let quantidadeRestante =
         Number(
-          cobertura.sessoesEquivalentes ||
-            1
+          cobertura.sessoesEquivalentes || 1
         )
 
-      if (
-        quantidadeRestante <= 0
-      ) {
+      if (quantidadeRestante <= 0) {
         continue
       }
-        if (
-          quantidadeRestante <= 0
-        ) {
+
+      let pacoteSelecionado =
+        cobertura.clientePacoteIdSelecionado
+          ? pacotes.find(
+              (p: any) =>
+                p.id ===
+                cobertura.clientePacoteIdSelecionado
+            )
+          : null
+
+      if (!pacoteSelecionado) {
+        pacoteSelecionado =
+          pacotes.find(
+            (p: any) =>
+              Number(
+                p.sessoes_restantes || 0
+              ) >= quantidadeRestante
+          ) ||
+          pacotes.find(
+            (p: any) =>
+              Number(
+                p.sessoes_restantes || 0
+              ) > 0
+          )
+      }
+
+      while (
+        quantidadeRestante > 0 &&
+        pacoteSelecionado
+      ) {
+        const restantesAntes =
+          Number(
+            pacoteSelecionado.sessoes_restantes || 0
+          )
+
+        if (restantesAntes <= 0) {
+          pacoteSelecionado =
+            pacotes.find(
+              (p: any) =>
+                Number(
+                  p.sessoes_restantes || 0
+                ) > 0 &&
+                p.id !==
+                  pacoteSelecionado.id
+            ) || null
+
           continue
         }
 
-        // Primeiro tenta usar o pacote escolhido para aquele serviço.
-        let pacoteSelecionado =
-          cobertura.clientePacoteIdSelecionado
-            ? pacotes.find(
-                (p: any) =>
-                  p.id ===
-                  cobertura.clientePacoteIdSelecionado
-              )
-            : null
+        const desconto = Math.min(
+          quantidadeRestante,
+          restantesAntes
+        )
 
-        // Se não houver pacote selecionado,
-        // usa o primeiro pacote compatível/disponível.
+        const restantesDepois =
+          restantesAntes - desconto
+
+        const historico =
+          Array.isArray(
+            pacoteSelecionado.historico_sessoes
+          )
+            ? [
+                ...pacoteSelecionado.historico_sessoes
+              ]
+            : []
+
+        // Não lança duas vezes a mesma falta.
+        const jaRegistrado =
+          historico.some(
+            (registro: any) =>
+              String(
+                registro?.agendamento_id || ''
+              ) === String(agendamento.id)
+          )
+
+        if (jaRegistrado) {
+          quantidadeRestante = 0
+          break
+        }
+
+        historico.push({
+          tipo:
+            'nao_comparecimento',
+          data: dataRegistro,
+          quantidade: desconto,
+          servico:
+            cobertura.servicoNome,
+          sessoes_equivalentes:
+            cobertura.sessoesEquivalentes,
+          justificativa:
+            justificativa ||
+            'Não comparecimento sem aviso prévio.',
+          agendamento_id:
+            agendamento.id
+        })
+
+        const {
+          error
+        } = await supabase
+          .from(
+            'pacotes_clientes_resumo'
+          )
+          .update({
+            sessoes_restantes:
+              restantesDepois,
+            status:
+              restantesDepois <= 0
+                ? 'concluido'
+                : 'ativo',
+            historico_sessoes:
+              historico
+          })
+          .eq(
+            'id',
+            pacoteSelecionado.id
+          )
+
+        if (error) {
+          throw error
+        }
+
+        pacoteSelecionado.sessoes_restantes =
+          restantesDepois
+
+        quantidadeRestante -=
+          desconto
+
         if (
-          !pacoteSelecionado
+          quantidadeRestante > 0
         ) {
           pacoteSelecionado =
             pacotes.find(
               (p: any) =>
                 Number(
                   p.sessoes_restantes || 0
-                ) >=
-                quantidadeRestante
-            ) ||
-            pacotes.find(
-              (p: any) =>
-                Number(
-                  p.sessoes_restantes || 0
                 ) > 0
-            )
-        }
-
-        while (
-          quantidadeRestante > 0 &&
-          pacoteSelecionado
-        ) {
-          const restantesAntes =
-            Number(
-              pacoteSelecionado.sessoes_restantes ||
-                0
-            )
-
-          if (
-            restantesAntes <= 0
-          ) {
-            pacoteSelecionado =
-              pacotes.find(
-                (p: any) =>
-                  Number(
-                    p.sessoes_restantes ||
-                      0
-                  ) > 0 &&
-                  p.id !==
-                    pacoteSelecionado.id
-              ) || null
-
-            continue
-          }
-
-          const desconto = Math.min(
-            quantidadeRestante,
-            restantesAntes
-          )
-
-          const restantesDepois =
-            restantesAntes -
-            desconto
-
-          let historico =
-            Array.isArray(
-              pacoteSelecionado.historico_sessoes
-            )
-              ? [
-                  ...pacoteSelecionado.historico_sessoes
-                ]
-              : []
-
-          historico.push({
-            tipo: 'nao_comparecimento',
-            data: dataRegistro,
-            quantidade: desconto,
-            servico:
-              cobertura.servicoNome,
-            sessoes_equivalentes:
-              cobertura.sessoesEquivalentes,
-            justificativa:
-              justificativa ||
-              'Não comparecimento sem aviso prévio.',
-            agendamento_id:
-              agendamento.id
-          })
-
-          const { error: erroUpdate } =
-            await supabase
-              .from(
-                'pacotes_clientes_resumo'
-              )
-              .update({
-                sessoes_restantes:
-                  restantesDepois,
-                status:
-                  restantesDepois <= 0
-                    ? 'concluido'
-                    : 'ativo',
-                historico_sessoes:
-                  historico
-              })
-              .eq(
-                'id',
-                pacoteSelecionado.id
-              )
-
-          if (erroUpdate) {
-            throw erroUpdate
-          }
-
-          pacoteSelecionado.sessoes_restantes =
-            restantesDepois
-
-          quantidadeRestante -=
-            desconto
-
-          if (
-            quantidadeRestante > 0
-          ) {
-            pacoteSelecionado =
-              pacotes.find(
-                (p: any) =>
-                  Number(
-                    p.sessoes_restantes ||
-                      0
-                  ) > 0
-              ) || null
-          }
+            ) || null
         }
       }
     }
   }
 
-  // ─── SOLICITAÇÕES ──────────────────────────────────────────────────────
+  // ─── SOLICITAÇÕES ────────────────────────────────────────────────────
 
   async function aceitarSolicitacao(
     solicitacao: any
@@ -1116,9 +1387,12 @@ export default function NotificacoesDonoPage() {
         )
 
       await notificar({
-        salao_id: profile.salao_id,
-        tipo: 'solicitacao_aceita',
-        titulo: 'Agendamento confirmado',
+        salao_id:
+          profile.salao_id,
+        tipo:
+          'solicitacao_aceita',
+        titulo:
+          'Agendamento confirmado',
         mensagem: `O agendamento de ${
           solicitacao.clientes?.nome ||
           'cliente'
@@ -1138,7 +1412,6 @@ export default function NotificacoesDonoPage() {
       )
 
       await carregarDados()
-
     } catch (error: any) {
       console.error(
         'Erro ao aceitar solicitação:',
@@ -1159,47 +1432,47 @@ export default function NotificacoesDonoPage() {
   ) {
     if (!profile?.salao_id) return
 
-    const motivo = window.prompt(
-      'Informe o motivo da recusa:'
-    )
+    const motivo =
+      window.prompt(
+        'Informe o motivo da recusa:'
+      )
 
-    if (
-      motivo === null
-    ) {
-      return
-    }
+    if (motivo === null) return
 
     setSalvando(true)
 
     try {
-      const {
-        error
-      } = await supabase
-        .from(
-          'solicitacoes_agendamento'
-        )
-        .update({
-          status: 'recusado',
-          motivo_recusa:
-            motivo || null
-        })
-        .eq(
-          'id',
-          solicitacao.id
-        )
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
+      const { error } =
+        await supabase
+          .from(
+            'solicitacoes_agendamento'
+          )
+          .update({
+            status:
+              'recusado',
+            motivo_recusa:
+              motivo || null
+          })
+          .eq(
+            'id',
+            solicitacao.id
+          )
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
 
       if (error) {
         throw error
       }
 
       await notificar({
-        salao_id: profile.salao_id,
-        tipo: 'solicitacao_recusada',
-        titulo: 'Solicitação recusada',
+        salao_id:
+          profile.salao_id,
+        tipo:
+          'solicitacao_recusada',
+        titulo:
+          'Solicitação recusada',
         mensagem: `A solicitação de ${
           solicitacao.clientes?.nome ||
           'cliente'
@@ -1219,7 +1492,6 @@ export default function NotificacoesDonoPage() {
       )
 
       await carregarDados()
-
     } catch (error: any) {
       console.error(
         'Erro ao recusar solicitação:',
@@ -1235,7 +1507,7 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── SUGESTÃO DE HORÁRIOS ──────────────────────────────────────────────
+  // ─── SUGESTÃO DE HORÁRIOS ────────────────────────────────────────────
 
   async function salvarSugestaoHorario() {
     if (
@@ -1245,13 +1517,12 @@ export default function NotificacoesDonoPage() {
       return
     }
 
-    const horarios = horariosLivres.filter(
-      h => h.trim()
-    )
+    const horarios =
+      horariosLivres.filter(
+        h => h.trim()
+      )
 
-    if (
-      horarios.length === 0
-    ) {
+    if (!horarios.length) {
       alert(
         'Informe pelo menos um horário.'
       )
@@ -1261,34 +1532,37 @@ export default function NotificacoesDonoPage() {
     setSalvando(true)
 
     try {
-      const {
-        error
-      } = await supabase
-        .from(
-          'solicitacoes_agendamento'
-        )
-        .update({
-          status: 'horario_sugerido',
-          horarios_sugeridos:
-            horarios
-        })
-        .eq(
-          'id',
-          modalSugestao.id
-        )
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
+      const { error } =
+        await supabase
+          .from(
+            'solicitacoes_agendamento'
+          )
+          .update({
+            status:
+              'horario_sugerido',
+            horarios_sugeridos:
+              horarios
+          })
+          .eq(
+            'id',
+            modalSugestao.id
+          )
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
 
       if (error) {
         throw error
       }
 
       await notificar({
-        salao_id: profile.salao_id,
-        tipo: 'horarios_sugeridos',
-        titulo: 'Novos horários disponíveis',
+        salao_id:
+          profile.salao_id,
+        tipo:
+          'horarios_sugeridos',
+        titulo:
+          'Novos horários disponíveis',
         mensagem: `O salão enviou novos horários para ${
           modalSugestao.clientes?.nome ||
           'você'
@@ -1307,7 +1581,6 @@ export default function NotificacoesDonoPage() {
       ])
 
       await carregarDados()
-
     } catch (error: any) {
       console.error(
         'Erro ao salvar sugestão:',
@@ -1323,7 +1596,7 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── EXCLUIR NOTIFICAÇÃO ───────────────────────────────────────────────
+  // ─── NOTIFICAÇÕES ────────────────────────────────────────────────────
 
   async function excluirNotificacao(
     notificacao: any
@@ -1331,25 +1604,22 @@ export default function NotificacoesDonoPage() {
     if (!profile?.salao_id) return
 
     try {
-      const {
-        error
-      } = await supabase
-        .from('notificacoes')
-        .update({
-          excluida: true
-        })
-        .eq(
-          'id',
-          notificacao.id
-        )
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
+      const { error } =
+        await supabase
+          .from('notificacoes')
+          .update({
+            excluida: true
+          })
+          .eq(
+            'id',
+            notificacao.id
+          )
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
       setNotificacoes(prev =>
         prev.filter(
@@ -1362,15 +1632,15 @@ export default function NotificacoesDonoPage() {
       setNotificacoesExcluidas(
         prev => [
           notificacao,
-          ...prev.map(item => item)
+          ...prev.filter(
+            item =>
+              item.id !==
+              notificacao.id
+          )
         ]
       )
-
     } catch (error: any) {
-      console.error(
-        'Erro ao excluir notificação:',
-        error
-      )
+      console.error(error)
 
       alert(
         error?.message ||
@@ -1379,33 +1649,28 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── RESTAURAR NOTIFICAÇÃO ─────────────────────────────────────────────
-
   async function restaurarNotificacao(
     notificacao: any
   ) {
     if (!profile?.salao_id) return
 
     try {
-      const {
-        error
-      } = await supabase
-        .from('notificacoes')
-        .update({
-          excluida: false
-        })
-        .eq(
-          'id',
-          notificacao.id
-        )
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
+      const { error } =
+        await supabase
+          .from('notificacoes')
+          .update({
+            excluida: false
+          })
+          .eq(
+            'id',
+            notificacao.id
+          )
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
       setNotificacoesExcluidas(
         prev =>
@@ -1423,12 +1688,8 @@ export default function NotificacoesDonoPage() {
         },
         ...prev
       ])
-
     } catch (error: any) {
-      console.error(
-        'Erro ao restaurar notificação:',
-        error
-      )
+      console.error(error)
 
       alert(
         error?.message ||
@@ -1437,58 +1698,47 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── LIMPAR NOTIFICAÇÕES ───────────────────────────────────────────────
-
   async function limparNotificacoes() {
-    if (!profile?.salao_id) return
-
     if (
+      !profile?.salao_id ||
       notificacoes.length === 0
     ) {
       return
     }
 
-    const confirmar =
-      window.confirm(
+    if (
+      !window.confirm(
         'Deseja excluir todas as notificações?'
       )
-
-    if (!confirmar) {
+    ) {
       return
     }
 
     try {
-      const {
-        error
-      } = await supabase
-        .from('notificacoes')
-        .update({
-          excluida: true
-        })
-        .eq(
-          'salao_id',
-          profile.salao_id
-        )
-        .eq(
-          'destinatario_id',
-          profile.id
-        )
-        .eq(
-          'excluida',
-          false
-        )
+      const { error } =
+        await supabase
+          .from('notificacoes')
+          .update({
+            excluida: true
+          })
+          .eq(
+            'salao_id',
+            profile.salao_id
+          )
+          .eq(
+            'destinatario_id',
+            profile.id
+          )
+          .eq(
+            'excluida',
+            false
+          )
 
-      if (error) {
-        throw error
-      }
+      if (error) throw error
 
       await carregarDados()
-
     } catch (error: any) {
-      console.error(
-        'Erro ao limpar notificações:',
-        error
-      )
+      console.error(error)
 
       alert(
         error?.message ||
@@ -1497,33 +1747,28 @@ export default function NotificacoesDonoPage() {
     }
   }
 
-  // ─── FORMATADORES ──────────────────────────────────────────────────────
+  // ─── FORMATADORES ────────────────────────────────────────────────────
 
   function formatarDataHora(
     valor: string | null | undefined
   ) {
-    if (!valor) {
-      return ''
-    }
+    if (!valor) return ''
 
     const data = new Date(valor)
 
-    if (
-      Number.isNaN(
-        data.getTime()
-      )
-    ) {
+    if (Number.isNaN(data.getTime())) {
       return ''
     }
 
-    return data.toLocaleDateString(
-      'pt-BR',
-      {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      }
-    ) +
+    return (
+      data.toLocaleDateString(
+        'pt-BR',
+        {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        }
+      ) +
       ' às ' +
       data.toLocaleTimeString(
         'pt-BR',
@@ -1532,31 +1777,6 @@ export default function NotificacoesDonoPage() {
           minute: '2-digit'
         }
       )
-  }
-
-  function formatarHora(
-    valor: string | null | undefined
-  ) {
-    if (!valor) {
-      return ''
-    }
-
-    const data = new Date(valor)
-
-    if (
-      Number.isNaN(
-        data.getTime()
-      )
-    ) {
-      return ''
-    }
-
-    return data.toLocaleTimeString(
-      'pt-BR',
-      {
-        hour: '2-digit',
-        minute: '2-digit'
-      }
     )
   }
 
@@ -1583,18 +1803,12 @@ export default function NotificacoesDonoPage() {
   function abrirWhatsApp(
     telefone: string
   ) {
-    if (!telefone) {
-      return
-    }
+    if (!telefone) return
 
-    const numero = telefone.replace(
-      /\D/g,
-      ''
-    )
+    const numero =
+      telefone.replace(/\D/g, '')
 
-    if (!numero) {
-      return
-    }
+    if (!numero) return
 
     const numeroFinal =
       numero.startsWith('55')
@@ -1607,12 +1821,9 @@ export default function NotificacoesDonoPage() {
     )
   }
 
-  // ─── LOADING ───────────────────────────────────────────────────────────
+  // ─── LOADING ─────────────────────────────────────────────────────────
 
-  if (
-    loading ||
-    !profile
-  ) {
+  if (loading || !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#f8faf8]">
         <div className="text-center">
@@ -1625,8 +1836,6 @@ export default function NotificacoesDonoPage() {
     )
   }
 
-  // ─── CONTADORES ────────────────────────────────────────────────────────
-
   const quantidadeSolicitacoes =
     solicitacoes.length
 
@@ -1638,27 +1847,19 @@ export default function NotificacoesDonoPage() {
       n => !n.lida
     ).length
 
-  // ─── RENDER ────────────────────────────────────────────────────────────
-
   return (
     <div className="min-h-screen bg-[#f8faf8] text-[#26352a]">
 
       {/* HEADER */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#e8eee9]">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
-
           <div className="flex items-center gap-3">
-
             <button
               type="button"
-              onClick={() =>
-                router.back()
-              }
-              className="w-10 h-10 rounded-full bg-[#f3f7f3] flex items-center justify-center text-[#617963] hover:bg-[#e8f0e8] transition"
+              onClick={() => router.back()}
+              className="w-10 h-10 rounded-full bg-[#f3f7f3] flex items-center justify-center text-[#617963]"
             >
-              <ArrowLeft
-                size={19}
-              />
+              <ArrowLeft size={19} />
             </button>
 
             <div className="flex-1 min-w-0">
@@ -1671,7 +1872,6 @@ export default function NotificacoesDonoPage() {
                   'Gerencie seus atendimentos'}
               </p>
             </div>
-
           </div>
         </div>
       </header>
@@ -1680,189 +1880,96 @@ export default function NotificacoesDonoPage() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-5">
         <div className="bg-white rounded-2xl border border-[#e8eee9] p-1.5 flex gap-1 overflow-x-auto">
 
-          <button
-            type="button"
+          <TabButton
+            ativo={aba === 'pedidos'}
             onClick={() =>
               setAba('pedidos')
             }
-            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-              aba === 'pedidos'
-                ? 'bg-[#6f8f72] text-white shadow-sm'
-                : 'text-gray-600 hover:bg-[#f4f7f4]'
-            }`}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <Calendar
-                size={16}
-              />
-              Pedidos
+            icon={<Calendar size={16} />}
+            label="Pedidos"
+            quantidade={
+              quantidadeSolicitacoes
+            }
+          />
 
-              {quantidadeSolicitacoes >
-                0 && (
-                <span
-                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
-                    aba === 'pedidos'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-[#edf3ed] text-[#58705b]'
-                  }`}
-                >
-                  {quantidadeSolicitacoes}
-                </span>
-              )}
-            </span>
-          </button>
-
-          <button
-            type="button"
+          <TabButton
+            ativo={
+              aba === 'confirmacoes'
+            }
             onClick={() =>
               setAba('confirmacoes')
             }
-            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-              aba === 'confirmacoes'
-                ? 'bg-[#6f8f72] text-white shadow-sm'
-                : 'text-gray-600 hover:bg-[#f4f7f4]'
-            }`}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <Check
-                size={16}
-              />
-              Confirmar
+            icon={<Check size={16} />}
+            label="Confirmar"
+            quantidade={
+              quantidadeConfirmacoes
+            }
+          />
 
-              {quantidadeConfirmacoes >
-                0 && (
-                <span
-                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
-                    aba === 'confirmacoes'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-[#edf3ed] text-[#58705b]'
-                  }`}
-                >
-                  {quantidadeConfirmacoes}
-                </span>
-              )}
-            </span>
-          </button>
-
-          <button
-            type="button"
+          <TabButton
+            ativo={
+              aba === 'notificacoes'
+            }
             onClick={() =>
               setAba('notificacoes')
             }
-            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-              aba === 'notificacoes'
-                ? 'bg-[#6f8f72] text-white shadow-sm'
-                : 'text-gray-600 hover:bg-[#f4f7f4]'
-            }`}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <Bell
-                size={16}
-              />
-              Notificações
+            icon={<Bell size={16} />}
+            label="Notificações"
+            quantidade={
+              quantidadeNotificacoes
+            }
+          />
 
-              {quantidadeNotificacoes >
-                0 && (
-                <span
-                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
-                    aba === 'notificacoes'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-[#edf3ed] text-[#58705b]'
-                  }`}
-                >
-                  {quantidadeNotificacoes}
-                </span>
-              )}
-            </span>
-          </button>
-
-          <button
-            type="button"
+          <TabButton
+            ativo={
+              aba === 'excluidas'
+            }
             onClick={() =>
               setAba('excluidas')
             }
-            className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
-              aba === 'excluidas'
-                ? 'bg-[#6f8f72] text-white shadow-sm'
-                : 'text-gray-600 hover:bg-[#f4f7f4]'
-            }`}
-          >
-            <span className="flex items-center justify-center gap-2">
-              <Trash2
-                size={16}
-              />
-              Excluídas
-
-              {notificacoesExcluidas.length >
-                0 && (
-                <span
-                  className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
-                    aba === 'excluidas'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-[#edf3ed] text-[#58705b]'
-                  }`}
-                >
-                  {notificacoesExcluidas.length}
-                </span>
-              )}
-            </span>
-          </button>
+            icon={<Trash2 size={16} />}
+            label="Excluídas"
+            quantidade={
+              notificacoesExcluidas.length
+            }
+          />
 
         </div>
       </div>
 
-      {/* CONTEÚDO */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
 
-        {/* ───────────────── PEDIDOS ───────────────── */}
-
+        {/* PEDIDOS */}
         {aba === 'pedidos' && (
           <section>
+            <div className="mb-5">
+              <h2 className="text-lg font-semibold">
+                Solicitações de agendamento
+              </h2>
 
-            <div className="flex items-center justify-between gap-3 mb-5">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  Solicitações de agendamento
-                </h2>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  Pedidos enviados pelas clientes.
-                </p>
-              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                Pedidos enviados pelas clientes.
+              </p>
             </div>
 
             {solicitacoes.length === 0 ? (
-              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
-                <Calendar
-                  size={30}
-                  className="mx-auto text-gray-300 mb-3"
-                />
-
-                <p className="font-medium text-gray-700">
-                  Nenhuma solicitação pendente
-                </p>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  Novos pedidos aparecerão aqui.
-                </p>
-              </div>
+              <EmptyState
+                icon={<Calendar size={30} />}
+                title="Nenhuma solicitação pendente"
+                text="Novos pedidos aparecerão aqui."
+              />
             ) : (
               <div className="space-y-4">
-
                 {solicitacoes.map(
                   (solicitacao: any) => (
                     <div
-                      key={
-                        solicitacao.id
-                      }
+                      key={solicitacao.id}
                       className="bg-white border border-[#e8eee9] rounded-2xl p-4 sm:p-5 shadow-sm"
                     >
-
                       <div className="flex items-start justify-between gap-3">
 
-                        <div className="min-w-0">
-
-                          <h3 className="font-semibold text-[#26352a]">
+                        <div>
+                          <h3 className="font-semibold">
                             {obterNomeCliente(
                               solicitacao
                             )}
@@ -1875,7 +1982,6 @@ export default function NotificacoesDonoPage() {
                               }
                             </p>
                           )}
-
                         </div>
 
                         {solicitacao.status ===
@@ -1884,63 +1990,47 @@ export default function NotificacoesDonoPage() {
                             Horários sugeridos
                           </span>
                         )}
-
                       </div>
 
                       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-                        <div className="rounded-xl bg-[#f7faf7] p-3">
-                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
-                            Serviço
-                          </p>
+                        <InfoBox
+                          label="Serviço"
+                          value={
+                            solicitacao.servicos?.nome ||
+                            solicitacao.servico_nome ||
+                            'Serviço'
+                          }
+                        />
 
-                          <p className="text-sm font-medium mt-1">
-                            {solicitacao.servicos?.nome ||
-                              solicitacao.servico_nome ||
-                              'Serviço'}
-                          </p>
-                        </div>
-
-                        <div className="rounded-xl bg-[#f7faf7] p-3">
-                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
-                            Data desejada
-                          </p>
-
-                          <p className="text-sm font-medium mt-1">
-                            {formatarDataPreferida(
+                        <InfoBox
+                          label="Data desejada"
+                          value={
+                            formatarDataPreferida(
                               solicitacao
                             ) ||
-                              'Não informada'}
-                          </p>
-                        </div>
+                            'Não informada'
+                          }
+                        />
 
-                        <div className="rounded-xl bg-[#f7faf7] p-3">
-                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
-                            Período
-                          </p>
-
-                          <p className="text-sm font-medium mt-1">
-                            {formatarPeriodoPreferido(
+                        <InfoBox
+                          label="Período"
+                          value={
+                            formatarPeriodoPreferido(
                               solicitacao
                             ) ||
-                              'Não informado'}
-                          </p>
-                        </div>
+                            'Não informado'
+                          }
+                        />
 
                         {solicitacao.observacoes && (
-                          <div className="rounded-xl bg-[#f7faf7] p-3">
-                            <p className="text-[11px] uppercase tracking-wide text-gray-400">
-                              Observações
-                            </p>
-
-                            <p className="text-sm font-medium mt-1">
-                              {
-                                solicitacao.observacoes
-                              }
-                            </p>
-                          </div>
+                          <InfoBox
+                            label="Observações"
+                            value={
+                              solicitacao.observacoes
+                            }
+                          />
                         )}
-
                       </div>
 
                       {Array.isArray(
@@ -1960,9 +2050,7 @@ export default function NotificacoesDonoPage() {
                                   index: number
                                 ) => (
                                   <span
-                                    key={
-                                      index
-                                    }
+                                    key={index}
                                     className="px-3 py-1.5 bg-white border border-[#dfe8df] rounded-lg text-sm"
                                   >
                                     {horario}
@@ -1977,123 +2065,93 @@ export default function NotificacoesDonoPage() {
 
                         <button
                           type="button"
-                          disabled={
-                            salvando
-                          }
+                          disabled={salvando}
                           onClick={() =>
                             aceitarSolicitacao(
                               solicitacao
                             )
                           }
-                          className="flex-1 h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold hover:bg-[#5f7e63] transition disabled:opacity-50"
+                          className="flex-1 h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold disabled:opacity-50"
                         >
                           <span className="flex items-center justify-center gap-2">
-                            <Check
-                              size={17}
-                            />
+                            <Check size={17} />
                             Aceitar
                           </span>
                         </button>
 
                         <button
                           type="button"
-                          disabled={
-                            salvando
-                          }
+                          disabled={salvando}
                           onClick={() => {
                             setModalSugestao(
                               solicitacao
                             )
-
                             setHorariosLivres([
                               '',
                               '',
                               ''
                             ])
                           }}
-                          className="flex-1 h-11 rounded-xl border border-[#dbe5dc] bg-white text-[#58705b] text-sm font-semibold hover:bg-[#f4f8f4] transition disabled:opacity-50"
+                          className="flex-1 h-11 rounded-xl border border-[#dbe5dc] bg-white text-[#58705b] text-sm font-semibold disabled:opacity-50"
                         >
                           <span className="flex items-center justify-center gap-2">
-                            <Clock
-                              size={17}
-                            />
+                            <Clock size={17} />
                             Sugerir horários
                           </span>
                         </button>
 
                         <button
                           type="button"
-                          disabled={
-                            salvando
-                          }
+                          disabled={salvando}
                           onClick={() =>
                             recusarSolicitacao(
                               solicitacao
                             )
                           }
-                          className="h-11 px-5 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold hover:bg-[#fff7f7] transition disabled:opacity-50"
+                          className="h-11 px-5 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold disabled:opacity-50"
                         >
                           <span className="flex items-center justify-center gap-2">
-                            <X
-                              size={17}
-                            />
+                            <X size={17} />
                             Recusar
                           </span>
                         </button>
 
                       </div>
-
                     </div>
                   )
                 )}
-
               </div>
             )}
-
           </section>
         )}
 
-        {/* ───────────────── CONFIRMAÇÕES ───────────────── */}
-
+        {/* CONFIRMAÇÕES */}
         {aba === 'confirmacoes' && (
           <section>
 
-            <div className="flex items-center justify-between gap-3 mb-5">
-              <div>
-                <h2 className="text-lg font-semibold">
-                  Confirmar atendimentos
-                </h2>
+            <div className="mb-5">
+              <h2 className="text-lg font-semibold">
+                Confirmar atendimentos
+              </h2>
 
-                <p className="text-sm text-gray-500 mt-1">
-                  Confirme quem realmente compareceu ou registre o não comparecimento.
-                </p>
-              </div>
+              <p className="text-sm text-gray-500 mt-1">
+                Confirme quem realmente compareceu ou registre o não comparecimento.
+              </p>
             </div>
 
             {confirmacoes.length === 0 ? (
-              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
-                <Check
-                  size={30}
-                  className="mx-auto text-gray-300 mb-3"
-                />
-
-                <p className="font-medium text-gray-700">
-                  Tudo em dia
-                </p>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  Não há atendimentos aguardando confirmação.
-                </p>
-              </div>
+              <EmptyState
+                icon={<Check size={30} />}
+                title="Tudo em dia"
+                text="Não há atendimentos aguardando confirmação."
+              />
             ) : (
               <div className="space-y-4">
 
                 {confirmacoes.map(
                   (agendamento: any) => (
                     <div
-                      key={
-                        agendamento.id
-                      }
+                      key={agendamento.id}
                       className="bg-white border border-[#e8eee9] rounded-2xl p-4 sm:p-5 shadow-sm"
                     >
 
@@ -2101,7 +2159,7 @@ export default function NotificacoesDonoPage() {
 
                         <div className="min-w-0">
 
-                          <h3 className="font-semibold text-[#26352a]">
+                          <h3 className="font-semibold">
                             {obterNomeCliente(
                               agendamento
                             )}
@@ -2124,10 +2182,11 @@ export default function NotificacoesDonoPage() {
                               <MessageCircle
                                 size={13}
                               />
-
-                              {obterTelefoneCliente(
-                                agendamento
-                              )}
+                              {
+                                obterTelefoneCliente(
+                                  agendamento
+                                )
+                              }
                             </button>
                           )}
 
@@ -2141,29 +2200,21 @@ export default function NotificacoesDonoPage() {
 
                       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-                        <div className="rounded-xl bg-[#f7faf7] p-3">
-                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
-                            Data
-                          </p>
+                        <InfoBox
+                          label="Data"
+                          value={formatarDataHora(
+                            agendamento.data_hora
+                          )}
+                        />
 
-                          <p className="text-sm font-medium mt-1">
-                            {formatarDataHora(
-                              agendamento.data_hora
-                            )}
-                          </p>
-                        </div>
-
-                        <div className="rounded-xl bg-[#f7faf7] p-3">
-                          <p className="text-[11px] uppercase tracking-wide text-gray-400">
-                            Serviço
-                          </p>
-
-                          <p className="text-sm font-medium mt-1">
-                            {agendamento.servicos?.nome ||
-                              agendamento.servico_nome ||
-                              'Atendimento'}
-                          </p>
-                        </div>
+                        <InfoBox
+                          label="Serviço"
+                          value={
+                            agendamento.servicos?.nome ||
+                            agendamento.servico_nome ||
+                            'Atendimento'
+                          }
+                        />
 
                       </div>
 
@@ -2171,20 +2222,16 @@ export default function NotificacoesDonoPage() {
 
                         <button
                           type="button"
-                          disabled={
-                            salvando
-                          }
+                          disabled={salvando}
                           onClick={() =>
                             iniciarNaoComparecimento(
                               agendamento
                             )
                           }
-                          className="h-11 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold hover:bg-[#fff7f7] transition disabled:opacity-50"
+                          className="h-11 rounded-xl border border-[#eadada] bg-white text-[#9b5e5e] text-sm font-semibold disabled:opacity-50"
                         >
                           <span className="flex items-center justify-center gap-2">
-                            <X
-                              size={17}
-                            />
+                            <X size={17} />
                             Não veio
                           </span>
                         </button>
@@ -2192,37 +2239,33 @@ export default function NotificacoesDonoPage() {
                         <button
                           type="button"
                           disabled={
-                            salvando
+                            salvando ||
+                            verificandoPacoteConfirmacao
                           }
                           onClick={() =>
                             abrirModalConfirmar(
                               agendamento
                             )
                           }
-                          className="h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold hover:bg-[#5f7e63] transition disabled:opacity-50"
+                          className="h-11 rounded-xl bg-[#6f8f72] text-white text-sm font-semibold disabled:opacity-50"
                         >
                           <span className="flex items-center justify-center gap-2">
-                            <Check
-                              size={17}
-                            />
+                            <Check size={17} />
                             Confirmar atendimento
                           </span>
                         </button>
 
                       </div>
-
                     </div>
                   )
                 )}
 
               </div>
             )}
-
           </section>
         )}
 
-        {/* ───────────────── NOTIFICAÇÕES ───────────────── */}
-
+        {/* NOTIFICAÇÕES */}
         {aba === 'notificacoes' && (
           <section>
 
@@ -2238,8 +2281,7 @@ export default function NotificacoesDonoPage() {
                 </p>
               </div>
 
-              {notificacoes.length >
-                0 && (
+              {notificacoes.length > 0 && (
                 <button
                   type="button"
                   onClick={
@@ -2253,22 +2295,12 @@ export default function NotificacoesDonoPage() {
 
             </div>
 
-            {notificacoes.length ===
-            0 ? (
-              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
-                <Bell
-                  size={30}
-                  className="mx-auto text-gray-300 mb-3"
-                />
-
-                <p className="font-medium text-gray-700">
-                  Nenhuma notificação
-                </p>
-
-                <p className="text-sm text-gray-500 mt-1">
-                  Você está em dia.
-                </p>
-              </div>
+            {notificacoes.length === 0 ? (
+              <EmptyState
+                icon={<Bell size={30} />}
+                title="Nenhuma notificação"
+                text="Você está em dia."
+              />
             ) : (
               <div className="space-y-3">
 
@@ -2278,7 +2310,7 @@ export default function NotificacoesDonoPage() {
                       key={
                         notificacao.id
                       }
-                      className={`bg-white border rounded-2xl p-4 transition ${
+                      className={`bg-white border rounded-2xl p-4 ${
                         notificacao.lida
                           ? 'border-[#e8eee9]'
                           : 'border-[#d9e6da] shadow-sm'
@@ -2297,16 +2329,8 @@ export default function NotificacoesDonoPage() {
 
                         <div className="flex gap-3">
 
-                          <div
-                            className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                              notificacao.lida
-                                ? 'bg-[#f2f5f2] text-gray-400'
-                                : 'bg-[#eaf2ea] text-[#638067]'
-                            }`}
-                          >
-                            <Bell
-                              size={18}
-                            />
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-[#eaf2ea] text-[#638067]">
+                            <Bell size={18} />
                           </div>
 
                           <div className="min-w-0 flex-1">
@@ -2346,7 +2370,6 @@ export default function NotificacoesDonoPage() {
                       </button>
 
                       <div className="mt-3 flex justify-end">
-
                         <button
                           type="button"
                           onClick={() =>
@@ -2354,11 +2377,10 @@ export default function NotificacoesDonoPage() {
                               notificacao
                             )
                           }
-                          className="text-xs text-gray-400 hover:text-[#9b5e5e] transition"
+                          className="text-xs text-gray-400 hover:text-[#9b5e5e]"
                         >
                           Excluir
                         </button>
-
                       </div>
 
                     </div>
@@ -2367,12 +2389,10 @@ export default function NotificacoesDonoPage() {
 
               </div>
             )}
-
           </section>
         )}
 
-        {/* ───────────────── EXCLUÍDAS ───────────────── */}
-
+        {/* EXCLUÍDAS */}
         {aba === 'excluidas' && (
           <section>
 
@@ -2386,18 +2406,11 @@ export default function NotificacoesDonoPage() {
               </p>
             </div>
 
-            {notificacoesExcluidas.length ===
-            0 ? (
-              <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
-                <Trash2
-                  size={30}
-                  className="mx-auto text-gray-300 mb-3"
-                />
-
-                <p className="font-medium text-gray-700">
-                  Nenhuma notificação excluída
-                </p>
-              </div>
+            {notificacoesExcluidas.length === 0 ? (
+              <EmptyState
+                icon={<Trash2 size={30} />}
+                title="Nenhuma notificação excluída"
+              />
             ) : (
               <div className="space-y-3">
 
@@ -2413,9 +2426,7 @@ export default function NotificacoesDonoPage() {
                       <div className="flex gap-3">
 
                         <div className="w-10 h-10 rounded-full bg-[#f2f5f2] text-gray-400 flex items-center justify-center shrink-0">
-                          <Trash2
-                            size={18}
-                          />
+                          <Trash2 size={18} />
                         </div>
 
                         <div className="flex-1 min-w-0">
@@ -2453,11 +2464,9 @@ export default function NotificacoesDonoPage() {
                               notificacao
                             )
                           }
-                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#58705b] hover:underline"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#58705b]"
                         >
-                          <RotateCcw
-                            size={13}
-                          />
+                          <RotateCcw size={13} />
                           Restaurar
                         </button>
 
@@ -2469,14 +2478,12 @@ export default function NotificacoesDonoPage() {
 
               </div>
             )}
-
           </section>
         )}
 
       </main>
 
-      {/* ───────────────── MODAL SUGERIR HORÁRIOS ───────────────── */}
-
+      {/* MODAL SUGERIR HORÁRIOS */}
       {modalSugestao && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
 
@@ -2503,9 +2510,7 @@ export default function NotificacoesDonoPage() {
                 }
                 className="w-9 h-9 rounded-full bg-[#f4f6f4] flex items-center justify-center text-gray-500"
               >
-                <X
-                  size={18}
-                />
+                <X size={18} />
               </button>
 
             </div>
@@ -2523,36 +2528,30 @@ export default function NotificacoesDonoPage() {
                     horario,
                     index
                   ) => (
-                    <div
-                      key={
-                        index
-                      }
-                    >
+                    <div key={index}>
+
                       <label className="text-xs font-medium text-gray-500 mb-1.5 block">
                         Horário {index + 1}
                       </label>
 
                       <input
                         type="datetime-local"
-                        value={
-                          horario
-                        }
+                        value={horario}
                         onChange={e => {
                           const novos = [
                             ...horariosLivres
                           ]
 
-                          novos[
-                            index
-                          ] =
+                          novos[index] =
                             e.target.value
 
                           setHorariosLivres(
                             novos
                           )
                         }}
-                        className="w-full h-11 rounded-xl border border-[#dfe7df] px-3 text-sm outline-none focus:border-[#8aa28c]"
+                        className="w-full h-11 rounded-xl border border-[#dfe7df] px-3 text-sm outline-none"
                       />
+
                     </div>
                   )
                 )}
@@ -2564,9 +2563,7 @@ export default function NotificacoesDonoPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setModalSugestao(
-                      null
-                    )
+                    setModalSugestao(null)
                   }
                   className="h-11 rounded-xl border border-[#dfe5df] text-sm font-semibold text-gray-600"
                 >
@@ -2575,9 +2572,7 @@ export default function NotificacoesDonoPage() {
 
                 <button
                   type="button"
-                  disabled={
-                    salvando
-                  }
+                  disabled={salvando}
                   onClick={
                     salvarSugestaoHorario
                   }
@@ -2589,14 +2584,11 @@ export default function NotificacoesDonoPage() {
               </div>
 
             </div>
-
           </div>
-
         </div>
       )}
 
-      {/* ───────────────── MODAL CONFIRMAR / NÃO COMPARECEU ─────────────── */}
-
+      {/* MODAL CONFIRMAR / NÃO COMPARECEU */}
       {modalConfirmar && (
         <ModalAtendimento
           modalConfirmar={
@@ -2617,10 +2609,23 @@ export default function NotificacoesDonoPage() {
           carregandoCoberturas={
             carregandoCoberturas
           }
+          sessaoJaRegistradaNoPacote={
+            sessaoJaRegistradaNoPacote
+          }
+          possuiPacoteDisponivel={
+            possuiPacoteDisponivel
+          }
+          opcaoConfirmacaoPacote={
+            opcaoConfirmacaoPacote
+          }
+          setOpcaoConfirmacaoPacote={
+            setOpcaoConfirmacaoPacote
+          }
+          verificandoPacoteConfirmacao={
+            verificandoPacoteConfirmacao
+          }
           onClose={() =>
-            setModalConfirmar(
-              null
-            )
+            setModalConfirmar(null)
           }
           onConfirmar={
             confirmarAtendimento
@@ -2635,9 +2640,92 @@ export default function NotificacoesDonoPage() {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
+// COMPONENTES AUXILIARES
+// ────────────────────────────────────────────────────────────────────────
+
+function TabButton({
+  ativo,
+  onClick,
+  icon,
+  label,
+  quantidade
+}: any) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 min-w-[110px] rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+        ativo
+          ? 'bg-[#6f8f72] text-white shadow-sm'
+          : 'text-gray-600 hover:bg-[#f4f7f4]'
+      }`}
+    >
+      <span className="flex items-center justify-center gap-2">
+        {icon}
+
+        {label}
+
+        {quantidade > 0 && (
+          <span
+            className={`min-w-5 h-5 px-1.5 rounded-full text-[11px] flex items-center justify-center ${
+              ativo
+                ? 'bg-white/20 text-white'
+                : 'bg-[#edf3ed] text-[#58705b]'
+            }`}
+          >
+            {quantidade}
+          </span>
+        )}
+      </span>
+    </button>
+  )
+}
+
+function InfoBox({
+  label,
+  value
+}: any) {
+  return (
+    <div className="rounded-xl bg-[#f7faf7] p-3">
+      <p className="text-[11px] uppercase tracking-wide text-gray-400">
+        {label}
+      </p>
+
+      <p className="text-sm font-medium mt-1">
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function EmptyState({
+  icon,
+  title,
+  text
+}: any) {
+  return (
+    <div className="bg-white border border-[#e8eee9] rounded-2xl p-8 text-center">
+      <div className="mx-auto text-gray-300 mb-3 w-fit">
+        {icon}
+      </div>
+
+      <p className="font-medium text-gray-700">
+        {title}
+      </p>
+
+      {text && (
+        <p className="text-sm text-gray-500 mt-1">
+          {text}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // MODAL DE ATENDIMENTO
-// ─────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────
 
 function ModalAtendimento({
   modalConfirmar,
@@ -2646,35 +2734,51 @@ function ModalAtendimento({
   setServicoRealizado,
   coberturas,
   carregandoCoberturas,
+  sessaoJaRegistradaNoPacote,
+  possuiPacoteDisponivel,
+  opcaoConfirmacaoPacote,
+  setOpcaoConfirmacaoPacote,
+  verificandoPacoteConfirmacao,
   onClose,
   onConfirmar,
   onNaoComparecimento
 }: any) {
 
-  const [etapaNaoCompareceu, setEtapaNaoCompareceu] =
-    useState<
-      'pergunta_aviso' |
-      'pergunta_pacote' |
-      'justificativa'
-    >('pergunta_aviso')
+  const [
+    etapaNaoCompareceu,
+    setEtapaNaoCompareceu
+  ] = useState<
+    'pergunta_aviso' |
+    'pergunta_pacote' |
+    'justificativa'
+  >('pergunta_aviso')
 
-  const [avisouComAntecedencia, setAvisouComAntecedencia] =
-    useState<boolean | null>(null)
+  const [
+    avisouComAntecedencia,
+    setAvisouComAntecedencia
+  ] = useState<boolean | null>(null)
 
-  const [descontarPacote, setDescontarPacote] =
-    useState<boolean | null>(null)
+  const [
+    descontarPacote,
+    setDescontarPacote
+  ] = useState<boolean | null>(null)
 
-  const [justificativa, setJustificativa] =
-    useState('')
+  const [
+    justificativa,
+    setJustificativa
+  ] = useState('')
 
   const isNaoComparecimento =
     modalConfirmar?.tipo ===
     'nao_compareceu'
 
+  const agendamento =
+    isNaoComparecimento
+      ? modalConfirmar?.agendamento
+      : modalConfirmar
+
   useEffect(() => {
-    if (
-      isNaoComparecimento
-    ) {
+    if (isNaoComparecimento) {
       setEtapaNaoCompareceu(
         'pergunta_aviso'
       )
@@ -2696,7 +2800,6 @@ function ModalAtendimento({
 
   function fechar() {
     if (salvando) return
-
     onClose()
   }
 
@@ -2708,12 +2811,7 @@ function ModalAtendimento({
     )
 
     if (avisou) {
-      // Se a cliente avisou com antecedência,
-      // não existe desconto de pacote.
-      setDescontarPacote(
-        false
-      )
-
+      setDescontarPacote(false)
       setJustificativa('')
 
       onNaoComparecimento(
@@ -2760,7 +2858,6 @@ function ModalAtendimento({
       alert(
         'Escreva uma justificativa antes de descontar as sessões do pacote.'
       )
-
       return
     }
 
@@ -2789,39 +2886,26 @@ function ModalAtendimento({
             </h3>
 
             <p className="text-sm text-gray-500 mt-1">
-              {modalConfirmar?.agendamento
-                ? (
-                  modalConfirmar
-                    .agendamento
-                    .clientes
-                    ?.nome ||
-                  'Cliente'
-                )
-                : ''}
+              {agendamento?.clientes?.nome ||
+                'Cliente'}
             </p>
 
           </div>
 
           <button
             type="button"
-            onClick={
-              fechar
-            }
-            disabled={
-              salvando
-            }
+            onClick={fechar}
+            disabled={salvando}
             className="w-9 h-9 rounded-full bg-[#f4f6f4] flex items-center justify-center text-gray-500 shrink-0 disabled:opacity-50"
           >
-            <X
-              size={18}
-            />
+            <X size={18} />
           </button>
 
         </div>
 
-        {/* CONTEÚDO */}
-
         <div className="overflow-y-auto p-5">
+
+          {/* ───────────────── CONFIRMAR ───────────────── */}
 
           {!isNaoComparecimento ? (
             <div>
@@ -2834,48 +2918,307 @@ function ModalAtendimento({
 
                 <input
                   type="text"
-                  value={
-                    servicoRealizado
-                  }
+                  value={servicoRealizado}
                   onChange={e =>
                     setServicoRealizado(
                       e.target.value
                     )
                   }
-                  className="w-full mt-2 h-11 rounded-xl border border-[#dfe7df] bg-white px-3 text-sm outline-none focus:border-[#8aa28c]"
+                  className="w-full mt-2 h-11 rounded-xl border border-[#dfe7df] bg-white px-3 text-sm outline-none"
                   placeholder="Nome do serviço"
                 />
 
               </div>
 
-              <div className="mt-5 rounded-2xl border border-[#e3ebe3] p-4">
+              {verificandoPacoteConfirmacao ? (
+                <div className="mt-5 rounded-2xl bg-[#f7faf7] p-5 text-center">
 
-                <p className="text-sm text-gray-600">
-                  Ao confirmar, o atendimento será registrado como concluído e deixará de aparecer na aba de confirmação.
-                </p>
+                  <div className="w-7 h-7 rounded-full border-4 border-gray-200 border-t-[#6f8f72] animate-spin mx-auto mb-3" />
 
-              </div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Verificando o histórico do pacote...
+                  </p>
 
-              <button
-                type="button"
-                disabled={
-                  salvando
-                }
-                onClick={
-                  onConfirmar
-                }
-                className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
-              >
-                {salvando
-                  ? 'Salvando...'
-                  : 'Confirmar atendimento'}
-              </button>
+                </div>
+              ) : sessaoJaRegistradaNoPacote ? (
+
+                /* CASO ESPECIAL:
+                   a sessão já foi lançada anteriormente */
+                <div className="mt-5">
+
+                  <div className="rounded-2xl bg-[#edf7ee] border border-[#cfe2d1] p-4">
+
+                    <div className="flex items-start gap-3">
+
+                      <div className="w-9 h-9 rounded-full bg-[#dceedd] text-[#58705b] flex items-center justify-center shrink-0">
+                        <Check size={18} />
+                      </div>
+
+                      <div>
+
+                        <p className="text-sm font-semibold text-[#4f6f53]">
+                          Sessão já registrada no pacote
+                        </p>
+
+                        <p className="text-xs text-[#69806c] mt-1">
+                          Esta sessão já foi lançada anteriormente no histórico do pacote. O sistema não fará uma nova baixa.
+                        </p>
+
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-[#e3ebe3] p-4">
+
+                    <p className="text-sm text-gray-600">
+                      Você pode apenas confirmar o atendimento para concluir este agendamento.
+                    </p>
+
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={salvando}
+                    onClick={() => {
+                      setOpcaoConfirmacaoPacote(
+                        'apenas_confirmar'
+                      )
+
+                      onConfirmar()
+                    }}
+                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
+                  >
+                    {salvando
+                      ? 'Salvando...'
+                      : 'Apenas confirmar atendimento'}
+                  </button>
+
+                </div>
+
+              ) : possuiPacoteDisponivel ? (
+
+                /* EXISTE PACOTE, MAS A SESSÃO AINDA NÃO FOI LANÇADA */
+                <div className="mt-5">
+
+                  <p className="text-sm font-semibold text-gray-700 mb-3">
+                    Como deseja registrar o atendimento?
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-3">
+
+                    <button
+                      type="button"
+                      disabled={salvando}
+                      onClick={() =>
+                        setOpcaoConfirmacaoPacote(
+                          'dar_baixa'
+                        )
+                      }
+                      className={`text-left rounded-2xl border-2 p-4 transition ${
+                        opcaoConfirmacaoPacote ===
+                        'dar_baixa'
+                          ? 'border-[#6f8f72] bg-[#f1f7f1]'
+                          : 'border-[#e4e9e4] bg-white'
+                      }`}
+                    >
+
+                      <div className="flex items-center gap-3">
+
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            opcaoConfirmacaoPacote ===
+                            'dar_baixa'
+                              ? 'bg-[#6f8f72] text-white'
+                              : 'bg-[#f1f4f1] text-[#58705b]'
+                          }`}
+                        >
+                          <Check size={18} />
+                        </div>
+
+                        <div>
+
+                          <p className="text-sm font-semibold text-gray-800">
+                            Dar baixa no pacote
+                          </p>
+
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Registrar a sessão realizada e descontar do pacote.
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={salvando}
+                      onClick={() =>
+                        setOpcaoConfirmacaoPacote(
+                          'apenas_confirmar'
+                        )
+                      }
+                      className={`text-left rounded-2xl border-2 p-4 transition ${
+                        opcaoConfirmacaoPacote ===
+                        'apenas_confirmar'
+                          ? 'border-[#6f8f72] bg-[#f1f7f1]'
+                          : 'border-[#e4e9e4] bg-white'
+                      }`}
+                    >
+
+                      <div className="flex items-center gap-3">
+
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                            opcaoConfirmacaoPacote ===
+                            'apenas_confirmar'
+                              ? 'bg-[#6f8f72] text-white'
+                              : 'bg-[#f1f4f1] text-[#58705b]'
+                          }`}
+                        >
+                          <Check size={18} />
+                        </div>
+
+                        <div>
+
+                          <p className="text-sm font-semibold text-gray-800">
+                            Apenas confirmar atendimento
+                          </p>
+
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Concluir o atendimento sem alterar o pacote.
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                    </button>
+
+                  </div>
+
+                  {opcaoConfirmacaoPacote ===
+                    'dar_baixa' && (
+                    <div className="mt-4 rounded-2xl bg-[#f7faf7] p-4">
+
+                      <p className="text-xs font-semibold text-[#58705b] mb-3">
+                        Sessões que serão descontadas
+                      </p>
+
+                      {carregandoCoberturas ? (
+                        <p className="text-sm text-gray-500">
+                          Verificando pacotes disponíveis...
+                        </p>
+                      ) : coberturas.length ===
+                        0 ? (
+                        <p className="text-sm text-gray-500">
+                          Nenhuma cobertura de pacote encontrada.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+
+                          {coberturas.map(
+                            (
+                              cobertura: CoberturaServico
+                            ) => (
+                              <div
+                                key={
+                                  cobertura.servicoId
+                                }
+                                className="flex items-center justify-between gap-3 bg-white rounded-xl p-3"
+                              >
+
+                                <span className="text-sm font-medium">
+                                  {
+                                    cobertura.servicoNome
+                                  }
+                                </span>
+
+                                <span className="text-xs text-[#58705b] font-semibold">
+                                  {
+                                    cobertura.sessoesEquivalentes
+                                  }{' '}
+                                  sessão(ões)
+                                </span>
+
+                              </div>
+                            )
+                          )}
+
+                        </div>
+                      )}
+
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={
+                      salvando ||
+                      carregandoCoberturas ||
+                      opcaoConfirmacaoPacote ===
+                        'perguntar'
+                    }
+                    onClick={onConfirmar}
+                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
+                  >
+                    {salvando
+                      ? 'Salvando...'
+                      : opcaoConfirmacaoPacote ===
+                        'dar_baixa'
+                        ? 'Dar baixa e confirmar atendimento'
+                        : 'Apenas confirmar atendimento'}
+                  </button>
+
+                </div>
+
+              ) : (
+
+                /* SEM PACOTE */
+                <div className="mt-5">
+
+                  <div className="rounded-2xl border border-[#e3ebe3] p-4">
+
+                    <p className="text-sm font-semibold text-gray-700">
+                      Sem pacote ativo
+                    </p>
+
+                    <p className="text-xs text-gray-500 mt-1">
+                      O atendimento será apenas confirmado e concluído.
+                    </p>
+
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={salvando}
+                    onClick={() => {
+                      setOpcaoConfirmacaoPacote(
+                        'apenas_confirmar'
+                      )
+
+                      onConfirmar()
+                    }}
+                    className="w-full h-12 mt-5 rounded-xl bg-[#6f8f72] text-white font-semibold text-sm disabled:opacity-50"
+                  >
+                    {salvando
+                      ? 'Salvando...'
+                      : 'Confirmar atendimento'}
+                  </button>
+
+                </div>
+              )}
 
             </div>
-          ) : (
-            <div>
 
-              {/* ETAPA 1 */}
+          ) : (
+
+            /* ───────────────── NÃO COMPARECIMENTO ───────────────── */
+
+            <div>
 
               {etapaNaoCompareceu ===
                 'pergunta_aviso' && (
@@ -2897,9 +3240,7 @@ function ModalAtendimento({
 
                     <button
                       type="button"
-                      disabled={
-                        salvando
-                      }
+                      disabled={salvando}
                       onClick={() =>
                         selecionarAviso(
                           true
@@ -2912,9 +3253,7 @@ function ModalAtendimento({
 
                     <button
                       type="button"
-                      disabled={
-                        salvando
-                      }
+                      disabled={salvando}
                       onClick={() =>
                         selecionarAviso(
                           false
@@ -2929,8 +3268,6 @@ function ModalAtendimento({
 
                 </div>
               )}
-
-              {/* ETAPA 2 */}
 
               {etapaNaoCompareceu ===
                 'pergunta_pacote' && (
@@ -3032,8 +3369,6 @@ function ModalAtendimento({
                 </div>
               )}
 
-              {/* ETAPA 3 */}
-
               {etapaNaoCompareceu ===
                 'justificativa' && (
                 <div>
@@ -3057,9 +3392,7 @@ function ModalAtendimento({
                     </span>
 
                     <textarea
-                      value={
-                        justificativa
-                      }
+                      value={justificativa}
                       onChange={e =>
                         setJustificativa(
                           e.target.value
@@ -3067,7 +3400,7 @@ function ModalAtendimento({
                       }
                       rows={5}
                       placeholder="Ex.: Cliente não compareceu e não avisou o salão com antecedência."
-                      className="w-full mt-2 rounded-xl border border-[#dfe7df] px-3 py-3 text-sm outline-none resize-none focus:border-[#8aa28c]"
+                      className="w-full mt-2 rounded-xl border border-[#dfe7df] px-3 py-3 text-sm outline-none resize-none"
                     />
 
                   </label>
@@ -3114,9 +3447,7 @@ function ModalAtendimento({
 
                   <button
                     type="button"
-                    disabled={
-                      salvando
-                    }
+                    disabled={salvando}
                     onClick={
                       confirmarJustificativa
                     }
@@ -3134,9 +3465,7 @@ function ModalAtendimento({
           )}
 
         </div>
-
       </div>
-
     </div>
   )
 }
