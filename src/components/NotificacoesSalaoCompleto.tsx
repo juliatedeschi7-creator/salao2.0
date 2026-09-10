@@ -147,10 +147,13 @@ export default function NotificacoesDonoPage() {
       .single()
     setSalao(sal)
     const { data: sols } = await supabase
-  .from('solicitacoes_agendamento')
-  .select('*, clientes(id, nome, email, telefone), servicos(nome, duracao_minutos)')
-  .eq('salao_id', profile.salao_id)
-  .in('status', ['pendente', 'horario_sugerido'])
+      .from('solicitacoes_agendamento')
+      .select(
+        '*, clientes(id, nome, email, telefone), servicos(nome, 
+duracao_minutos)'
+      )
+      .eq('salao_id', profile.salao_id)
+      .in('status', ['pendente', 'horario_sugerido'])
       .order('created_at', { ascending: false })
     setSolicitacoes(sols || [])
     // IMPORTANTE:
@@ -163,14 +166,11 @@ export default function NotificacoesDonoPage() {
     //
     // Assim, um atendimento de ontem, semana passada ou mês passado
     // continua aparecendo até ser tratado.
-    const { data: ags } = await supabase
-      .from('agendamentos')
-      .select(
-        '*, clientes(id, nome, telefone), servicos(nome, id), 
-confirmacoes_atendimento(*)'
-      )
-      .eq('salao_id', profile.salao_id)
-      .eq('status', 'confirmado')
+const { data: ags } = await supabase
+  .from('agendamentos')
+  .select('*, clientes(id, nome, telefone), servicos(nome, id), confirmacoes_atendimento(*)')
+  .eq('salao_id', profile.salao_id)
+  .eq('status', 'confirmado')
       .order('data_hora', { ascending: true })
     setConfirmacoes(
       (ags || []).filter(
