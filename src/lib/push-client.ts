@@ -16,20 +16,10 @@ const supabase = createClient(
 
 let ultimoErroPush = ''
 
-/**
- * Retorna o último erro ocorrido durante
- * a tentativa de ativar o Push.
- *
- * Usado para diagnóstico.
- */
 export function obterUltimoErroPush(): string {
   return ultimoErroPush
 }
 
-/**
- * Registra o erro para que a interface
- * possa mostrar exatamente onde o Push falhou.
- */
 function registrarErroPush(
   mensagem: string
 ): false {
@@ -48,10 +38,6 @@ function registrarErroPush(
 // SUPORTE
 // =========================================================
 
-/**
- * Verifica se o navegador/dispositivo possui
- * suporte às APIs necessárias para Push.
- */
 export function verificarSuportePush(): boolean {
 
   if (typeof window === 'undefined') {
@@ -65,9 +51,6 @@ export function verificarSuportePush(): boolean {
   )
 }
 
-/**
- * Retorna a permissão atual para notificações.
- */
 export function obterPermissaoPush(): NotificationPermission {
 
   if (
@@ -84,10 +67,6 @@ export function obterPermissaoPush(): NotificationPermission {
 // VAPID
 // =========================================================
 
-/**
- * Converte a chave pública VAPID (Base64 URL)
- * para Uint8Array.
- */
 function urlBase64ToUint8Array(
   base64String: string
 ): Uint8Array {
@@ -120,15 +99,6 @@ function urlBase64ToUint8Array(
   return outputArray
 }
 
-/**
- * Converte os bytes da VAPID para um
- * ArrayBuffer real.
- *
- * Fazemos uma cópia explícita para evitar
- * o conflito de tipos ArrayBufferLike /
- * ArrayBuffer existente nas versões atuais
- * dos tipos do TypeScript.
- */
 function uint8ArrayToArrayBuffer(
   array: Uint8Array
 ): ArrayBuffer {
@@ -145,19 +115,10 @@ function uint8ArrayToArrayBuffer(
 // REGISTRAR PUSH
 // =========================================================
 
-/**
- * Registra o dispositivo para receber
- * notificações Push.
- *
- * Continua retornando boolean para manter
- * compatibilidade com as páginas existentes.
- */
 export async function registrarPush(
   userId: string
 ): Promise<boolean> {
 
-  // Limpa o erro anterior antes de
-  // iniciar uma nova tentativa.
   ultimoErroPush = ''
 
   try {
@@ -175,9 +136,9 @@ export async function registrarPush(
       userId
     )
 
-    // =========================================================
+    // -------------------------------------------------------
     // 1. Verificar suporte
-    // =========================================================
+    // -------------------------------------------------------
 
     if (!verificarSuportePush()) {
 
@@ -190,9 +151,9 @@ export async function registrarPush(
       '[PUSH CLIENT] Suporte ao Push detectado.'
     )
 
-    // =========================================================
+    // -------------------------------------------------------
     // 2. Verificar permissão
-    // =========================================================
+    // -------------------------------------------------------
 
     let permission =
       obterPermissaoPush()
@@ -208,10 +169,6 @@ export async function registrarPush(
         'A permissão para notificações está bloqueada neste dispositivo.'
       )
     }
-
-    // =========================================================
-    // 3. Solicitar permissão
-    // =========================================================
 
     if (permission === 'default') {
 
@@ -239,9 +196,9 @@ export async function registrarPush(
       '[PUSH CLIENT] Permissão concedida.'
     )
 
-    // =========================================================
-    // 4. Verificar VAPID
-    // =========================================================
+    // -------------------------------------------------------
+    // 3. Verificar VAPID
+    // -------------------------------------------------------
 
     const vapidKey =
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
@@ -257,9 +214,9 @@ export async function registrarPush(
       '[PUSH CLIENT] Chave VAPID pública encontrada.'
     )
 
-    // =========================================================
-    // 5. Registrar Service Worker
-    // =========================================================
+    // -------------------------------------------------------
+    // 4. Registrar Service Worker
+    // -------------------------------------------------------
 
     console.log(
       '[PUSH CLIENT] Registrando /sw.js...'
@@ -278,19 +235,15 @@ export async function registrarPush(
       registration
     )
 
-    // =========================================================
-    // 6. Aguardar Service Worker ficar pronto
-    // =========================================================
-
     await navigator.serviceWorker.ready
 
     console.log(
       '[PUSH CLIENT] Service Worker pronto.'
     )
 
-    // =========================================================
-    // 7. Procurar subscription existente
-    // =========================================================
+    // -------------------------------------------------------
+    // 5. Verificar subscription existente
+    // -------------------------------------------------------
 
     let subscription =
       await registration.pushManager.getSubscription()
@@ -308,9 +261,9 @@ export async function registrarPush(
       )
     }
 
-    // =========================================================
-    // 8. Criar subscription se necessário
-    // =========================================================
+    // -------------------------------------------------------
+    // 6. Criar nova subscription se necessário
+    // -------------------------------------------------------
 
     if (!subscription) {
 
@@ -344,9 +297,9 @@ export async function registrarPush(
       )
     }
 
-    // =========================================================
-    // 9. Converter subscription para JSON
-    // =========================================================
+    // -------------------------------------------------------
+    // 7. Converter subscription para JSON
+    // -------------------------------------------------------
 
     const subscriptionJson =
       subscription.toJSON()
@@ -355,6 +308,10 @@ export async function registrarPush(
       '[PUSH CLIENT] Subscription JSON:',
       subscriptionJson
     )
+
+    // -------------------------------------------------------
+    // 8. Validar dados da subscription
+    // -------------------------------------------------------
 
     if (
       !subscriptionJson.endpoint ||
@@ -371,9 +328,9 @@ export async function registrarPush(
       '[PUSH CLIENT] Subscription possui os dados necessários.'
     )
 
-    // =========================================================
-    // 10. Buscar profile
-    // =========================================================
+    // -------------------------------------------------------
+    // 9. Buscar profile
+    // -------------------------------------------------------
 
     console.log(
       '[PUSH CLIENT] Buscando profile no Supabase...'
@@ -405,9 +362,9 @@ export async function registrarPush(
       profile
     )
 
-    // =========================================================
-    // 11. Salvar subscription
-    // =========================================================
+    // -------------------------------------------------------
+    // 10. Salvar subscription
+    // -------------------------------------------------------
 
     console.log(
       '[PUSH CLIENT] Salvando subscription no Supabase...'
@@ -423,10 +380,22 @@ export async function registrarPush(
           user_id: userId,
           salao_id:
             profile?.salao_id ?? null,
-          endpoint:
-            subscriptionJson.endpoint,
+
+          // IMPORTANTE:
+          // A tabela push_subscriptions NÃO possui
+          // uma coluna "endpoint".
+          //
+          // O endpoint já está dentro deste objeto:
+          //
+          // subscription.endpoint
+          //
+          // junto com:
+          // subscription.keys.p256dh
+          // subscription.keys.auth
+          //
           subscription:
             subscriptionJson,
+
           updated_at:
             new Date().toISOString()
         },
@@ -446,6 +415,10 @@ export async function registrarPush(
         `Erro ao salvar a Push Subscription no Supabase: ${subscriptionError.message}`
       )
     }
+
+    // -------------------------------------------------------
+    // 11. Sucesso
+    // -------------------------------------------------------
 
     console.log(
       '[PUSH CLIENT] Subscription salva com sucesso.'
@@ -516,10 +489,6 @@ export async function registrarPush(
 // VERIFICAR PUSH ATIVO
 // =========================================================
 
-/**
- * Verifica se este dispositivo possui
- * uma Push Subscription ativa.
- */
 export async function verificarPushAtivo(
   userId?: string
 ): Promise<boolean> {
