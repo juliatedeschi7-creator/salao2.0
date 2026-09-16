@@ -1,342 +1,357 @@
 'use client'
-
 import { createClient } from '@supabase/supabase-js'
-
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
-
+const supabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey
+)
 /**
- * Converte a chave pública VAPID (Base64 URL) para Uint8Array.
- * Necessário para o applicationServerKey do PushManager.
+ * Verifica se o navegador/dispositivo possui
+ * suporte às APIs necessárias para Push.
  */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding)
-    .replace(/-/g, '+')
-    .replace(/_/g, '/')
-
-  const rawData = window.atob(base64)
-  const outputArray = new Uint8Array(rawData.length)
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i)
+export function verificarSuportePush(): boolean {
+  if (typeof window === 'undefined') {
+    return false
   }
-
+  return (
+    'Notification' in window &&
+    'serviceWorker' in navigator &&
+    'PushManager' in window
+  )
+}
+/**
+ * Retorna a permissão atual para notificações.
+ */
+export function obterPermissaoPush(): NotificationPermission {
+  if (
+    typeof window === 'undefined' ||
+    !('Notification' in window)
+  ) {
+    return 'denied'
+  }
+  return Notification.permission
+}
+/**
+ * Converte a chave pública VAPID (Base64 URL)
+ * para Uint8Array.
+ *
+ * Necessário para o applicationServerKey
+ * do PushManager.
+ */
+function urlBase64ToUint8Array(
+  base64String: string
+): Uint8Array {
+  const padding =
+    '='.repeat(
+      (4 - (base64String.length % 4)) % 4
+    )
+  const base64 =
+    (base64String + padding)
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+  const rawData =
+    window.atob(base64)
+  const outputArray =
+    new Uint8Array(rawData.length)
+  for (
+    let i = 0;
+    i < rawData.length;
+    ++i
+  ) {
+    outputArray[i] =
+      rawData.charCodeAt(i)
+  }
   return outputArray
 }
-
 /**
- * Resultado detalhado do registro do Push.
+ * Registra o dispositivo para receber
+ * notificações Push.
  *
- * Mantemos "ok" para continuar compatível com a tela atual,
- * mas também devolvemos uma mensagem de erro para diagnóstico.
- */
-export type ResultadoPush = {
-  ok: boolean
-  erro?: string
-}
-
-/**
- * Registra o dispositivo para receber notificações Push.
+ * IMPORTANTE:
+ * Continua retornando boolean para manter
+ * compatibilidade com as páginas existentes.
  */
 export async function registrarPush(
   userId: string
-): Promise<ResultadoPush> {
+): Promise<boolean> {
   try {
-    console.log('[PUSH CLIENT] Iniciando registro do Push...')
-    console.log('[PUSH CLIENT] userId:', userId)
-
-    // ---------------------------------------------------------
-    // 1. Verifica suporte do navegador
-    // ---------------------------------------------------------
-
-    if (typeof window === 'undefined') {
-      return {
-        ok: false,
-        erro: 'window não está disponível.'
-      }
+    console.log(
+      '[PUSH CLIENT] ================================='
+    )
+    console.log(
+      '[PUSH CLIENT] Iniciando registro do Push'
+    )
+    console.log(
+      '[PUSH CLIENT] userId:',
+      userId
+    )
+    // =========================================================
+    // 1. Verificar suporte
+    // =========================================================
+    if (!verificarSuportePush()) {
+      console.error(
+        '[PUSH CLIENT] Este dispositivo/navegador não suporta Push.'
+      )
+      return false
     }
-
-    if (!('Notification' in window)) {
-      return {
-        ok: false,
-        erro: 'Este navegador não possui suporte a Notification.'
-      }
-    }
-
-    if (!('serviceWorker' in navigator)) {
-      return {
-        ok: false,
-        erro: 'Este navegador não possui suporte a Service Worker.'
-      }
-    }
-
-    if (!('PushManager' in window)) {
-      return {
-        ok: false,
-        erro: 'Este navegador não possui suporte a PushManager.'
-      }
-    }
-
     console.log(
       '[PUSH CLIENT] Suporte ao Push detectado.'
     )
-
-    // ---------------------------------------------------------
-    // 2. Verifica / solicita permissão
-    // ---------------------------------------------------------
-
-    let permission = Notification.permission
-
+    // =========================================================
+    // 2. Verificar permissão
+    // =========================================================
+    let permission =
+      obterPermissaoPush()
     console.log(
       '[PUSH CLIENT] Permissão atual:',
       permission
     )
-
     if (permission === 'denied') {
-      return {
-        ok: false,
-        erro:
-          'A permissão para notificações está bloqueada neste dispositivo. Verifique as configurações de notificações do Organiza no iPhone.'
-      }
+      console.error(
+        '[PUSH CLIENT] Permissão para notificações está bloqueada.'
+      )
+      return false
     }
-
+    // =========================================================
+    // 3. Solicitar permissão
+    // =========================================================
     if (permission === 'default') {
       console.log(
         '[PUSH CLIENT] Solicitando permissão ao usuário...'
       )
-
-      permission = await Notification.requestPermission()
-
+      permission =
+        await Notification.requestPermission()
       console.log(
         '[PUSH CLIENT] Resultado da permissão:',
         permission
       )
     }
-
     if (permission !== 'granted') {
-      return {
-        ok: false,
-        erro:
-          `Permissão para notificações não concedida. Resultado: ${permission}`
-      }
+      console.error(
+        '[PUSH CLIENT] Permissão não concedida. Resultado:',
+        permission
+      )
+      return false
     }
-
-    // ---------------------------------------------------------
-    // 3. Verifica VAPID
-    // ---------------------------------------------------------
-
+    console.log(
+      '[PUSH CLIENT] Permissão concedida.'
+    )
+    // =========================================================
+    // 4. Verificar VAPID
+    // =========================================================
     const vapidKey =
       process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-
     if (!vapidKey) {
-      return {
-        ok: false,
-        erro:
-          'NEXT_PUBLIC_VAPID_PUBLIC_KEY não está configurada no navegador.'
-      }
+      console.error(
+        '[PUSH CLIENT] NEXT_PUBLIC_VAPID_PUBLIC_KEY não está configurada.'
+      )
+      return false
     }
-
     console.log(
       '[PUSH CLIENT] Chave VAPID pública encontrada.'
     )
-
-    // ---------------------------------------------------------
-    // 4. Registra / obtém o Service Worker
-    // ---------------------------------------------------------
-
+    // =========================================================
+    // 5. Registrar Service Worker
+    // =========================================================
     console.log(
       '[PUSH CLIENT] Registrando /sw.js...'
     )
-
     const registration =
-      await navigator.serviceWorker.register('/sw.js', {
-        scope: '/'
-      })
-
+      await navigator.serviceWorker.register(
+        '/sw.js',
+        {
+          scope: '/'
+        }
+      )
     console.log(
       '[PUSH CLIENT] Service Worker registrado:',
       registration
     )
-
+    // =========================================================
+    // 6. Aguardar Service Worker ficar pronto
+    // =========================================================
     await navigator.serviceWorker.ready
-
     console.log(
       '[PUSH CLIENT] Service Worker pronto.'
     )
-
-    // ---------------------------------------------------------
-    // 5. Verifica subscription existente
-    // ---------------------------------------------------------
-
+    // =========================================================
+    // 7. Procurar subscription existente
+    // =========================================================
     let subscription =
       await registration.pushManager.getSubscription()
-
     if (subscription) {
       console.log(
         '[PUSH CLIENT] Subscription existente encontrada.'
       )
+    } else {
+      console.log(
+        '[PUSH CLIENT] Nenhuma subscription encontrada.'
+      )
     }
-
-    // ---------------------------------------------------------
-    // 6. Cria nova subscription se necessário
-    // ---------------------------------------------------------
-
+    // =========================================================
+    // 8. Criar subscription se necessário
+    // =========================================================
     if (!subscription) {
       console.log(
         '[PUSH CLIENT] Criando nova Push Subscription...'
       )
-
       const applicationServerKey =
-        urlBase64ToUint8Array(vapidKey)
-
+        urlBase64ToUint8Array(
+          vapidKey
+        )
       console.log(
         '[PUSH CLIENT] VAPID convertida para Uint8Array.'
       )
-
       subscription =
         await registration.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey
         })
-
       console.log(
         '[PUSH CLIENT] Nova subscription criada:',
         subscription
       )
     }
-
-    // ---------------------------------------------------------
-    // 7. Converte subscription para JSON
-    // ---------------------------------------------------------
-
+    // =========================================================
+    // 9. Converter subscription para JSON
+    // =========================================================
     const subscriptionJson =
       subscription.toJSON()
-
     console.log(
       '[PUSH CLIENT] Subscription JSON:',
       subscriptionJson
     )
-
     if (
       !subscriptionJson.endpoint ||
       !subscriptionJson.keys?.p256dh ||
       !subscriptionJson.keys?.auth
     ) {
-      return {
-        ok: false,
-        erro:
-          'A Push Subscription foi criada, mas não contém endpoint, p256dh ou auth válidos.'
-      }
+      console.error(
+        '[PUSH CLIENT] Subscription inválida: faltam endpoint, p256dh ou auth.'
+      )
+      return false
     }
-
-    // ---------------------------------------------------------
-    // 8. Salva subscription no Supabase
-    // ---------------------------------------------------------
-
     console.log(
-      '[PUSH CLIENT] Salvando subscription no Supabase...'
+      '[PUSH CLIENT] Subscription possui os dados necessários.'
     )
-
-    const { data: profile, error: profileError } =
-      await supabase
-        .from('profiles')
-        .select('salao_id')
-        .eq('id', userId)
-        .single()
-
+    // =========================================================
+    // 10. Buscar profile
+    // =========================================================
+    console.log(
+      '[PUSH CLIENT] Buscando profile no Supabase...'
+    )
+    const {
+      data: profile,
+      error: profileError
+    } = await supabase
+      .from('profiles')
+      .select('salao_id')
+      .eq('id', userId)
+      .single()
     if (profileError) {
       console.error(
         '[PUSH CLIENT] Erro ao buscar profile:',
         profileError
       )
-
-      return {
-        ok: false,
-        erro:
-          `Erro ao buscar perfil no Supabase: ${profileError.message}`
-      }
+      console.error(
+        '[PUSH CLIENT] Mensagem:',
+        profileError.message
+      )
+      return false
     }
-
-    const { error: subscriptionError } =
-      await supabase
-        .from('push_subscriptions')
-        .upsert(
-          {
-            profile_id: userId,
-            user_id: userId,
-            salao_id: profile?.salao_id ?? null,
-            endpoint: subscriptionJson.endpoint,
-            subscription: subscriptionJson,
-            updated_at: new Date().toISOString()
-          },
-          {
-            onConflict: 'profile_id'
-          }
-        )
-
+    console.log(
+      '[PUSH CLIENT] Profile encontrado:',
+      profile
+    )
+    // =========================================================
+    // 11. Salvar subscription
+    // =========================================================
+    console.log(
+      '[PUSH CLIENT] Salvando subscription no Supabase...'
+    )
+    const {
+      error: subscriptionError
+    } = await supabase
+      .from('push_subscriptions')
+      .upsert(
+        {
+          profile_id: userId,
+          user_id: userId,
+          salao_id:
+            profile?.salao_id ?? null,
+          endpoint:
+            subscriptionJson.endpoint,
+          subscription:
+            subscriptionJson,
+          updated_at:
+            new Date().toISOString()
+        },
+        {
+          onConflict: 'profile_id'
+        }
+      )
     if (subscriptionError) {
       console.error(
         '[PUSH CLIENT] Erro ao salvar subscription:',
         subscriptionError
       )
-
-      return {
-        ok: false,
-        erro:
-          `Erro ao salvar a subscription no Supabase: ${subscriptionError.message}`
-      }
+      console.error(
+        '[PUSH CLIENT] Mensagem:',
+        subscriptionError.message
+      )
+      return false
     }
-
     console.log(
       '[PUSH CLIENT] Subscription salva com sucesso.'
     )
-
-    // ---------------------------------------------------------
-    // 9. Sucesso
-    // ---------------------------------------------------------
-
-    return {
-      ok: true
-    }
-
+    console.log(
+      '[PUSH CLIENT] ================================='
+    )
+    return true
   } catch (error: unknown) {
+    console.error(
+      '[PUSH CLIENT] ================================='
+    )
     console.error(
       '[PUSH CLIENT] ERRO ao registrar Push:',
       error
     )
-
-    let mensagem = 'Erro desconhecido ao registrar Push.'
-
     if (error instanceof Error) {
-      mensagem =
-        `${error.name}: ${error.message}`
-    } else if (typeof error === 'string') {
-      mensagem = error
+      console.error(
+        '[PUSH CLIENT] Tipo do erro:',
+        error.name
+      )
+      console.error(
+        '[PUSH CLIENT] Mensagem:',
+        error.message
+      )
+      console.error(
+        '[PUSH CLIENT] Stack:',
+        error.stack
+      )
     } else {
       try {
-        mensagem = JSON.stringify(error)
+        console.error(
+          '[PUSH CLIENT] Erro:',
+          JSON.stringify(error)
+        )
       } catch {
-        mensagem = String(error)
+        console.error(
+          '[PUSH CLIENT] Erro:',
+          String(error)
+        )
       }
     }
-
     console.error(
-      '[PUSH CLIENT] Mensagem:',
-      mensagem
+      '[PUSH CLIENT] ================================='
     )
-
-    return {
-      ok: false,
-      erro: mensagem
-    }
+    return false
   }
 }
-
 /**
- * Verifica se este dispositivo possui uma Push Subscription ativa.
+ * Verifica se este dispositivo possui
+ * uma Push Subscription ativa.
  */
 export async function verificarPushAtivo(
   userId?: string
@@ -349,34 +364,28 @@ export async function verificarPushAtivo(
     ) {
       return false
     }
-
     const registration =
       await navigator.serviceWorker.ready
-
     const subscription =
       await registration.pushManager.getSubscription()
-
     if (!subscription) {
       return false
     }
-
     if (userId) {
       const subscriptionJson =
         subscription.toJSON()
-
-      if (!subscriptionJson.endpoint) {
+      if (
+        !subscriptionJson.endpoint
+      ) {
         return false
       }
     }
-
     return true
-
   } catch (error) {
     console.error(
       '[PUSH CLIENT] Erro ao verificar Push ativo:',
       error
     )
-
     return false
   }
 }
