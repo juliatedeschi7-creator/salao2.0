@@ -68,7 +68,6 @@ function urlBase64ToUint8Array(
  * Registra o dispositivo para receber
  * notificações Push.
  *
- * IMPORTANTE:
  * Continua retornando boolean para manter
  * compatibilidade com as páginas existentes.
  */
@@ -196,12 +195,15 @@ export async function registrarPush(
       console.log(
         '[PUSH CLIENT] Criando nova Push Subscription...'
       )
+      /*
+       * A VAPID key precisa ser convertida para
+       * um ArrayBuffer compatível com a tipagem
+       * atual do TypeScript/lib.dom.
+       */
       const applicationServerKey =
-        urlBase64ToUint8Array(
-          vapidKey
-        )
+        urlBase64ToUint8Array(vapidKey).buffer
       console.log(
-        '[PUSH CLIENT] VAPID convertida para Uint8Array.'
+        '[PUSH CLIENT] VAPID convertida para ArrayBuffer.'
       )
       subscription =
         await registration.pushManager.subscribe({
