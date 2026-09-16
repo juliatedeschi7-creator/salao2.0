@@ -11,7 +11,7 @@ const supabase = createClient(
 )
 
 // =========================================================
-// ERRO DO ÚLTIMO PROCESSO DE PUSH
+// DIAGNÓSTICO DO PUSH
 // =========================================================
 
 let ultimoErroPush = ''
@@ -20,14 +20,15 @@ let ultimoErroPush = ''
  * Retorna o último erro ocorrido durante
  * a tentativa de ativar o Push.
  *
- * Usado temporariamente para diagnóstico.
+ * Usado para diagnóstico.
  */
 export function obterUltimoErroPush(): string {
   return ultimoErroPush
 }
 
 /**
- * Registra o erro e também envia para o console.
+ * Registra o erro para que a interface
+ * possa mostrar exatamente onde o Push falhou.
  */
 function registrarErroPush(
   mensagem: string
@@ -155,7 +156,8 @@ export async function registrarPush(
   userId: string
 ): Promise<boolean> {
 
-  // Limpa o erro anterior antes de começar
+  // Limpa o erro anterior antes de
+  // iniciar uma nova tentativa.
   ultimoErroPush = ''
 
   try {
@@ -489,7 +491,8 @@ export async function registrarPush(
 
     } else {
 
-      let mensagem = 'Erro desconhecido ao registrar o Push.'
+      let mensagem =
+        'Erro desconhecido ao registrar o Push.'
 
       try {
 
