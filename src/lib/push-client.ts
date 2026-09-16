@@ -10,11 +10,49 @@ const supabase = createClient(
   supabaseAnonKey
 )
 
+// =========================================================
+// ERRO DO ÚLTIMO PROCESSO DE PUSH
+// =========================================================
+
+let ultimoErroPush = ''
+
+/**
+ * Retorna o último erro ocorrido durante
+ * a tentativa de ativar o Push.
+ *
+ * Usado temporariamente para diagnóstico.
+ */
+export function obterUltimoErroPush(): string {
+  return ultimoErroPush
+}
+
+/**
+ * Registra o erro e também envia para o console.
+ */
+function registrarErroPush(
+  mensagem: string
+): false {
+
+  ultimoErroPush = mensagem
+
+  console.error(
+    '[PUSH CLIENT] ERRO:',
+    mensagem
+  )
+
+  return false
+}
+
+// =========================================================
+// SUPORTE
+// =========================================================
+
 /**
  * Verifica se o navegador/dispositivo possui
  * suporte às APIs necessárias para Push.
  */
 export function verificarSuportePush(): boolean {
+
   if (typeof window === 'undefined') {
     return false
   }
@@ -30,6 +68,7 @@ export function verificarSuportePush(): boolean {
  * Retorna a permissão atual para notificações.
  */
 export function obterPermissaoPush(): NotificationPermission {
+
   if (
     typeof window === 'undefined' ||
     !('Notification' in window)
@@ -40,6 +79,10 @@ export function obterPermissaoPush(): NotificationPermission {
   return Notification.permission
 }
 
+// =========================================================
+// VAPID
+// =========================================================
+
 /**
  * Converte a chave pública VAPID (Base64 URL)
  * para Uint8Array.
@@ -47,6 +90,7 @@ export function obterPermissaoPush(): NotificationPermission {
 function urlBase64ToUint8Array(
   base64String: string
 ): Uint8Array {
+
   const padding =
     '='.repeat(
       (4 - (base64String.length % 4)) % 4
@@ -87,6 +131,7 @@ function urlBase64ToUint8Array(
 function uint8ArrayToArrayBuffer(
   array: Uint8Array
 ): ArrayBuffer {
+
   const buffer =
     new ArrayBuffer(array.byteLength)
 
@@ -94,6 +139,10 @@ function uint8ArrayToArrayBuffer(
 
   return buffer
 }
+
+// =========================================================
+// REGISTRAR PUSH
+// =========================================================
 
 /**
  * Registra o dispositivo para receber
@@ -105,6 +154,9 @@ function uint8ArrayToArrayBuffer(
 export async function registrarPush(
   userId: string
 ): Promise<boolean> {
+
+  // Limpa o erro anterior antes de começar
+  ultimoErroPush = ''
 
   try {
 
@@ -127,11 +179,9 @@ export async function registrarPush(
 
     if (!verificarSuportePush()) {
 
-      console.error(
-        '[PUSH CLIENT] Este dispositivo/navegador não suporta Push.'
+      return registrarErroPush(
+        'Este dispositivo/navegador não possui suporte às APIs necessárias para Push.'
       )
-
-      return false
     }
 
     console.log(
@@ -152,11 +202,9 @@ export async function registrarPush(
 
     if (permission === 'denied') {
 
-      console.error(
-        '[PUSH CLIENT] Permissão para notificações está bloqueada.'
+      return registrarErroPush(
+        'A permissão para notificações está bloqueada neste dispositivo.'
       )
-
-      return false
     }
 
     // =========================================================
@@ -180,12 +228,9 @@ export async function registrarPush(
 
     if (permission !== 'granted') {
 
-      console.error(
-        '[PUSH CLIENT] Permissão não concedida. Resultado:',
-        permission
+      return registrarErroPush(
+        `Permissão para notificações não concedida. Resultado: ${permission}`
       )
-
-      return false
     }
 
     console.log(
@@ -201,11 +246,9 @@ export async function registrarPush(
 
     if (!vapidKey) {
 
-      console.error(
-        '[PUSH CLIENT] NEXT_PUBLIC_VAPID_PUBLIC_KEY não está configurada.'
+      return registrarErroPush(
+        'NEXT_PUBLIC_VAPID_PUBLIC_KEY não está configurada no navegador.'
       )
-
-      return false
     }
 
     console.log(
@@ -317,11 +360,9 @@ export async function registrarPush(
       !subscriptionJson.keys?.auth
     ) {
 
-      console.error(
-        '[PUSH CLIENT] Subscription inválida: faltam endpoint, p256dh ou auth.'
+      return registrarErroPush(
+        'A Push Subscription foi criada, mas está incompleta: faltam endpoint, p256dh ou auth.'
       )
-
-      return false
     }
 
     console.log(
@@ -352,12 +393,9 @@ export async function registrarPush(
         profileError
       )
 
-      console.error(
-        '[PUSH CLIENT] Mensagem:',
-        profileError.message
+      return registrarErroPush(
+        `Erro ao buscar perfil no Supabase: ${profileError.message}`
       )
-
-      return false
     }
 
     console.log(
@@ -402,12 +440,9 @@ export async function registrarPush(
         subscriptionError
       )
 
-      console.error(
-        '[PUSH CLIENT] Mensagem:',
-        subscriptionError.message
+      return registrarErroPush(
+        `Erro ao salvar a Push Subscription no Supabase: ${subscriptionError.message}`
       )
-
-      return false
     }
 
     console.log(
@@ -448,31 +483,35 @@ export async function registrarPush(
         error.stack
       )
 
+      return registrarErroPush(
+        `${error.name}: ${error.message}`
+      )
+
     } else {
+
+      let mensagem = 'Erro desconhecido ao registrar o Push.'
 
       try {
 
-        console.error(
-          '[PUSH CLIENT] Erro:',
+        mensagem =
           JSON.stringify(error)
-        )
 
       } catch {
 
-        console.error(
-          '[PUSH CLIENT] Erro:',
+        mensagem =
           String(error)
-        )
       }
+
+      return registrarErroPush(
+        mensagem
+      )
     }
-
-    console.error(
-      '[PUSH CLIENT] ================================='
-    )
-
-    return false
   }
 }
+
+// =========================================================
+// VERIFICAR PUSH ATIVO
+// =========================================================
 
 /**
  * Verifica se este dispositivo possui
