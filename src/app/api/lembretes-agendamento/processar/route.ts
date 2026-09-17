@@ -476,6 +476,7 @@ export async function POST(req: NextRequest) {
            * Assim, se a cliente ainda não tiver o Push
            * habilitado, não marcamos como "enviado" falsamente.
            */
+
           await supabase
             .from('lembretes_agendamento_envios')
             .update({
@@ -621,4 +622,23 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+/*
+ * ============================================================
+ * TESTE TEMPORÁRIO
+ * ============================================================
+ *
+ * Permite executar o mesmo processador pelo navegador.
+ *
+ * Depois que o teste funcionar, vamos REMOVER este GET
+ * antes de ativarmos o Cron.
+ */
+
+export async function GET(req: NextRequest) {
+  console.log(
+    '[lembretes] GET DE TESTE - iniciando processamento'
+  )
+
+  return POST(req)
 }
