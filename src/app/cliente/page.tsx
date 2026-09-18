@@ -94,106 +94,75 @@ export default function ClientePage() {
   // ============================================================
 
   async function verificarStatusPush() {
-
     if (!profile?.id) {
       return
     }
-
     try {
-
       console.log(
         '[CLIENTE] ================================='
       )
-
       console.log(
         '[CLIENTE] Verificando Push da página do cliente'
       )
-
       const suporte =
         verificarSuportePush()
-
       const permissao =
         obterPermissaoPush()
-
       console.log(
         '[CLIENTE] Suporte:',
         suporte
       )
-
       console.log(
         '[CLIENTE] Permissão:',
         permissao
       )
-
       if (!suporte) {
-
         console.log(
           '[CLIENTE] Este navegador não suporta Push'
         )
-
         setModalPushLembrete(false)
-
         return
       }
-
       const pushAtivo =
         await verificarPushAtivo(
           profile.id
         )
-
       console.log(
         '[CLIENTE] Push ativo neste dispositivo:',
         pushAtivo
       )
-
-if (pushAtivo) {
-
-  console.log(
-    '[CLIENTE] Push ativo. Sincronizando subscription atual com o Supabase...'
-  )
-
-  const sincronizado =
-    await registrarPush(
-      profile.id
-    )
-
-  console.log(
-    '[CLIENTE] Resultado da sincronização da subscription:',
-    sincronizado
-  )
-
-  if (sincronizado) {
-
-    setModalPushLembrete(false)
-    setErroPush('')
-
-  } else {
-
-    console.warn(
-      '[CLIENTE] Push está ativo no dispositivo, mas não foi possível sincronizar a subscription com o Supabase.'
-    )
-
-    setModalPushLembrete(false)
-  }
-
-} else {
-
-  setModalPushLembrete(true)
-
-}
+      if (pushAtivo) {
+        console.log(
+          '[CLIENTE] Push ativo. Sincronizando subscription atual com o Supabase...'
+        )
+        const sincronizado =
+          await registrarPush(
+            profile.id
+          )
+        console.log(
+          '[CLIENTE] Resultado da sincronização da subscription:',
+          sincronizado
+        )
+        if (sincronizado) {
+          setModalPushLembrete(false)
+          setErroPush('')
+        } else {
+          console.warn(
+            '[CLIENTE] Push está ativo no dispositivo, mas não foi possível sincronizar a subscription com o Supabase.'
+          )
+          setModalPushLembrete(false)
+        }
+      } else {
+        setModalPushLembrete(true)
       }
-
       console.log(
         '[CLIENTE] ================================='
       )
-
     } catch (error) {
-
       console.error(
         '[CLIENTE] Erro ao verificar Push:',
         error
       )
-
       setModalPushLembrete(true)
     }
   }
