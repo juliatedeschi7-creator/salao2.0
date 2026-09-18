@@ -94,89 +94,147 @@ export default function ClientePage() {
   // VERIFICAR PUSH
   // ============================================================
 
-  async function verificarStatusPush() {
-    if (!profile?.id) {
+async function verificarStatusPush() {
+
+  if (!profile?.id) {
+    return
+  }
+
+  try {
+
+    console.log(
+      '[CLIENTE] ================================='
+    )
+
+    console.log(
+      '[CLIENTE] Verificando Push da página do cliente'
+    )
+
+    const suporte =
+      verificarSuportePush()
+
+    const permissao =
+      obterPermissaoPush()
+
+    console.log(
+      '[CLIENTE] Suporte:',
+      suporte
+    )
+
+    console.log(
+      '[CLIENTE] Permissão:',
+      permissao
+    )
+
+    if (!suporte) {
+
+      console.log(
+        '[CLIENTE] Este navegador não suporta Push'
+      )
+
+      setModalPushLembrete(false)
+
       return
     }
-    try {
-      console.log(
-        '[CLIENTE] ================================='
+
+    const pushAtivo =
+      await verificarPushAtivo(
+        profile.id
       )
+
+    console.log(
+      '[CLIENTE] Push ativo neste dispositivo:',
+      pushAtivo
+    )
+
+    if (pushAtivo) {
+
       console.log(
-        '[CLIENTE] Verificando Push da página do cliente'
+        '[CLIENTE] Push ativo. Sincronizando subscription atual com o Supabase...'
       )
-      const suporte =
-        verificarSuportePush()
-      const permissao =
-        obterPermissaoPush()
-      console.log(
-        '[CLIENTE] Suporte:',
-        suporte
-      )
-      console.log(
-        '[CLIENTE] Permissão:',
-        permissao
-      )
-      if (!suporte) {
-        console.log(
-          '[CLIENTE] Este navegador não suporta Push'
-        )
-        setModalPushLembrete(false)
-        return
-      }
-      const pushAtivo =
-        await verificarPushAtivo(
+
+      const sincronizado =
+        await registrarPush(
           profile.id
         )
+
       console.log(
-        '[CLIENTE] Push ativo neste dispositivo:',
-        pushAtivo
+        '[CLIENTE] Resultado da sincronização da subscription:',
+        sincronizado
       )
-      if (pushAtivo) {
+
+      if (sincronizado) {
+
         console.log(
-          '[CLIENTE] Push ativo. Sincronizando subscription atual com o Supabase...'
+          '[CLIENTE] Subscription sincronizada com sucesso.'
         )
-        const sincronizado =
-          await registrarPush(
-            profile.id
-          )
-        console.log(
-          '[CLIENTE] Resultado da sincronização da subscription:',
-          sincronizado
-        )
-        if (sincronizado) {
-          setModalPushLembrete(false)
-          setErroPush('')
-        } else {
-          console.warn(
-            '[CLIENTE] Push está ativo no dispositivo, mas não foi possível sincronizar a subscription com o Supabase.'
-          )
-          setModalPushLembrete(false)
-        }
+
+        setModalPushLembrete(false)
+        setErroPush('')
+
       } else {
+
+        const erro =
+          obterUltimoErroPush()
+
+        console.error(
+          '[CLIENTE] Falha ao sincronizar Push.'
+        )
+
+        console.error(
+          '[CLIENTE] Último erro do Push:',
+          erro
+        )
+
+        setErroPush(
+          erro ||
+          'Não foi possível sincronizar as notificações deste dispositivo.'
+        )
+
+        // IMPORTANTE:
+        // Agora vamos mostrar o modal quando a sincronização falhar.
         setModalPushLembrete(true)
       }
+
+    } else {
+
       console.log(
-        '[CLIENTE] ================================='
+        '[CLIENTE] Nenhuma subscription ativa encontrada neste dispositivo.'
       )
-    } catch (error) {
-      console.error(
-        '[CLIENTE] Erro ao verificar Push:',
-        error
-      )
+
+      setErroPush('')
+
       setModalPushLembrete(true)
     }
+
+    console.log(
+      '[CLIENTE] ================================='
+    )
+
+  } catch (error: any) {
+
+    console.error(
+      '[CLIENTE] Erro ao verificar Push:',
+      error
+    )
+
+    const erro =
+      obterUltimoErroPush()
+
+    console.error(
+      '[CLIENTE] Último erro registrado pelo Push:',
+      erro
+    )
+
+    setErroPush(
+      erro ||
+      error?.message ||
+      'Não foi possível verificar as notificações.'
+    )
+
+    setModalPushLembrete(true)
   }
-        '[CLIENTE] ================================='
-      )
-    } catch (error) {
-      console.error(
-        '[CLIENTE] Erro ao verificar Push:',
-        error
-      )
-      setModalPushLembrete(true)
-    }
-  }
+}
 
   // ============================================================
   // CARREGAR DADOS
