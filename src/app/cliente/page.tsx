@@ -1,9 +1,10 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/hooks/useAuth'
-import { useRouter } from 'next/navigation'
+import {
+  registrarPush,
+  verificarPushAtivo,
+  obterPermissaoPush,
+  verificarSuportePush,
+  obterUltimoErroPush
+} from '@/lib/push-client'
 
 import {
   Calendar,
