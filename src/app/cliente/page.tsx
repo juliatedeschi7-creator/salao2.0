@@ -146,15 +146,41 @@ export default function ClientePage() {
         pushAtivo
       )
 
-      if (pushAtivo) {
+if (pushAtivo) {
 
-        setModalPushLembrete(false)
-        setErroPush('')
+  console.log(
+    '[CLIENTE] Push ativo. Sincronizando subscription atual com o Supabase...'
+  )
 
-      } else {
+  const sincronizado =
+    await registrarPush(
+      profile.id
+    )
 
-        setModalPushLembrete(true)
+  console.log(
+    '[CLIENTE] Resultado da sincronização da subscription:',
+    sincronizado
+  )
 
+  if (sincronizado) {
+
+    setModalPushLembrete(false)
+    setErroPush('')
+
+  } else {
+
+    console.warn(
+      '[CLIENTE] Push está ativo no dispositivo, mas não foi possível sincronizar a subscription com o Supabase.'
+    )
+
+    setModalPushLembrete(false)
+  }
+
+} else {
+
+  setModalPushLembrete(true)
+
+}
       }
 
       console.log(
