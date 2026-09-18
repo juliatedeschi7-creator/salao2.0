@@ -23,13 +23,6 @@ import {
   X
 } from 'lucide-react'
 
-import {
-  registrarPush,
-  verificarPushAtivo,
-  obterPermissaoPush,
-  verificarSuportePush
-} from '@/lib/push-client'
-
 export default function ClientePage() {
 
   const {
