@@ -166,6 +166,16 @@ export default function ClientePage() {
       setModalPushLembrete(true)
     }
   }
+        '[CLIENTE] ================================='
+      )
+    } catch (error) {
+      console.error(
+        '[CLIENTE] Erro ao verificar Push:',
+        error
+      )
+      setModalPushLembrete(true)
+    }
+  }
 
   // ============================================================
   // CARREGAR DADOS
