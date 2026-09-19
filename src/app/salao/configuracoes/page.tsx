@@ -1537,18 +1537,81 @@ export default function ConfiguracoesPage() {
                       }
                       className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
                     >
-                      <option value={60}>1 hora antes</option>
-                      <option value={120}>2 horas antes</option>
-                      <option value={180}>3 horas antes</option>
-                      <option value={360}>6 horas antes</option>
-                      <option value={720}>12 horas antes</option>
-                      <option value={1440}>24 horas antes</option>
-                      <option value={2880}>48 horas antes</option>
-                      <option value={4320}>3 dias antes</option>
-                      <option value={10080}>7 dias antes</option>
-                    </select>
-                  </div>
+<div className="flex items-center gap-2">
+  <input
+    type="number"
+    min={1}
+    value={
+      lembrete.antecedencia_minutos >= 1440
+        ? Math.round(lembrete.antecedencia_minutos / 1440)
+        : lembrete.antecedencia_minutos >= 60
+          ? Math.round(lembrete.antecedencia_minutos / 60)
+          : lembrete.antecedencia_minutos
+    }
+    onChange={(e) => {
+      const valor = Math.max(1, Number(e.target.value) || 1)
 
+      const unidade =
+        lembrete.antecedencia_minutos >= 1440
+          ? 'dias'
+          : lembrete.antecedencia_minutos >= 60
+            ? 'horas'
+            : 'minutos'
+
+      const minutos =
+        unidade === 'dias'
+          ? valor * 1440
+          : unidade === 'horas'
+            ? valor * 60
+            : valor
+
+      atualizarLembreteAgendamento(
+        lembrete.id,
+        'antecedencia_minutos',
+        minutos
+      )
+    }}
+    className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+  />
+
+  <select
+    value={
+      lembrete.antecedencia_minutos >= 1440
+        ? 'dias'
+        : lembrete.antecedencia_minutos >= 60
+          ? 'horas'
+          : 'minutos'
+    }
+    onChange={(e) => {
+      const unidade = e.target.value
+
+      const valorAtual =
+        lembrete.antecedencia_minutos >= 1440
+          ? Math.max(1, Math.round(lembrete.antecedencia_minutos / 1440))
+          : lembrete.antecedencia_minutos >= 60
+            ? Math.max(1, Math.round(lembrete.antecedencia_minutos / 60))
+            : Math.max(1, lembrete.antecedencia_minutos)
+
+      const minutos =
+        unidade === 'dias'
+          ? valorAtual * 1440
+          : unidade === 'horas'
+            ? valorAtual * 60
+            : valorAtual
+
+      atualizarLembreteAgendamento(
+        lembrete.id,
+        'antecedencia_minutos',
+        minutos
+      )
+    }}
+    className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+  >
+    <option value="minutos">minutos antes</option>
+    <option value="horas">horas antes</option>
+    <option value="dias">dias antes</option>
+  </select>
+</div>
                   <div>
                     <label className="text-xs font-semibold text-gray-600 block mb-1">
                       Título da notificação
