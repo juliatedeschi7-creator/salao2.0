@@ -1,0 +1,276 @@
+// @ts-nocheck
+'use client'
+import { useEffect, useState } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+import { useRouter } from 'next/navigation'
+import { Home, Calendar, Plus, Clock, CheckCircle, AlertCircle, Bell, Users, BarChart2 } from 'lucide-react'
+import Header from '@/components/Header'
+import BottomNav from '@/components/BottomNav'
+
+export default function SalaoPage() {
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+  const router = useRouter()
+
+  const [profile, setProfile] = useState<any>(null)
+  const [salao, setSalao] = useState<any>(null)
+  const [agendamentos, setAgendamentos] = useState<any[]>([])
+  const [todosServicos, setTodosServicos] = useState<any[]>([])
+  const [pendentesConfirmacao, setPendentesConfirmacao] = useState(0)
+  const [carregando, setCarregando] = useState(true)
+
+  useEffect(() => {
+    async function inicializarPainel() {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) { router.replace('/login'); return }
+
+        // Busca o perfil do usuário logado
+        const { data: prof, error: errProf } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+
+        if (errProf || !prof || prof.ativo === false) {
+          await supabase.auth.signOut()
+          router.replace('/login')
+          return
+        }
+
+        setProfile(prof)
+
+        // IDENTIFICAÇÃO FORÇADA DO SALÃO:
+        // 1. Tenta pegar o salao_id do perfil
+        // 2. Se não tiver, busca o salão onde o dono_id é este usuário
+        let salaoIdAlvo = prof.salao_id
+
+        if (!salaoIdAlvo) {
+          const { data: salaoDono } = await supabase
+            .from('saloes')
+            .select('id')
+            .eq('dono_id', session.user.id)
+            .maybeSingle()
+          
+          if (salaoDono) {
+            salaoIdAlvo = salaoDono.id
+          }
+        }
+
+        // Se mesmo assim não achar nenhum salão e for dono, manda criar
+        if (!salaoIdAlvo && prof.role === 'dono_salao') {
+          router.replace('/criar-salao')
+          return
+        }
+
+        await carregarDados(salaoIdAlvo)
+      } catch (e) {
+        console.error('Erro ao inicializar painel:', e)
+        setCarregando(false)
+      }
+    }
+
+    inicializarPainel()
+  }, [])
+
+  async function carregarDados(salaoId: string) {
+    try {
+      if (!salaoId) {
+        setCarregando(false)
+        return
+      }
+
+      // Busca o salão exato pelo ID correto
+      const { data: sal, error: errSal } = await supabase
+        .from('saloes')
+        .select('*')
+        .eq('id', salaoId)
+        .single()
+
+      if (errSal || !sal) {
+        console.error('Salão não encontrado:', errSal)
+        setCarregando(false)
+        return
+      }
+
+      if (sal.pausado) {
+        await supabase.auth.signOut()
+        router.replace('/login')
+        return
+      }
+      setSalao(sal)
+
+      // Busca serviços do salão
+      const { data: srv } = await supabase
+        .from('servicos')
+        .select('id, nome')
+        .eq('salao_id', salaoId)
+      setTodosServicos(srv || [])
+
+      // Busca agendamentos de hoje
+      const hoje = new Date()
+      const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate()).toISOString()
+      const fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 23, 59, 59).toISOString()
+
+      const { data: ags } = await supabase
+        .from('agendamentos')
+        .select('*, clientes(nome), servicos(nome)')
+        .eq('salao_id', salaoId)
+        .gte('data_hora', inicio)
+        .lte('data_hora', fim)
+        .order('data_hora')
+
+      setAgendamentos(ags || [])
+
+      try {
+        const ontem = new Date(hoje); ontem.setDate(ontem.getDate() - 1)
+        const { data: pendentes } = await supabase
+          .from('agendamentos')
+          .select('id, confirmacoes_atendimento(*)')
+          .eq('salao_id', salaoId)
+          .eq('status', 'confirmado')
+          .gte('data_hora', ontem.toISOString())
+          .lte('data_hora', hoje.toISOString())
+        const semConfirmar = (pendentes || []).filter((a: any) => !a.confirmacoes_atendimento?.length)
+        setPendentesConfirmacao(semConfirmar.length)
+      } catch {
+        setPendentesConfirmacao(0)
+      }
+    } catch (e) {
+      console.error('Erro ao carregar dados:', e)
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  function nomesServicosDoAgendamento(ag: any) {
+    const ids = ag.servicos_ids?.length ? ag.servicos_ids : [ag.servico_id]
+    const nomes = ids
+      .map((id: string) => todosServicos.find(s => s.id === id)?.nome)
+      .filter(Boolean)
+    return nomes.length > 0 ? nomes : [ag.servicos?.nome].filter(Boolean)
+  }
+
+  const navItems = [
+    { icon: Home, label: 'Início', href: '/salao' },
+    { icon: Calendar, label: 'Agenda', href: '/salao/agenda' },
+    { icon: Users, label: 'Clientes', href: '/salao/clientes' },
+    { icon: BarChart2, label: 'Finanças', href: '/salao/financeiro' },
+    { icon: Bell, label: 'Avisos', href: '/salao/notificacoes' },
+  ]
+
+  const statusConfig: Record<string, { cor: string; label: string; icon: any }> = {
+    confirmado: { cor: 'text-green-600 bg-green-50', label: 'Confirmado', icon: CheckCircle },
+    pendente: { cor: 'text-yellow-600 bg-yellow-50', label: 'Pendente', icon: AlertCircle },
+    concluido: { cor: 'text-gray-500 bg-gray-50', label: 'Concluído', icon: CheckCircle },
+    cancelado: { cor: 'text-red-500 bg-red-50', label: 'Cancelado', icon: AlertCircle },
+    aguardando_confirmacao: { cor: 'text-blue-600 bg-blue-50', label: 'Aguardando', icon: Clock },
+  }
+
+  const cor = salao?.cor_primaria || '#E91E8C'
+
+  if (carregando || !profile) return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#E91E8C' }} />
+    </div>
+  )
+
+  const hora = new Date().getHours()
+  const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
+
+  return (
+    <div className="min-h-screen pb-20" style={{ backgroundColor: '#f8f9fa' }}>
+      <Header profile={profile} salaoNome={salao?.nome} corPrimaria={cor} />
+      <div className="px-4 py-5 flex flex-col gap-4">
+        <h1 className="text-2xl font-bold text-gray-900">
+          {saudacao}, {profile?.nome?.split(' ')[0]}! ✨
+        </h1>
+
+        {pendentesConfirmacao > 0 && (
+          <button onClick={() => router.push('/salao/agenda')}
+            className="bg-yellow-50 border-2 border-yellow-200 rounded-2xl px-4 py-3 flex items-center gap-3 active:scale-95 transition-all">
+            <div className="w-10 h-10 rounded-full bg-yellow-100 flex items-center justify-center shrink-0">
+              <Bell size={20} className="text-yellow-600" />
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-semibold text-yellow-700 text-sm">
+                {pendentesConfirmacao} atendimento{pendentesConfirmacao > 1 ? 's' : ''} aguardando confirmação
+              </p>
+              <p className="text-xs text-yellow-600">Confirme se a cliente veio para atualizar pacotes</p>
+            </div>
+          </button>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500">Atendimentos hoje</p>
+            <p className="text-3xl font-bold text-gray-900 mt-1">{agendamentos.length}</p>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500">Confirmados</p>
+            <p className="text-3xl font-bold mt-1" style={{ color: cor }}>
+              {agendamentos.filter(a => a.status === 'confirmado').length}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Agenda de Hoje</h2>
+          <button onClick={() => router.push('/salao/agenda')}
+            className="text-sm font-medium" style={{ color: cor }}>
+            Ver completa
+          </button>
+        </div>
+
+        {agendamentos.length === 0 ? (
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center py-10 flex flex-col items-center gap-3">
+            <Calendar size={36} className="text-gray-300" />
+            <p className="text-gray-400">Nenhum agendamento hoje</p>
+            <button onClick={() => router.push('/salao/agenda/novo')}
+              className="px-4 py-2 rounded-full text-sm font-medium text-white"
+              style={{ backgroundColor: cor }}>
+              + Novo Agendamento
+            </button>
+          </div>
+        ) : agendamentos.map(ag => {
+          const st = statusConfig[ag.status] || statusConfig.pendente
+          const StatusIcon = st.icon
+          const horaAg = new Date(ag.data_hora).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          const horaFim = new Date(new Date(ag.data_hora).getTime() + (ag.duracao_minutos || 60) * 60000)
+            .toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+          const nomesServicos = nomesServicosDoAgendamento(ag)
+          return (
+            <button key={ag.id} onClick={() => router.push('/salao/agenda')}
+              className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 text-left flex items-start gap-3 active:scale-95 transition-all w-full">
+              <div className="flex flex-col items-center gap-1 shrink-0">
+                <span className="text-sm font-bold text-gray-900">{horaAg}</span>
+                <div className="w-0.5 h-4 bg-gray-200" />
+                <span className="text-xs text-gray-400">{horaFim}</span>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-start justify-between">
+                  <p className="font-bold text-gray-900">{ag.clientes?.nome}</p>
+                  <span className={'text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 shrink-0 ml-2 ' + st.cor}>
+                    <StatusIcon size={10} />{st.label}
+                  </span>
+                </div>
+                <ul className="mt-1 flex flex-col gap-0.5">
+                  {nomesServicos.map((nome: string, i: number) => (
+                    <li key={i} className="text-sm text-gray-500 flex items-center gap-1.5">
+                      <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: cor }} />
+                      {nome}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+
+      <BottomNav items={navItems} corPrimaria={cor} />
+    </div>
+  )
+}
