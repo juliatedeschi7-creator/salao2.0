@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/lembretes-agendamento/automatico",
+      "schedule": "* * * * *"
+    }
+  ]
+}
