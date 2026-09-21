@@ -1,10 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server'
+
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
+function verificarCronSecret(req: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET
+
+  if (!cronSecret) {
+    return {
+      autorizado: false,
+      erro: 'CRON_SECRET não configurado no ambiente.'
+    }
+  }
+
+  const authorization =
+    req.headers.get('authorization') || ''
+
+  const esperado = `Bearer ${cronSecret}`
+
+  if (authorization !== esperado) {
+    return {
+      autorizado: false,
+      erro: 'Não autorizado.'
+    }
+  }
+
+  return {
+    autorizado: true,
+    erro: null
+  }
+}
 
 function formatarDataHora(dataHora: string) {
   const data = new Date(dataHora)
@@ -20,7 +52,9 @@ function formatarDataHora(dataHora: string) {
   }).formatToParts(data)
 
   const get = (tipo: string) =>
-    partes.find((parte) => parte.type === tipo)?.value || ''
+    partes.find(
+      (parte) => parte.type === tipo
+    )?.value || ''
 
   return {
     data: `${get('day')}/${get('month')}/${get('year')}`,
@@ -51,10 +85,35 @@ export async function POST(req: NextRequest) {
 
   console.log('================================================')
   console.log('[lembretes] PROCESSADOR INICIADO')
-  console.log('[lembretes] horário:', inicio.toISOString())
+  console.log(
+    '[lembretes] horário:',
+    inicio.toISOString()
+  )
   console.log('================================================')
 
   try {
+    /*
+     * ============================================================
+     * 0. VERIFICA CRON_SECRET
+     * ============================================================
+     */
+
+    const autorizacao = verificarCronSecret(req)
+
+    if (!autorizacao.autorizado) {
+      console.warn(
+        '[lembretes] acesso não autorizado.'
+      )
+
+      return NextResponse.json(
+        {
+          ok: false,
+          erro: autorizacao.erro
+        },
+        { status: 401 }
+      )
+    }
+
     /*
      * ============================================================
      * 1. BUSCA OS LEMBRETES PENDENTES
@@ -63,26 +122,30 @@ export async function POST(req: NextRequest) {
 
     const agora = new Date().toISOString()
 
-    const { data: lembretes, error: lembretesError } =
-      await supabase
-        .from('lembretes_agendamento_envios')
-        .select(
-          `
-          id,
-          salao_id,
-          agendamento_id,
-          cliente_id,
-          config_id,
-          agendamento_data_hora,
-          enviar_em,
-          status,
-          erro
-          `
-        )
-        .eq('status', 'pendente')
-        .lte('enviar_em', agora)
-        .order('enviar_em', { ascending: true })
-        .limit(20)
+    const {
+      data: lembretes,
+      error: lembretesError
+    } = await supabase
+      .from('lembretes_agendamento_envios')
+      .select(
+        `
+        id,
+        salao_id,
+        agendamento_id,
+        cliente_id,
+        config_id,
+        agendamento_data_hora,
+        enviar_em,
+        status,
+        erro
+        `
+      )
+      .eq('status', 'pendente')
+      .lte('enviar_em', agora)
+      .order('enviar_em', {
+        ascending: true
+      })
+      .limit(20)
 
     if (lembretesError) {
       console.error(
@@ -93,7 +156,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          erro: lembretesError.message,
+          erro: lembretesError.message
         },
         { status: 500 }
       )
@@ -104,15 +167,21 @@ export async function POST(req: NextRequest) {
       lembretes?.length || 0
     )
 
-    if (!lembretes || lembretes.length === 0) {
-      console.log('[lembretes] nenhuma mensagem pendente.')
+    if (
+      !lembretes ||
+      lembretes.length === 0
+    ) {
+      console.log(
+        '[lembretes] nenhuma mensagem pendente.'
+      )
 
       return NextResponse.json({
         ok: true,
         processados: 0,
         enviados: 0,
         erros: 0,
-        mensagem: 'Nenhum lembrete pendente.',
+        mensagem:
+          'Nenhum lembrete pendente.'
       })
     }
 
@@ -144,22 +213,24 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const { data: config, error: configError } =
-          await supabase
-            .from('lembretes_agendamento_config')
-            .select(
-              `
-              id,
-              salao_id,
-              antecedencia_minutos,
-              ativo,
-              titulo,
-              mensagem,
-              ordem
-              `
-            )
-            .eq('id', lembrete.config_id)
-            .maybeSingle()
+        const {
+          data: config,
+          error: configError
+        } = await supabase
+          .from('lembretes_agendamento_config')
+          .select(
+            `
+            id,
+            salao_id,
+            antecedencia_minutos,
+            ativo,
+            titulo,
+            mensagem,
+            ordem
+            `
+          )
+          .eq('id', lembrete.config_id)
+          .maybeSingle()
 
         if (configError) {
           throw new Error(
@@ -179,10 +250,29 @@ export async function POST(req: NextRequest) {
             config.id
           )
 
+          /*
+           * Uma configuração que foi desativada não deve
+           * continuar sendo processada.
+           */
+
+          await supabase
+            .from(
+              'lembretes_agendamento_envios'
+            )
+            .update({
+              status: 'erro',
+              erro:
+                'Configuração do lembrete está inativa.',
+              updated_at:
+                new Date().toISOString()
+            })
+            .eq('id', lembrete.id)
+
           resultados.push({
             id: lembrete.id,
             status: 'ignorado',
-            motivo: 'Configuração inativa.',
+            motivo:
+              'Configuração inativa.'
           })
 
           continue
@@ -194,21 +284,26 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const { data: agendamento, error: agendamentoError } =
-          await supabase
-            .from('agendamentos')
-            .select(
-              `
-              id,
-              salao_id,
-              cliente_id,
-              servico_id,
-              data_hora,
-              status
-              `
-            )
-            .eq('id', lembrete.agendamento_id)
-            .maybeSingle()
+        const {
+          data: agendamento,
+          error: agendamentoError
+        } = await supabase
+          .from('agendamentos')
+          .select(
+            `
+            id,
+            salao_id,
+            cliente_id,
+            servico_id,
+            data_hora,
+            status
+            `
+          )
+          .eq(
+            'id',
+            lembrete.agendamento_id
+          )
+          .maybeSingle()
 
         if (agendamentoError) {
           throw new Error(
@@ -224,13 +319,15 @@ export async function POST(req: NextRequest) {
 
         /*
          * ========================================================
-         * 5. VERIFICA SE O AGENDAMENTO AINDA EXISTE
+         * 5. VERIFICA SE O AGENDAMENTO AINDA É VÁLIDO
          * ========================================================
          */
 
         if (
-          agendamento.status === 'cancelado' ||
-          agendamento.status === 'cancelada'
+          agendamento.status ===
+            'cancelado' ||
+          agendamento.status ===
+            'cancelada'
         ) {
           console.log(
             '[lembretes] agendamento cancelado:',
@@ -238,18 +335,23 @@ export async function POST(req: NextRequest) {
           )
 
           await supabase
-            .from('lembretes_agendamento_envios')
+            .from(
+              'lembretes_agendamento_envios'
+            )
             .update({
               status: 'erro',
-              erro: 'Agendamento cancelado antes do envio.',
-              updated_at: new Date().toISOString(),
+              erro:
+                'Agendamento cancelado antes do envio.',
+              updated_at:
+                new Date().toISOString()
             })
             .eq('id', lembrete.id)
 
           resultados.push({
             id: lembrete.id,
             status: 'erro',
-            motivo: 'Agendamento cancelado.',
+            motivo:
+              'Agendamento cancelado.'
           })
 
           erros++
@@ -262,18 +364,23 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const { data: cliente, error: clienteError } =
-          await supabase
-            .from('clientes')
-            .select(
-              `
-              id,
-              nome,
-              profile_id
-              `
-            )
-            .eq('id', agendamento.cliente_id)
-            .maybeSingle()
+        const {
+          data: cliente,
+          error: clienteError
+        } = await supabase
+          .from('clientes')
+          .select(
+            `
+            id,
+            nome,
+            profile_id
+            `
+          )
+          .eq(
+            'id',
+            agendamento.cliente_id
+          )
+          .maybeSingle()
 
         if (clienteError) {
           throw new Error(
@@ -287,23 +394,34 @@ export async function POST(req: NextRequest) {
           )
         }
 
+        if (!cliente.profile_id) {
+          throw new Error(
+            'Cliente não possui profile_id.'
+          )
+        }
+
         /*
          * ========================================================
          * 7. BUSCA SALÃO
          * ========================================================
          */
 
-        const { data: salao, error: salaoError } =
-          await supabase
-            .from('saloes')
-            .select(
-              `
-              id,
-              nome
-              `
-            )
-            .eq('id', lembrete.salao_id)
-            .maybeSingle()
+        const {
+          data: salao,
+          error: salaoError
+        } = await supabase
+          .from('saloes')
+          .select(
+            `
+            id,
+            nome
+            `
+          )
+          .eq(
+            'id',
+            lembrete.salao_id
+          )
+          .maybeSingle()
 
         if (salaoError) {
           throw new Error(
@@ -323,17 +441,22 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const { data: servico, error: servicoError } =
-          await supabase
-            .from('servicos')
-            .select(
-              `
-              id,
-              nome
-              `
-            )
-            .eq('id', agendamento.servico_id)
-            .maybeSingle()
+        const {
+          data: servico,
+          error: servicoError
+        } = await supabase
+          .from('servicos')
+          .select(
+            `
+            id,
+            nome
+            `
+          )
+          .eq(
+            'id',
+            agendamento.servico_id
+          )
+          .maybeSingle()
 
         if (servicoError) {
           throw new Error(
@@ -353,9 +476,10 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const dataHora = formatarDataHora(
-          agendamento.data_hora
-        )
+        const dataHora =
+          formatarDataHora(
+            agendamento.data_hora
+          )
 
         /*
          * ========================================================
@@ -364,22 +488,37 @@ export async function POST(req: NextRequest) {
          */
 
         const dados = {
-          cliente: cliente.nome || 'cliente',
-          salao: salao.nome || 'nosso salão',
-          data: dataHora.data,
-          hora: dataHora.hora,
-          servico: servico.nome?.trim() || 'seu serviço',
+          cliente:
+            cliente.nome ||
+            'cliente',
+
+          salao:
+            salao.nome ||
+            'nosso salão',
+
+          data:
+            dataHora.data,
+
+          hora:
+            dataHora.hora,
+
+          servico:
+            servico.nome?.trim() ||
+            'seu serviço'
         }
 
-        const titulo = substituirVariaveis(
-          config.titulo || 'Lembrete de agendamento',
-          dados
-        )
+        const titulo =
+          substituirVariaveis(
+            config.titulo ||
+              'Lembrete de agendamento',
+            dados
+          )
 
-        const mensagem = substituirVariaveis(
-          config.mensagem || '',
-          dados
-        )
+        const mensagem =
+          substituirVariaveis(
+            config.mensagem || '',
+            dados
+          )
 
         console.log(
           '[lembretes] destinatário:',
@@ -402,39 +541,59 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const urlNotificar = new URL(
-          '/api/notificar',
-          req.url
-        )
+        const urlNotificar =
+          new URL(
+            '/api/notificar',
+            req.url
+          )
 
         console.log(
           '[lembretes] chamando:',
           urlNotificar.toString()
         )
 
-        const respostaPush = await fetch(
-          urlNotificar.toString(),
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              salaoId: lembrete.salao_id,
-              remetenteId: null,
-              destinatarioId: cliente.profile_id,
-              titulo,
-              mensagem,
-              tipo: 'lembrete_agendamento',
-              url: '/cliente',
-            }),
-          }
-        )
+        const respostaPush =
+          await fetch(
+            urlNotificar.toString(),
+            {
+              method: 'POST',
 
-        let resultadoPush: any = null
+              headers: {
+                'Content-Type':
+                  'application/json'
+              },
+
+              body: JSON.stringify({
+                salaoId:
+                  lembrete.salao_id,
+
+                remetenteId:
+                  null,
+
+                destinatarioId:
+                  cliente.profile_id,
+
+                titulo,
+
+                mensagem,
+
+                tipo:
+                  'lembrete_agendamento',
+
+                url:
+                  '/cliente'
+              }),
+
+              cache: 'no-store'
+            }
+          )
+
+        let resultadoPush:
+          any = null
 
         try {
-          resultadoPush = await respostaPush.json()
+          resultadoPush =
+            await respostaPush.json()
         } catch {
           resultadoPush = null
         }
@@ -442,8 +601,11 @@ export async function POST(req: NextRequest) {
         console.log(
           '[lembretes] resposta do /api/notificar:',
           {
-            status: respostaPush.status,
-            resultado: resultadoPush,
+            status:
+              respostaPush.status,
+
+            resultado:
+              resultadoPush
           }
         )
 
@@ -460,7 +622,9 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        if (!resultadoPush?.pushEnviado) {
+        if (
+          !resultadoPush?.pushEnviado
+        ) {
           const motivo =
             resultadoPush?.motivo ||
             'Nenhuma subscription disponível para o cliente.'
@@ -473,23 +637,29 @@ export async function POST(req: NextRequest) {
           /*
            * Mantemos como pendente.
            *
-           * Assim, se a cliente ainda não tiver o Push
-           * habilitado, não marcamos como "enviado" falsamente.
+           * Assim, se a cliente ainda não tiver Push
+           * habilitado, não marcamos como enviado.
            */
 
           await supabase
-            .from('lembretes_agendamento_envios')
+            .from(
+              'lembretes_agendamento_envios'
+            )
             .update({
               erro: motivo,
-              updated_at: new Date().toISOString(),
+              updated_at:
+                new Date().toISOString()
             })
-            .eq('id', lembrete.id)
+            .eq(
+              'id',
+              lembrete.id
+            )
 
           resultados.push({
             id: lembrete.id,
             status: 'pendente',
             pushEnviado: false,
-            motivo,
+            motivo
           })
 
           continue
@@ -501,19 +671,31 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const agoraEnvio = new Date().toISOString()
+        const agoraEnvio =
+          new Date().toISOString()
 
-        const { error: updateError } =
-          await supabase
-            .from('lembretes_agendamento_envios')
-            .update({
-              status: 'enviado',
-              enviado_em: agoraEnvio,
-              erro: null,
-              updated_at: agoraEnvio,
-            })
-            .eq('id', lembrete.id)
-            .eq('status', 'pendente')
+        const {
+          error: updateError
+        } = await supabase
+          .from(
+            'lembretes_agendamento_envios'
+          )
+          .update({
+            status: 'enviado',
+            enviado_em:
+              agoraEnvio,
+            erro: null,
+            updated_at:
+              agoraEnvio
+          })
+          .eq(
+            'id',
+            lembrete.id
+          )
+          .eq(
+            'status',
+            'pendente'
+          )
 
         if (updateError) {
           throw new Error(
@@ -527,14 +709,17 @@ export async function POST(req: NextRequest) {
           id: lembrete.id,
           status: 'enviado',
           pushEnviado: true,
-          cliente: cliente.nome,
-          agendamento: agendamento.id,
+          cliente:
+            cliente.nome,
+          agendamento:
+            agendamento.id
         })
 
         console.log(
           '[lembretes] ✅ LEMBRETE ENVIADO:',
           lembrete.id
         )
+
       } catch (error: any) {
         erros++
 
@@ -554,15 +739,22 @@ export async function POST(req: NextRequest) {
          * ========================================================
          */
 
-        const { error: updateError } =
-          await supabase
-            .from('lembretes_agendamento_envios')
-            .update({
-              status: 'erro',
-              erro: mensagemErro,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', lembrete.id)
+        const {
+          error: updateError
+        } = await supabase
+          .from(
+            'lembretes_agendamento_envios'
+          )
+          .update({
+            status: 'erro',
+            erro: mensagemErro,
+            updated_at:
+              new Date().toISOString()
+          })
+          .eq(
+            'id',
+            lembrete.id
+          )
 
         if (updateError) {
           console.error(
@@ -574,7 +766,7 @@ export async function POST(req: NextRequest) {
         resultados.push({
           id: lembrete.id,
           status: 'erro',
-          erro: mensagemErro,
+          erro: mensagemErro
         })
       }
     }
@@ -588,13 +780,25 @@ export async function POST(req: NextRequest) {
     const fim = new Date()
 
     console.log('================================================')
-    console.log('[lembretes] PROCESSADOR FINALIZADO')
-    console.log('[lembretes] processados:', processados)
-    console.log('[lembretes] enviados:', enviados)
-    console.log('[lembretes] erros:', erros)
+    console.log(
+      '[lembretes] PROCESSADOR FINALIZADO'
+    )
+    console.log(
+      '[lembretes] processados:',
+      processados
+    )
+    console.log(
+      '[lembretes] enviados:',
+      enviados
+    )
+    console.log(
+      '[lembretes] erros:',
+      erros
+    )
     console.log(
       '[lembretes] duração:',
-      fim.getTime() - inicio.getTime(),
+      fim.getTime() -
+        inicio.getTime(),
       'ms'
     )
     console.log('================================================')
@@ -604,8 +808,9 @@ export async function POST(req: NextRequest) {
       processados,
       enviados,
       erros,
-      resultados,
+      resultados
     })
+
   } catch (error: any) {
     console.error(
       '[lembretes] ERRO GERAL DO PROCESSADOR:',
@@ -617,7 +822,7 @@ export async function POST(req: NextRequest) {
         ok: false,
         erro:
           error?.message ||
-          'Erro interno no processador de lembretes.',
+          'Erro interno no processador de lembretes.'
       },
       { status: 500 }
     )
@@ -629,10 +834,12 @@ export async function POST(req: NextRequest) {
  * TESTE TEMPORÁRIO
  * ============================================================
  *
- * Permite executar o mesmo processador pelo navegador.
+ * Mantemos o GET somente para testes.
  *
- * Depois que o teste funcionar, vamos REMOVER este GET
- * antes de ativarmos o Cron.
+ * Agora ele também exige CRON_SECRET.
+ *
+ * Depois que o Cron automático estiver confirmado,
+ * podemos remover este GET.
  */
 
 export async function GET(req: NextRequest) {
