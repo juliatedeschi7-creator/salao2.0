@@ -774,13 +774,13 @@ export default function PacotesClientesPage() {
                                 idx: number
                               ) => {
 
-                                const dataFormatada =
-                                  sessao.data
-                                    ? sessao.data
-                                        .split('-')
-                                        .reverse()
-                                        .join('/')
-                                    : ''
+const dataFormatada = sessao.data
+  ? sessao.data
+      .split('T')[0]
+      .split('-')
+      .reverse()
+      .join('/')
+  : ''
 
                                 return (
 
