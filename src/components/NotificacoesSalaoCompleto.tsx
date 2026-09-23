@@ -1567,21 +1567,18 @@ export default function NotificacoesDonoPage() {
       if (error) {
         throw error
       }
-      await notificar({
-        salaoId:
-          profile.salao_id,
-        remetenteId:
-          profile.id,
-        tipo:
-          'horarios_sugeridos',
-        titulo:
-          'Novos horários disponíveis',
-        mensagem: `O salão enviou novos horários para ${           modalSugestao.clientes?.nome ||           'você'         }.`,
-        destinatarioId:
-          modalSugestao.clientes?.profile_id ||
-          null,
-        url: '/cliente'
-      })
+   await notificar({
+  salaoId: profile.salao_id,
+  remetenteId: profile.id,
+  destinatarioId:
+    modalSugestao.clientes?.profile_id || null,
+  titulo: 'Novos horários disponíveis',
+  mensagem: `O salão enviou novos horários para ${
+    modalSugestao.clientes?.nome || 'você'
+  }.`,
+  tipo: 'horarios_sugeridos',
+  url: '/cliente',
+})
       setModalSugestao(null)
       setHorariosLivres([
         '',
