@@ -1,9 +1,21 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/hooks/useAuth'
-import { useRouter } from 'next/navigation'
+import {
+  useEffect,
+  useState
+} from 'react'
+
+import {
+  supabase
+} from '@/lib/supabase'
+
+import {
+  useAuth
+} from '@/lib/hooks/useAuth'
+
+import {
+  useRouter
+} from 'next/navigation'
 
 import {
   Calendar,
@@ -25,6 +37,9 @@ import {
 import {
   registrarPush,
   verificarPushAtivo,
+  verificarPushVinculadoAConta,
+  vincularPushAConta,
+  verificarPushDesativadoParaConta,
   obterPermissaoPush,
   verificarSuportePush,
   obterUltimoErroPush
@@ -38,7 +53,8 @@ export default function ClientePage() {
     signOut
   } = useAuth()
 
-  const router = useRouter()
+  const router =
+    useRouter()
 
   const [salao, setSalao] =
     useState<any>(null)
@@ -74,167 +90,402 @@ export default function ClientePage() {
     useState(true)
 
   // ============================================================
+  // ESTADO DO PUSH DA CONTA ATUAL
+  // ============================================================
+
+  const [pushAtivoConta, setPushAtivoConta] =
+    useState(false)
+
+  const [verificandoPush, setVerificandoPush] =
+    useState(true)
+
+  // ============================================================
   // AUTH
   // ============================================================
 
   useEffect(() => {
 
-    if (!loading && !profile) {
+    if (
+      !loading &&
+      !profile
+    ) {
+
       router.push('/login')
+
       return
     }
 
     if (profile) {
+
       carregarDados()
     }
 
-  }, [loading, profile])
+  }, [
+    loading,
+    profile
+  ])
 
   // ============================================================
   // VERIFICAR PUSH
   // ============================================================
 
-async function verificarStatusPush() {
+  async function verificarStatusPush() {
 
-  if (!profile?.id) {
-    return
-  }
+    if (!profile?.id) {
 
-  try {
-
-    console.log(
-      '[CLIENTE] ================================='
-    )
-
-    console.log(
-      '[CLIENTE] Verificando Push da página do cliente'
-    )
-
-    const suporte =
-      verificarSuportePush()
-
-    const permissao =
-      obterPermissaoPush()
-
-    console.log(
-      '[CLIENTE] Suporte:',
-      suporte
-    )
-
-    console.log(
-      '[CLIENTE] Permissão:',
-      permissao
-    )
-
-    if (!suporte) {
-
-      console.log(
-        '[CLIENTE] Este navegador não suporta Push'
-      )
-
-      setModalPushLembrete(false)
+      setVerificandoPush(false)
 
       return
     }
 
-    const pushAtivo =
-      await verificarPushAtivo(
-        profile.id
-      )
+    setVerificandoPush(true)
 
-    console.log(
-      '[CLIENTE] Push ativo neste dispositivo:',
-      pushAtivo
-    )
-
-    if (pushAtivo) {
+    try {
 
       console.log(
-        '[CLIENTE] Push ativo. Sincronizando subscription atual com o Supabase...'
+        '[CLIENTE] ================================='
       )
 
-      const sincronizado =
-        await registrarPush(
+      console.log(
+        '[CLIENTE] Verificando Push da página do cliente'
+      )
+
+      const suporte =
+        verificarSuportePush()
+
+      const permissao =
+        obterPermissaoPush()
+
+      console.log(
+        '[CLIENTE] Suporte:',
+        suporte
+      )
+
+      console.log(
+        '[CLIENTE] Permissão:',
+        permissao
+      )
+
+      if (!suporte) {
+
+        console.log(
+          '[CLIENTE] Este navegador não suporta Push'
+        )
+
+        setPushAtivoConta(false)
+        setModalPushLembrete(false)
+
+        return
+      }
+
+      // ========================================================
+      // A conta optou por desativar Push neste dispositivo.
+      //
+      // Não devemos vinculá-la automaticamente novamente.
+      // ========================================================
+
+      const desativadoLocal =
+        verificarPushDesativadoParaConta(
           profile.id
         )
 
       console.log(
-        '[CLIENTE] Resultado da sincronização da subscription:',
-        sincronizado
+        '[CLIENTE] Push desativado localmente para esta conta:',
+        desativadoLocal
       )
 
-      if (sincronizado) {
+      if (desativadoLocal) {
+
+        setPushAtivoConta(false)
+        setErroPush('')
 
         console.log(
-          '[CLIENTE] Subscription sincronizada com sucesso.'
+          '[CLIENTE] Conta marcada como Push desativado.'
         )
 
+        return
+      }
+
+      // ========================================================
+      // Existe Push no aparelho?
+      // ========================================================
+
+      const pushAtivo =
+        await verificarPushAtivo()
+
+      console.log(
+        '[CLIENTE] Existe Push ativo neste dispositivo:',
+        pushAtivo
+      )
+
+      // ========================================================
+      // NÃO EXISTE PUSH NO DISPOSITIVO
+      // ========================================================
+
+      if (!pushAtivo) {
+
+        console.log(
+          '[CLIENTE] Nenhuma subscription ativa encontrada neste dispositivo.'
+        )
+
+        setPushAtivoConta(false)
+        setErroPush('')
+
+        setModalPushLembrete(true)
+
+        return
+      }
+
+      // ========================================================
+      // VERIFICAR VÍNCULO COM A CONTA ATUAL
+      // ========================================================
+
+      const vinculado =
+        await verificarPushVinculadoAConta(
+          profile.id
+        )
+
+      console.log(
+        '[CLIENTE] Push vinculado à conta atual:',
+        vinculado
+      )
+
+      if (vinculado) {
+
+        console.log(
+          '[CLIENTE] Subscription já está vinculada à conta atual.'
+        )
+
+        setPushAtivoConta(true)
         setModalPushLembrete(false)
         setErroPush('')
 
+        return
+      }
+
+      // ========================================================
+      // EXISTE PUSH NO DISPOSITIVO, MAS NÃO ESTÁ VINCULADO
+      //
+      // Se a permissão estiver concedida, usamos a mesma
+      // subscription para a conta atual.
+      // ========================================================
+
+      if (
+        permissao === 'granted'
+      ) {
+
+        console.log(
+          '[CLIENTE] Existe Push no dispositivo, mas não está vinculado à conta atual.'
+        )
+
+        console.log(
+          '[CLIENTE] Vinculando subscription existente à conta atual...'
+        )
+
+        const vinculacao =
+          await vincularPushAConta(
+            profile.id
+          )
+
+        console.log(
+          '[CLIENTE] Resultado do vínculo:',
+          vinculacao
+        )
+
+        if (vinculacao) {
+
+          console.log(
+            '[CLIENTE] Subscription existente vinculada à conta atual com sucesso.'
+          )
+
+          setPushAtivoConta(true)
+          setModalPushLembrete(false)
+          setErroPush('')
+
+        } else {
+
+          const erro =
+            obterUltimoErroPush()
+
+          console.error(
+            '[CLIENTE] Falha ao vincular a subscription à conta atual.'
+          )
+
+          console.error(
+            '[CLIENTE] Último erro do Push:',
+            erro
+          )
+
+          setPushAtivoConta(false)
+
+          setErroPush(
+            erro ||
+            'Não foi possível vincular as notificações a esta conta.'
+          )
+
+          setModalPushLembrete(true)
+        }
+
       } else {
 
-        const erro =
-          obterUltimoErroPush()
-
-        console.error(
-          '[CLIENTE] Falha ao sincronizar Push.'
+        console.log(
+          '[CLIENTE] Existe Push no dispositivo, mas a permissão não está concedida.'
         )
 
-        console.error(
-          '[CLIENTE] Último erro do Push:',
-          erro
-        )
-
-        setErroPush(
-          erro ||
-          'Não foi possível sincronizar as notificações deste dispositivo.'
-        )
-
-        // IMPORTANTE:
-        // Agora vamos mostrar o modal quando a sincronização falhar.
+        setPushAtivoConta(false)
+        setErroPush('')
         setModalPushLembrete(true)
       }
 
-    } else {
+    } catch (error: any) {
 
-      console.log(
-        '[CLIENTE] Nenhuma subscription ativa encontrada neste dispositivo.'
+      console.error(
+        '[CLIENTE] Erro ao verificar Push:',
+        error
       )
 
-      setErroPush('')
+      const erro =
+        obterUltimoErroPush()
+
+      console.error(
+        '[CLIENTE] Último erro registrado pelo Push:',
+        erro
+      )
+
+      setPushAtivoConta(false)
+
+      setErroPush(
+        erro ||
+        error?.message ||
+        'Não foi possível verificar as notificações.'
+      )
 
       setModalPushLembrete(true)
+
+    } finally {
+
+      setVerificandoPush(false)
+
+      console.log(
+        '[CLIENTE] ================================='
+      )
+    }
+  }
+
+  // ============================================================
+  // CARREGAR CONTADOR DE NOTIFICAÇÕES
+  // ============================================================
+
+  async function carregarContadorNotificacoes() {
+
+    if (!profile?.id) {
+      return
     }
 
-    console.log(
-      '[CLIENTE] ================================='
-    )
+    try {
 
-  } catch (error: any) {
+      const {
+        count: notifs,
+        error
+      } = await supabase
+        .from('notificacoes')
+        .select(
+          '*',
+          {
+            count: 'exact',
+            head: true
+          }
+        )
+        .eq(
+          'destinatario_id',
+          profile.id
+        )
+        .eq(
+          'lida',
+          false
+        )
 
-    console.error(
-      '[CLIENTE] Erro ao verificar Push:',
-      error
-    )
+      if (error) {
 
-    const erro =
-      obterUltimoErroPush()
+        console.error(
+          '[CLIENTE] Erro ao atualizar contador de notificações:',
+          error
+        )
 
-    console.error(
-      '[CLIENTE] Último erro registrado pelo Push:',
-      erro
-    )
+        return
+      }
 
-    setErroPush(
-      erro ||
-      error?.message ||
-      'Não foi possível verificar as notificações.'
-    )
+      setNotifCount(
+        notifs || 0
+      )
 
-    setModalPushLembrete(true)
+    } catch (error) {
+
+      console.error(
+        '[CLIENTE] Erro ao carregar contador de notificações:',
+        error
+      )
+    }
   }
-}
+
+  // ============================================================
+  // REALTIME DAS NOTIFICAÇÕES
+  // ============================================================
+
+  useEffect(() => {
+
+    if (!profile?.id) {
+      return
+    }
+
+    const channel =
+      supabase
+        .channel(
+          `cliente-notificacoes-${profile.id}`
+        )
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notificacoes',
+            filter:
+              `destinatario_id=eq.${profile.id}`
+          },
+          async (payload) => {
+
+            console.log(
+              '[CLIENTE] Alteração recebida nas notificações:',
+              payload
+            )
+
+            await carregarContadorNotificacoes()
+          }
+        )
+        .subscribe(
+          (status) => {
+
+            console.log(
+              '[CLIENTE] Status Realtime notificações:',
+              status
+            )
+          }
+        )
+
+    return () => {
+
+      console.log(
+        '[CLIENTE] Removendo canal Realtime das notificações.'
+      )
+
+      supabase.removeChannel(
+        channel
+      )
+    }
+
+  }, [
+    profile?.id
+  ])
 
   // ============================================================
   // CARREGAR DADOS
@@ -242,7 +493,9 @@ async function verificarStatusPush() {
 
   async function carregarDados() {
 
-    if (!profile) return
+    if (!profile) {
+      return
+    }
 
     setCarregandoDados(true)
 
@@ -297,7 +550,8 @@ async function verificarStatusPush() {
           )
           .maybeSingle()
 
-        salaoEncontrado = sal
+        salaoEncontrado =
+          sal
       }
 
       setSalao(
@@ -342,7 +596,6 @@ async function verificarStatusPush() {
               '[CLIENTE] Erro ao buscar agendamentos:',
               erroAgendamentos
             )
-
           }
 
           setAgendamentos(
@@ -361,11 +614,6 @@ async function verificarStatusPush() {
 
         // ======================================================
         // PACOTES
-        //
-        // A estrutura atual do sistema usa:
-        // pacotes_clientes_resumo
-        //
-        // O vínculo é feito pelo nome do cliente.
         // ======================================================
 
         try {
@@ -395,7 +643,9 @@ async function verificarStatusPush() {
           } else {
 
             const ativos =
-              (pacotesCliente || []).filter(
+              (
+                pacotesCliente || []
+              ).filter(
                 (p: any) =>
                   p.status === 'ativo'
               )
@@ -429,46 +679,7 @@ async function verificarStatusPush() {
         // NOTIFICAÇÕES
         // ======================================================
 
-        try {
-
-          const {
-            count: notifs,
-            error: erroNotificacoes
-          } = await supabase
-            .from('notificacoes')
-            .select(
-              '*',
-              {
-                count: 'exact',
-                head: true
-              }
-            )
-            .eq(
-              'destinatario_id',
-              profile.id
-            )
-            .eq(
-              'lida',
-              false
-            )
-
-          if (erroNotificacoes) {
-
-            console.error(
-              '[CLIENTE] Erro ao buscar notificações:',
-              erroNotificacoes
-            )
-
-          }
-
-          setNotifCount(
-            notifs || 0
-          )
-
-        } catch {
-
-          setNotifCount(0)
-        }
+        await carregarContadorNotificacoes()
 
         // ======================================================
         // CONTRATOS
@@ -499,7 +710,6 @@ async function verificarStatusPush() {
               '[CLIENTE] Erro ao buscar contratos:',
               erroContratos
             )
-
           }
 
           setContratosCount(
@@ -540,7 +750,6 @@ async function verificarStatusPush() {
               '[CLIENTE] Erro ao buscar contas:',
               erroContas
             )
-
           }
 
           setContasCount(
@@ -608,7 +817,9 @@ async function verificarStatusPush() {
       // SUPORTE
       // ========================================================
 
-      if (!verificarSuportePush()) {
+      if (
+        !verificarSuportePush()
+      ) {
 
         setErroPush(
           'Este navegador ou dispositivo não oferece suporte a notificações Push.'
@@ -633,7 +844,9 @@ async function verificarStatusPush() {
       // SE BLOQUEADO
       // ========================================================
 
-      if (permissao === 'denied') {
+      if (
+        permissao === 'denied'
+      ) {
 
         setErroPush(
           'As notificações estão bloqueadas neste dispositivo. Ative as notificações do Organiza Salão nas configurações do navegador/iPhone e depois tente novamente.'
@@ -643,7 +856,7 @@ async function verificarStatusPush() {
       }
 
       // ========================================================
-      // REGISTRAR PUSH
+      // REGISTRAR / REATIVAR PUSH
       // ========================================================
 
       const resultado =
@@ -664,25 +877,71 @@ async function verificarStatusPush() {
 
         setErroPush('')
 
-        const ativo =
-          await verificarPushAtivo(
+        const vinculado =
+          await verificarPushVinculadoAConta(
             profile.id
           )
 
         console.log(
-          '[CLIENTE] Push confirmado:',
-          ativo
+          '[CLIENTE] Push vinculado à conta atual:',
+          vinculado
         )
 
-        if (ativo) {
+        if (vinculado) {
 
+          console.log(
+            '[CLIENTE] Push confirmado e vinculado à conta atual.'
+          )
+
+          setPushAtivoConta(true)
           setModalPushLembrete(false)
 
           return
         }
 
+        // ======================================================
+        // Tentar vincular subscription existente
+        // ======================================================
+
+        console.log(
+          '[CLIENTE] Subscription existe, mas não foi confirmada na conta atual. Tentando vincular...'
+        )
+
+        const vinculacao =
+          await vincularPushAConta(
+            profile.id
+          )
+
+        console.log(
+          '[CLIENTE] Resultado do vínculo após ativação:',
+          vinculacao
+        )
+
+        if (vinculacao) {
+
+          const confirmado =
+            await verificarPushVinculadoAConta(
+              profile.id
+            )
+
+          console.log(
+            '[CLIENTE] Push confirmado após vínculo:',
+            confirmado
+          )
+
+          if (confirmado) {
+
+            setPushAtivoConta(true)
+            setModalPushLembrete(false)
+
+            return
+          }
+        }
+
+        setPushAtivoConta(false)
+
         setErroPush(
-          'A permissão foi concedida, mas não conseguimos confirmar a inscrição deste dispositivo. Tente novamente.'
+          'A permissão foi concedida, mas não conseguimos confirmar o vínculo das notificações com esta conta. Tente novamente.'
         )
 
         return
@@ -700,7 +959,9 @@ async function verificarStatusPush() {
         permissao
       )
 
-      if (permissao === 'denied') {
+      if (
+        permissao === 'denied'
+      ) {
 
         setErroPush(
           'As notificações foram bloqueadas. Para ativá-las, permita as notificações do Organiza Salão nas configurações do navegador/iPhone.'
@@ -709,7 +970,9 @@ async function verificarStatusPush() {
         return
       }
 
-      if (permissao === 'default') {
+      if (
+        permissao === 'default'
+      ) {
 
         setErroPush(
           'A permissão para notificações ainda não foi concedida. Toque novamente em "Ativar notificações".'
@@ -733,6 +996,8 @@ async function verificarStatusPush() {
         '[CLIENTE] Mensagem:',
         err?.message
       )
+
+      setPushAtivoConta(false)
 
       setErroPush(
         'Ocorreu um erro ao ativar as notificações. Tente novamente.'
@@ -882,7 +1147,10 @@ async function verificarStatusPush() {
   // LOADING
   // ============================================================
 
-  if (loading && !profile) {
+  if (
+    loading &&
+    !profile
+  ) {
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -902,7 +1170,8 @@ async function verificarStatusPush() {
     <div
       className="min-h-screen"
       style={{
-        backgroundColor: '#f0f0f5'
+        backgroundColor:
+          '#f0f0f5'
       }}
     >
 
@@ -918,7 +1187,8 @@ async function verificarStatusPush() {
       <div
         className="relative overflow-hidden"
         style={{
-          backgroundColor: cor,
+          backgroundColor:
+            cor,
           minHeight: 240
         }}
       >
@@ -945,27 +1215,55 @@ async function verificarStatusPush() {
 
           <div className="flex items-center gap-2">
 
+            {/* ================================================= */}
+            {/* SININHO */}
+            {/* ================================================= */}
+
             <button
               onClick={() =>
                 router.push(
                   '/cliente/notificacoes'
                 )
               }
-              className="relative w-10 h-10 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center"
+              className={`
+                relative
+                w-10
+                h-10
+                rounded-2xl
+                backdrop-blur
+                flex
+                items-center
+                justify-center
+                transition-all
+                ${notifCount > 0
+                  ? 'bg-white/35 scale-105 shadow-lg'
+                  : 'bg-white/20'}
+              `}
             >
 
               <Bell
-                size={18}
+                size={
+                  notifCount > 0
+                    ? 20
+                    : 18
+                }
                 className="text-white"
               />
 
               {notifCount > 0 && (
 
-                <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-400 text-white text-[10px] flex items-center justify-center font-bold border-2 border-white">
+                <>
+                  <span className="absolute inset-0 rounded-2xl border-2 border-white/50 animate-pulse" />
 
-                  {notifCount}
+                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-400 text-white text-[10px] flex items-center justify-center font-bold border-2 border-white shadow-sm">
 
-                </span>
+                    {notifCount > 99
+                      ? '99+'
+                      : notifCount}
+
+                  </span>
+                </>
+
               )}
 
             </button>
@@ -974,7 +1272,8 @@ async function verificarStatusPush() {
 
               {profile?.nome
                 ?.charAt(0)
-                .toUpperCase() || 'C'}
+                .toUpperCase() ||
+                'C'}
 
             </div>
 
@@ -993,11 +1292,14 @@ async function verificarStatusPush() {
             style={{
               fontFamily:
                 "'Dancing Script', cursive",
-              fontSize: '2rem',
-              fontWeight: 700,
+              fontSize:
+                '2rem',
+              fontWeight:
+                700,
               textShadow:
                 '0 2px 12px rgba(0,0,0,0.15)',
-              lineHeight: 1.2
+              lineHeight:
+                1.2
             }}
           >
             {nomePrincipal}
@@ -1024,12 +1326,113 @@ async function verificarStatusPush() {
       </div>
 
       {/* ====================================================== */}
+      {/* STATUS DO PUSH */}
+      {/* ====================================================== */}
+
+      {!verificandoPush && (
+        <div className="px-4 -mt-5 relative z-10 mb-3">
+
+          <button
+            onClick={() => {
+
+              if (
+                pushAtivoConta
+              ) {
+                return
+              }
+
+              setErroPush('')
+
+              setModalPushLembrete(true)
+            }}
+            className={`
+              w-full
+              rounded-2xl
+              px-4
+              py-3
+              flex
+              items-center
+              gap-3
+              shadow-md
+              text-left
+              transition-all
+              ${pushAtivoConta
+                ? 'bg-white'
+                : 'bg-white active:scale-[0.98]'}
+            `}
+          >
+
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{
+                backgroundColor:
+                  pushAtivoConta
+                    ? `${cor}18`
+                    : '#fee2e2'
+              }}
+            >
+
+              <Bell
+                size={18}
+                style={{
+                  color:
+                    pushAtivoConta
+                      ? cor
+                      : '#ef4444'
+                }}
+              />
+
+            </div>
+
+            <div className="flex-1 min-w-0">
+
+              <p className="text-xs text-gray-400 font-medium">
+                Notificações
+              </p>
+
+              <p className="text-sm font-bold text-gray-900">
+                {pushAtivoConta
+                  ? 'Ativadas neste dispositivo'
+                  : 'Notificações desativadas'}
+              </p>
+
+            </div>
+
+            {!pushAtivoConta && (
+
+              <span
+                className="text-xs font-bold shrink-0"
+                style={{
+                  color: cor
+                }}
+              >
+                Ativar
+              </span>
+
+            )}
+
+          </button>
+
+        </div>
+      )}
+
+      {/* ====================================================== */}
       {/* PRÓXIMO AGENDAMENTO */}
       {/* ====================================================== */}
 
       {proximos.length > 0 && (
 
-        <div className="px-4 -mt-5 relative z-10 mb-3">
+        <div
+          className={`
+            px-4
+            relative
+            z-10
+            mb-3
+            ${verificandoPush
+              ? '-mt-5'
+              : 'mt-0'}
+          `}
+        >
 
           <button
             onClick={() =>
@@ -1043,7 +1446,8 @@ async function verificarStatusPush() {
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
               style={{
-                backgroundColor: `${cor}18`
+                backgroundColor:
+                  `${cor}18`
               }}
             >
 
@@ -1073,9 +1477,12 @@ async function verificarStatusPush() {
                 ).toLocaleDateString(
                   'pt-BR',
                   {
-                    weekday: 'short',
-                    day: 'numeric',
-                    month: 'short'
+                    weekday:
+                      'short',
+                    day:
+                      'numeric',
+                    month:
+                      'short'
                   }
                 )}
 
@@ -1086,8 +1493,10 @@ async function verificarStatusPush() {
                 ).toLocaleTimeString(
                   'pt-BR',
                   {
-                    hour: '2-digit',
-                    minute: '2-digit'
+                    hour:
+                      '2-digit',
+                    minute:
+                      '2-digit'
                   }
                 )}
 
@@ -1149,14 +1558,16 @@ async function verificarStatusPush() {
                 <div
                   className="absolute -bottom-4 -right-4 w-16 h-16 rounded-full opacity-5"
                   style={{
-                    backgroundColor: cor
+                    backgroundColor:
+                      cor
                   }}
                 />
 
                 <div
                   className="w-11 h-11 rounded-2xl flex items-center justify-center"
                   style={{
-                    backgroundColor: `${cor}15`
+                    backgroundColor:
+                      `${cor}15`
                   }}
                 >
 
@@ -1186,7 +1597,8 @@ async function verificarStatusPush() {
                   <div
                     className="absolute top-3 right-3 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
                     style={{
-                      backgroundColor: cor
+                      backgroundColor:
+                        cor
                     }}
                   >
                     {badge}
@@ -1217,7 +1629,8 @@ async function verificarStatusPush() {
             <div
               className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
               style={{
-                backgroundColor: `${cor}15`
+                backgroundColor:
+                  `${cor}15`
               }}
             >
 
@@ -1269,7 +1682,8 @@ async function verificarStatusPush() {
             <div
               className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
               style={{
-                backgroundColor: `${cor}15`
+                backgroundColor:
+                  `${cor}15`
               }}
             >
 
@@ -1320,7 +1734,8 @@ async function verificarStatusPush() {
             <div
               className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
               style={{
-                backgroundColor: `${cor}15`
+                backgroundColor:
+                  `${cor}15`
               }}
             >
 
@@ -1387,70 +1802,79 @@ async function verificarStatusPush() {
 
               {historico
                 .slice(0, 3)
-                .map((ag: any) => (
-
-                  <div
-                    key={ag.id}
-                    className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm"
-                  >
+                .map(
+                  (ag: any) => (
 
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                      style={{
-                        backgroundColor: `${cor}12`
-                      }}
+                      key={ag.id}
+                      className="bg-white rounded-2xl px-4 py-3 flex items-center gap-3 shadow-sm"
                     >
 
-                      <Scissors
-                        size={16}
+                      <div
+                        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                         style={{
-                          color: cor
-                        }}
-                      />
-
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-
-                      <p className="text-sm font-semibold text-gray-900 truncate">
-                        {ag.servicos?.nome}
-                      </p>
-
-                      <p className="text-xs text-gray-400">
-
-                        {new Date(
-                          ag.data_hora
-                        ).toLocaleDateString(
-                          'pt-BR',
-                          {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric'
-                          }
-                        )}
-
-                      </p>
-
-                    </div>
-
-                    {ag.valor && (
-
-                      <p
-                        className="text-sm font-bold shrink-0"
-                        style={{
-                          color: cor
+                          backgroundColor:
+                            `${cor}12`
                         }}
                       >
-                        R$ {Number(
-                          ag.valor
-                        )
-                          .toFixed(2)
-                          .replace('.', ',')}
-                      </p>
-                    )}
 
-                  </div>
-                ))}
+                        <Scissors
+                          size={16}
+                          style={{
+                            color: cor
+                          }}
+                        />
+
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+
+                        <p className="text-sm font-semibold text-gray-900 truncate">
+                          {ag.servicos?.nome}
+                        </p>
+
+                        <p className="text-xs text-gray-400">
+
+                          {new Date(
+                            ag.data_hora
+                          ).toLocaleDateString(
+                            'pt-BR',
+                            {
+                              day:
+                                '2-digit',
+                              month:
+                                'short',
+                              year:
+                                'numeric'
+                            }
+                          )}
+
+                        </p>
+
+                      </div>
+
+                      {ag.valor && (
+
+                        <p
+                          className="text-sm font-bold shrink-0"
+                          style={{
+                            color: cor
+                          }}
+                        >
+                          R$ {Number(
+                            ag.valor
+                          )
+                            .toFixed(2)
+                            .replace(
+                              '.',
+                              ','
+                            )}
+                        </p>
+                      )}
+
+                    </div>
+                  )
+                )}
 
             </div>
 
@@ -1516,7 +1940,9 @@ async function verificarStatusPush() {
           className="flex items-center justify-center gap-2 text-gray-400 text-sm py-2"
         >
 
-          <LogOut size={15} />
+          <LogOut
+            size={15}
+          />
 
           Sair da conta
 
@@ -1592,9 +2018,7 @@ async function verificarStatusPush() {
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
 
                   <p className="text-red-600 text-sm">
-
                     {erroPush}
-
                   </p>
 
                 </div>
@@ -1609,7 +2033,8 @@ async function verificarStatusPush() {
                 disabled={ativandoPush}
                 className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
                 style={{
-                  backgroundColor: cor
+                  backgroundColor:
+                    cor
                 }}
               >
 
@@ -1620,7 +2045,9 @@ async function verificarStatusPush() {
                 ) : (
 
                   <>
-                    <Bell size={16} />
+                    <Bell
+                      size={16}
+                    />
 
                     {obterPermissaoPush() === 'denied'
                       ? 'Ver como ativar notificações'
@@ -1641,6 +2068,8 @@ async function verificarStatusPush() {
                 }
                 className="w-full py-3 text-gray-400 text-sm font-medium"
               >
+
+                Agora não
 
               </button>
 
