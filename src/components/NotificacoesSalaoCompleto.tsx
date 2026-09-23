@@ -1567,7 +1567,7 @@ export default function NotificacoesDonoPage() {
       if (error) {
         throw error
       }
-   await notificar({
+await notificar({
   salaoId: profile.salao_id,
   remetenteId: profile.id,
   destinatarioId:
