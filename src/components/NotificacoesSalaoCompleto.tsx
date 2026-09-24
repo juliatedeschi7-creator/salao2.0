@@ -1539,20 +1539,14 @@ console.log('[Central] ENVIO DE NOTIFICAÇÃO', {
   cliente: modalSugestao.clientes,
 })
 await notificar({
-        salaoId:
-          profile.salao_id,
-        remetenteId:
-          profile.id,
-        tipo:
-          'horarios_sugeridos',
-        titulo:
-          'Novos horários disponíveis',
-        mensagem: `O salão enviou novos horários para ${           modalSugestao.clientes?.nome ||           'você'         }.`,
-        destinatarioId:
-          modalSugestao.clientes?.profile_id ||
-          null,
-        url: '/cliente'
-      })
+  salaoId: profile.salao_id,
+  remetenteId: profile.id,
+  destinatarioId: modalSugestao.clientes?.profile_id || null,
+  tipo: 'horarios_sugeridos',
+  titulo: 'Horários disponíveis',
+  mensagem: `O salão sugeriu novos horários para seu agendamento.`,
+  url: '/cliente',
+})
       setModalSugestao(null)
       setHorariosLivres([
         '',
