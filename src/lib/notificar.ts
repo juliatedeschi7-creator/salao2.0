@@ -19,8 +19,17 @@ export async function notificar({
   tipo,
   url,
 }: NotificarParams): Promise<void> {
+  console.log('[notificar] INÍCIO', {
+    salaoId,
+    remetenteId,
+    destinatarioId,
+    titulo,
+    tipo,
+    url,
+  })
+
   if (!destinatarioId || !salaoId || !remetenteId) {
-    console.log('[notificar] dados insuficientes', {
+    console.log('[notificar] DADOS INSUFICIENTES', {
       salaoId,
       remetenteId,
       destinatarioId,
@@ -29,9 +38,7 @@ export async function notificar({
   }
 
   try {
-    // ============================================================
-    // 1. SALVA A NOTIFICAÇÃO NO SININHO
-    // ============================================================
+    console.log('[notificar] tentando salvar no sininho...')
 
     const { error: insertError } = await supabase
       .from('notificacoes')
@@ -47,19 +54,17 @@ export async function notificar({
       })
 
     if (insertError) {
-      console.error(
-        '[notificar] erro ao salvar no sininho:',
-        insertError
-      )
+      console.error('[notificar] ERRO AO SALVAR NO SININHO', {
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        code: insertError.code,
+      })
     } else {
-      console.log(
-        '[notificar] notificação salva no sininho com sucesso'
-      )
+      console.log('[notificar] SINO SALVO COM SUCESSO')
     }
 
-    // ============================================================
-    // 2. ENVIA O PUSH
-    // ============================================================
+    console.log('[notificar] chamando API de Push...')
 
     try {
       const resposta = await fetch('/api/notificar', {
@@ -87,27 +92,19 @@ export async function notificar({
       }
 
       if (!resposta.ok) {
-        console.error(
-          '[notificar] erro HTTP ao enviar Push:',
-          resposta.status,
-          resultado
-        )
+        console.error('[notificar] ERRO HTTP NO PUSH', {
+          status: resposta.status,
+          resultado,
+        })
       } else {
-        console.log(
-          '[notificar] resultado do Push:',
-          resultado
-        )
+        console.log('[notificar] PUSH PROCESSADO', resultado)
       }
     } catch (pushError) {
-      console.error(
-        '[notificar] erro ao chamar API de Push:',
-        pushError
-      )
+      console.error('[notificar] ERRO AO CHAMAR API DE PUSH', pushError)
     }
   } catch (error) {
-    console.error(
-      '[notificar] erro geral:',
-      error
-    )
+    console.error('[notificar] ERRO GERAL', error)
   }
+
+  console.log('[notificar] FIM')
 }
