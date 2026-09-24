@@ -1531,7 +1531,14 @@ export default function NotificacoesDonoPage() {
       if (error) {
         throw error
       }
-      await notificar({
+console.log('[Central] ENVIO DE NOTIFICAÇÃO', {
+  salaoId: profile.salao_id,
+  remetenteId: profile.id,
+  destinatarioId: modalSugestao.clientes?.profile_id,
+  clienteId: modalSugestao.cliente_id,
+  cliente: modalSugestao.clientes,
+})
+await notificar({
         salaoId:
           profile.salao_id,
         remetenteId:
