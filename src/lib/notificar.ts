@@ -34,6 +34,16 @@ export async function notificar({
       remetenteId,
       destinatarioId,
     })
+
+    if (typeof window !== 'undefined') {
+      window.alert(
+        `Erro ao criar notificação.\n\nDados insuficientes:\n` +
+        `salaoId: ${salaoId || 'ausente'}\n` +
+        `remetenteId: ${remetenteId || 'ausente'}\n` +
+        `destinatarioId: ${destinatarioId || 'ausente'}`
+      )
+    }
+
     return
   }
 
@@ -50,7 +60,6 @@ export async function notificar({
         mensagem,
         tipo,
         lida: false,
-        url: url || null,
       })
 
     if (insertError) {
@@ -60,6 +69,16 @@ export async function notificar({
         hint: insertError.hint,
         code: insertError.code,
       })
+
+      if (typeof window !== 'undefined') {
+        window.alert(
+          `ERRO AO SALVAR A NOTIFICAÇÃO\n\n` +
+          `Mensagem: ${insertError.message || 'não informado'}\n\n` +
+          `Código: ${insertError.code || 'não informado'}\n\n` +
+          `Detalhes: ${insertError.details || 'não informado'}\n\n` +
+          `Hint: ${insertError.hint || 'não informado'}`
+        )
+      }
     } else {
       console.log('[notificar] SINO SALVO COM SUCESSO')
     }
@@ -100,10 +119,20 @@ export async function notificar({
         console.log('[notificar] PUSH PROCESSADO', resultado)
       }
     } catch (pushError) {
-      console.error('[notificar] ERRO AO CHAMAR API DE PUSH', pushError)
+      console.error(
+        '[notificar] ERRO AO CHAMAR API DE PUSH',
+        pushError
+      )
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('[notificar] ERRO GERAL', error)
+
+    if (typeof window !== 'undefined') {
+      window.alert(
+        `ERRO GERAL AO CRIAR NOTIFICAÇÃO\n\n` +
+        `${error?.message || 'Erro desconhecido'}`
+      )
+    }
   }
 
   console.log('[notificar] FIM')
