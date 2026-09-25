@@ -100,6 +100,16 @@ export default function ClientePage() {
     useState(true)
 
   // ============================================================
+  // ESTADO DO TESTE DE PUSH
+  // ============================================================
+
+  const [testandoPush, setTestandoPush] =
+    useState(false)
+
+  const [resultadoTestePush, setResultadoTestePush] =
+    useState('')
+
+  // ============================================================
   // AUTH
   // ============================================================
 
@@ -365,6 +375,148 @@ export default function ClientePage() {
     } finally {
 
       setVerificandoPush(false)
+
+      console.log(
+        '[CLIENTE] ================================='
+      )
+    }
+  }
+
+  // ============================================================
+  // TESTAR PUSH DA CONTA ATUAL
+  // ============================================================
+
+  async function testarPushCliente() {
+
+    if (!profile?.id) {
+
+      setResultadoTestePush(
+        'Não foi possível identificar sua conta.'
+      )
+
+      return
+    }
+
+    if (testandoPush) {
+      return
+    }
+
+    setTestandoPush(true)
+    setResultadoTestePush('')
+
+    try {
+
+      console.log(
+        '[CLIENTE] ================================='
+      )
+
+      console.log(
+        '[CLIENTE] TESTE REAL DE PUSH'
+      )
+
+      console.log(
+        '[CLIENTE] Destinatário:',
+        profile.id
+      )
+
+      const resposta =
+        await fetch(
+          '/api/notificar',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type':
+                'application/json'
+            },
+            body: JSON.stringify({
+              salaoId:
+                profile.salao_id || null,
+
+              remetenteId:
+                profile.id,
+
+              destinatarioId:
+                profile.id,
+
+              titulo:
+                '🔔 Teste de notificação',
+
+              mensagem:
+                'Se você recebeu esta mensagem, o Push da sua conta está funcionando corretamente.',
+
+              tipo:
+                'teste_push_cliente',
+
+              url:
+                '/cliente'
+            })
+          }
+        )
+
+      let resultado: any = null
+
+      try {
+
+        resultado =
+          await resposta.json()
+
+      } catch {
+
+        resultado = null
+      }
+
+      console.log(
+        '[CLIENTE] Resposta do teste:',
+        {
+          status:
+            resposta.status,
+
+          resultado
+        }
+      )
+
+      if (!resposta.ok) {
+
+        setResultadoTestePush(
+          resultado?.erro ||
+          `Erro HTTP ${resposta.status} ao testar o Push.`
+        )
+
+        return
+      }
+
+      if (
+        resultado?.pushEnviado &&
+        resultado?.enviados > 0
+      ) {
+
+        setResultadoTestePush(
+          'Push enviado pelo servidor. Verifique se a notificação apareceu neste iPhone.'
+        )
+
+      } else {
+
+        setResultadoTestePush(
+          resultado?.motivo ||
+          'O servidor não encontrou uma subscription ativa para esta conta.'
+        )
+      }
+
+    } catch (error: any) {
+
+      console.error(
+        '[CLIENTE] Erro no teste de Push:',
+        error
+      )
+
+      setResultadoTestePush(
+        error?.message ||
+        'Não foi possível realizar o teste de Push.'
+      )
+
+    } finally {
+
+      setTestandoPush(false)
 
       console.log(
         '[CLIENTE] ================================='
@@ -1332,86 +1484,159 @@ export default function ClientePage() {
       {!verificandoPush && (
         <div className="px-4 -mt-5 relative z-10 mb-3">
 
-          <button
-            onClick={() => {
-
-              if (
-                pushAtivoConta
-              ) {
-                return
-              }
-
-              setErroPush('')
-
-              setModalPushLembrete(true)
-            }}
-            className={`
+          <div
+            className="
               w-full
               rounded-2xl
               px-4
               py-3
-              flex
-              items-center
-              gap-3
               shadow-md
-              text-left
-              transition-all
-              ${pushAtivoConta
-                ? 'bg-white'
-                : 'bg-white active:scale-[0.98]'}
-            `}
+              bg-white
+            "
           >
 
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{
-                backgroundColor:
-                  pushAtivoConta
-                    ? `${cor}18`
-                    : '#fee2e2'
-              }}
-            >
+            <div className="flex items-center gap-3">
 
-              <Bell
-                size={18}
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
                 style={{
-                  color:
+                  backgroundColor:
                     pushAtivoConta
-                      ? cor
-                      : '#ef4444'
-                }}
-              />
-
-            </div>
-
-            <div className="flex-1 min-w-0">
-
-              <p className="text-xs text-gray-400 font-medium">
-                Notificações
-              </p>
-
-              <p className="text-sm font-bold text-gray-900">
-                {pushAtivoConta
-                  ? 'Ativadas neste dispositivo'
-                  : 'Notificações desativadas'}
-              </p>
-
-            </div>
-
-            {!pushAtivoConta && (
-
-              <span
-                className="text-xs font-bold shrink-0"
-                style={{
-                  color: cor
+                      ? `${cor}18`
+                      : '#fee2e2'
                 }}
               >
-                Ativar
-              </span>
+
+                <Bell
+                  size={18}
+                  style={{
+                    color:
+                      pushAtivoConta
+                        ? cor
+                        : '#ef4444'
+                  }}
+                />
+
+              </div>
+
+              <div className="flex-1 min-w-0">
+
+                <p className="text-xs text-gray-400 font-medium">
+                  Notificações
+                </p>
+
+                <p className="text-sm font-bold text-gray-900">
+                  {pushAtivoConta
+                    ? 'Ativadas neste dispositivo'
+                    : 'Notificações desativadas'}
+                </p>
+
+              </div>
+
+              {!pushAtivoConta && (
+
+                <button
+                  onClick={() => {
+
+                    setErroPush('')
+
+                    setModalPushLembrete(true)
+
+                  }}
+                  className="text-xs font-bold shrink-0"
+                  style={{
+                    color:
+                      cor
+                  }}
+                >
+                  Ativar
+                </button>
+
+              )}
+
+            </div>
+
+            {/* ================================================== */}
+            {/* TESTE REAL DE PUSH */}
+            {/* ================================================== */}
+
+            {pushAtivoConta && (
+
+              <div className="mt-3 pt-3 border-t border-gray-100">
+
+                <button
+                  onClick={testarPushCliente}
+                  disabled={testandoPush}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+                  style={{
+                    backgroundColor:
+                      `${cor}12`,
+                    color:
+                      cor
+                  }}
+                >
+
+                  {testandoPush ? (
+
+                    <>
+                      <div
+                        className="w-4 h-4 border-2 rounded-full animate-spin"
+                        style={{
+                          borderColor:
+                            `${cor}40`,
+                          borderTopColor:
+                            cor
+                        }}
+                      />
+
+                      Enviando teste...
+
+                    </>
+
+                  ) : (
+
+                    <>
+                      <Bell
+                        size={15}
+                      />
+
+                      Testar notificação
+
+                    </>
+
+                  )}
+
+                </button>
+
+                {resultadoTestePush && (
+
+                  <div
+                    className="mt-2 rounded-xl px-3 py-2"
+                    style={{
+                      backgroundColor:
+                        `${cor}08`
+                    }}
+                  >
+
+                    <p
+                      className="text-xs leading-relaxed"
+                      style={{
+                        color:
+                          cor
+                      }}
+                    >
+                      {resultadoTestePush}
+                    </p>
+
+                  </div>
+
+                )}
+
+              </div>
 
             )}
 
-          </button>
+          </div>
 
         </div>
       )}
