@@ -304,9 +304,10 @@ export default function ClientesPage() {
   }
 
   /*
-   * Executa uma etapa da mesclagem e transforma o erro em uma
-   * mensagem legível. Isso evita o antigo comportamento em que
-   * o botão ficava simplesmente em "Mesclando...".
+   * Executa uma etapa da mesclagem.
+   *
+   * As tabelas usadas aqui foram confirmadas no banco como relações
+   * reais com clientes.id através de FOREIGN KEY.
    */
   async function executarEtapa(
     tabela: string,
@@ -329,13 +330,30 @@ export default function ClientesPage() {
   /*
    * MESCLAGEM COMPLETA
    *
-   * A ordem é proposital:
-   * 1. Remove sugestões que apontam para o duplicado.
-   * 2. Transfere todos os registros das tabelas filhas.
-   * 3. Só então exclui o cadastro duplicado.
+   * A mesclagem trabalha somente com relações reais existentes
+   * no banco.
    *
-   * Não usamos ON DELETE CASCADE para "resolver" a mesclagem,
-   * porque isso poderia apagar histórico que deveria ser preservado.
+   * Relações confirmadas:
+   * - cliente_consentimentos
+   * - cliente_contas
+   * - cliente_enderecos
+   * - cliente_favoritos
+   * - cliente_filiais
+   * - cliente_identificadores
+   * - cliente_interacoes
+   * - cliente_preferencias
+   * - cliente_vinculos_conta
+   * - pedidos
+   * - venda_devolucoes
+   * - vendas
+   *
+   * clientes_possiveis_duplicados NÃO é histórico do cliente.
+   * É uma tabela de controle de possíveis duplicidades e, por isso,
+   * seus registros relacionados ao duplicado são removidos antes
+   * da exclusão do cadastro.
+   *
+   * O cadastro duplicado só é excluído depois que todas as
+   * transferências forem concluídas.
    */
   async function executarMesclagem(
     grupoClientes: any[],
@@ -364,10 +382,13 @@ export default function ClientesPage() {
     try {
       for (const duplicado of duplicados) {
         /*
+         * ---------------------------------------------------------
+         * 1. LIMPA SUGESTÕES DE MESCLAGEM
+         * ---------------------------------------------------------
+         *
          * Essas sugestões não são histórico da cliente.
-         * Elas só existem para indicar possíveis duplicidades.
-         * Precisam ser removidas antes da exclusão do cliente,
-         * pois suas FKs não possuem ON DELETE CASCADE.
+         * São apenas registros auxiliares usados para identificar
+         * possíveis duplicidades.
          */
         const { error: erroSugestaoNovo } = await supabase
           .from('sugestoes_mesclagem')
@@ -391,22 +412,100 @@ export default function ClientesPage() {
           )
         }
 
-        // Relações reais encontradas no banco.
+        /*
+         * ---------------------------------------------------------
+         * 2. LIMPA A TABELA DE POSSÍVEIS DUPLICIDADES
+         * ---------------------------------------------------------
+         *
+         * Essa tabela possui duas referências para clientes:
+         * cliente_id_1 -> clientes.id
+         * cliente_id_2 -> clientes.id
+         *
+         * Ela não deve ser transferida para o cadastro principal.
+         * É somente controle de possíveis duplicidades.
+         */
+        const { error: erroPossiveisDuplicados1 } = await supabase
+          .from('clientes_possiveis_duplicados')
+          .delete()
+          .eq('cliente_id_1', duplicado.id)
+
+        if (erroPossiveisDuplicados1) {
+          throw new Error(
+            `Não foi possível limpar os registros de possíveis duplicidades (cliente_id_1): ${erroPossiveisDuplicados1.message}`
+          )
+        }
+
+        const { error: erroPossiveisDuplicados2 } = await supabase
+          .from('clientes_possiveis_duplicados')
+          .delete()
+          .eq('cliente_id_2', duplicado.id)
+
+        if (erroPossiveisDuplicados2) {
+          throw new Error(
+            `Não foi possível limpar os registros de possíveis duplicidades (cliente_id_2): ${erroPossiveisDuplicados2.message}`
+          )
+        }
+
+        /*
+         * ---------------------------------------------------------
+         * 3. TRANSFERE AS RELAÇÕES REAIS DO CLIENTE
+         * ---------------------------------------------------------
+         *
+         * IMPORTANTE:
+         * Não existe mais "historico_cliente" aqui.
+         *
+         * Não devemos criar uma tabela inexistente apenas para
+         * satisfazer o código antigo.
+         */
         const etapas = [
-          ['agendamentos', 'Não foi possível transferir os agendamentos'],
-          ['contas_clientes', 'Não foi possível transferir as contas do cliente'],
-          ['contratos', 'Não foi possível transferir os contratos'],
-          ['depoimentos', 'Não foi possível transferir os depoimentos'],
-          ['duvidas', 'Não foi possível transferir as dúvidas'],
-          ['evolucao_fotos', 'Não foi possível transferir as fotos de evolução'],
-          ['evolucao_registros', 'Não foi possível transferir os registros de evolução'],
-          ['evolucoes', 'Não foi possível transferir as evoluções'],
-          ['horarios_vagos', 'Não foi possível transferir os horários vagos'],
-          ['respostas_anamnese', 'Não foi possível transferir as respostas de anamnese'],
-          ['series_recorrentes', 'Não foi possível transferir as séries recorrentes'],
-          ['solicitacoes_agendamento', 'Não foi possível transferir as solicitações de agendamento'],
-          ['solicitacoes_orcamento', 'Não foi possível transferir as solicitações de orçamento'],
-          ['historico_cliente', 'Não foi possível transferir o histórico do cliente'],
+          [
+            'cliente_consentimentos',
+            'Não foi possível transferir os consentimentos do cliente',
+          ],
+          [
+            'cliente_contas',
+            'Não foi possível transferir as contas vinculadas ao cliente',
+          ],
+          [
+            'cliente_enderecos',
+            'Não foi possível transferir os endereços do cliente',
+          ],
+          [
+            'cliente_favoritos',
+            'Não foi possível transferir os favoritos do cliente',
+          ],
+          [
+            'cliente_filiais',
+            'Não foi possível transferir os vínculos de filiais do cliente',
+          ],
+          [
+            'cliente_identificadores',
+            'Não foi possível transferir os identificadores do cliente',
+          ],
+          [
+            'cliente_interacoes',
+            'Não foi possível transferir as interações do cliente',
+          ],
+          [
+            'cliente_preferencias',
+            'Não foi possível transferir as preferências do cliente',
+          ],
+          [
+            'cliente_vinculos_conta',
+            'Não foi possível transferir os vínculos de conta do cliente',
+          ],
+          [
+            'pedidos',
+            'Não foi possível transferir os pedidos do cliente',
+          ],
+          [
+            'venda_devolucoes',
+            'Não foi possível transferir as devoluções do cliente',
+          ],
+          [
+            'vendas',
+            'Não foi possível transferir as vendas do cliente',
+          ],
         ]
 
         for (const [tabela, descricao] of etapas) {
@@ -418,563 +517,569 @@ export default function ClientesPage() {
           )
         }
       }
-        /*
-         * Só depois de todas as transferências concluírem,
-         * excluímos os cadastros duplicados.
-         */
-        for (const duplicado of duplicados) {
-          const { error } = await supabase
-            .from('clientes')
-            .delete()
-            .eq('id', duplicado.id)
-            .eq('salao_id', profile.salao_id)
 
-          if (error) {
-            throw new Error(
-              `Os dados foram transferidos, mas não foi possível excluir o cadastro duplicado "${duplicado.nome}": ${error.message}`
-            )
-          }
+      /*
+       * ---------------------------------------------------------
+       * 4. EXCLUI OS CADASTROS DUPLICADOS
+       * ---------------------------------------------------------
+       *
+       * Só chegamos aqui se todas as transferências acima
+       * terminaram sem erro.
+       */
+      for (const duplicado of duplicados) {
+        const { error } = await supabase
+          .from('clientes')
+          .delete()
+          .eq('id', duplicado.id)
+          .eq('salao_id', profile.salao_id)
+
+        if (error) {
+          throw new Error(
+            `Os dados foram transferidos, mas não foi possível excluir o cadastro duplicado "${duplicado.nome}": ${error.message}`
+          )
         }
-
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Mesclagem concluída',
-          mensagem: `${duplicados.length} cadastro(s) foram mesclados em "${principal.nome}".`,
-          tipo: 'sistema',
-        })
-
-        return true
-      } catch (error: any) {
-        console.error('Erro completo na mesclagem:', error)
-
-        const mensagem =
-          error?.message ||
-          'Não foi possível concluir a mesclagem.'
-
-        setErroMesclagem(mensagem)
-
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Erro na mesclagem',
-          mensagem,
-          tipo: 'sistema',
-        })
-
-        return false
-      } finally {
-        setProcessandoMesclagem(false)
       }
+
+      notificar({
+        salaoId: profile.salao_id,
+        remetenteId: profile.id,
+        destinatarioId: profile.id,
+        titulo: 'Mesclagem concluída',
+        mensagem: `${duplicados.length} cadastro(s) foram mesclados em "${principal.nome}".`,
+        tipo: 'sistema',
+      })
+
+      return true
+    } catch (error: any) {
+      console.error('Erro completo na mesclagem:', error)
+
+      const mensagem =
+        error?.message ||
+        'Não foi possível concluir a mesclagem.'
+
+      setErroMesclagem(mensagem)
+
+      notificar({
+        salaoId: profile.salao_id,
+        remetenteId: profile.id,
+        destinatarioId: profile.id,
+        titulo: 'Erro na mesclagem',
+        mensagem,
+        tipo: 'sistema',
+      })
+
+      return false
+    } finally {
+      setProcessandoMesclagem(false)
+    }
+  }
+
+  async function confirmarMesclagemManual() {
+    if (processandoMesclagem) return
+    if (clientesSelecionados.length < 2) return
+    if (!clientePrincipalMesclagem) return
+
+    const selecionados = clientes.filter(cliente =>
+      clientesSelecionados.includes(cliente.id)
+    )
+
+    if (selecionados.length < 2) {
+      setErroMesclagem('Selecione pelo menos dois clientes.')
+      return
     }
 
-    async function confirmarMesclagemManual() {
-      if (processandoMesclagem) return
-      if (clientesSelecionados.length < 2) return
-      if (!clientePrincipalMesclagem) return
+    const principal = selecionados.find(
+      cliente => cliente.id === clientePrincipalMesclagem
+    )
 
-      const selecionados = clientes.filter(cliente =>
-        clientesSelecionados.includes(cliente.id)
-      )
-
-      if (selecionados.length < 2) {
-        setErroMesclagem('Selecione pelo menos dois clientes.')
-        return
-      }
-
-      const principal = selecionados.find(
-        cliente => cliente.id === clientePrincipalMesclagem
-      )
-
-      if (!principal) {
-        setErroMesclagem('Escolha o cadastro principal.')
-        return
-      }
-
-      const confirmar = window.confirm(
-        `Tem certeza que deseja mesclar ${selecionados.length} clientes no cadastro "${principal.nome}"?\n\nTodos os históricos relacionados aos outros cadastros serão transferidos para o principal e os cadastros duplicados serão excluídos.\n\nEssa ação não poderá ser desfeita.`
-      )
-
-      if (!confirmar) return
-
-      const sucesso = await executarMesclagem(
-        selecionados,
-        clientePrincipalMesclagem
-      )
-
-      if (sucesso) {
-        setClientesSelecionados([])
-        setModalMesclagemAberto(false)
-        setClientePrincipalMesclagem(null)
-        setErroMesclagem('')
-        await carregarDados()
-      }
+    if (!principal) {
+      setErroMesclagem('Escolha o cadastro principal.')
+      return
     }
 
-    async function mesclarGrupo(
-      grupoClientes: any[],
-      clientePrincipalId: string
-    ) {
-      if (processandoMesclagem) return
+    const confirmar = window.confirm(
+      `Tem certeza que deseja mesclar ${selecionados.length} clientes no cadastro "${principal.nome}"?\n\nTodos os históricos relacionados aos outros cadastros serão transferidos para o principal e os cadastros duplicados serão excluídos.\n\nEssa ação não poderá ser desfeita.`
+    )
 
-      const confirmar = window.confirm(
-        `Deseja mesclar estes ${grupoClientes.length} cadastros?\n\n"${grupoClientes.find(c => c.id === clientePrincipalId)?.nome || 'Cliente'}" será mantido como principal e os demais cadastros serão excluídos após a transferência dos dados.\n\nEssa ação não poderá ser desfeita.`
-      )
+    if (!confirmar) return
 
-      if (!confirmar) return
+    const sucesso = await executarMesclagem(
+      selecionados,
+      clientePrincipalMesclagem
+    )
 
-      const sucesso = await executarMesclagem(
-        grupoClientes,
-        clientePrincipalId
-      )
+    if (sucesso) {
+      setClientesSelecionados([])
+      setModalMesclagemAberto(false)
+      setClientePrincipalMesclagem(null)
+      setErroMesclagem('')
+      await carregarDados()
+    }
+  }
 
-      if (sucesso) {
-        setClientesSelecionados([])
-        await carregarDados()
-      }
+  async function mesclarGrupo(
+    grupoClientes: any[],
+    clientePrincipalId: string
+  ) {
+    if (processandoMesclagem) return
+
+    const confirmar = window.confirm(
+      `Deseja mesclar estes ${grupoClientes.length} cadastros?\n\n"${grupoClientes.find(c => c.id === clientePrincipalId)?.nome || 'Cliente'}" será mantido como principal e os demais cadastros serão excluídos após a transferência dos dados.\n\nEssa ação não poderá ser desfeita.`
+    )
+
+    if (!confirmar) return
+
+    const sucesso = await executarMesclagem(
+      grupoClientes,
+      clientePrincipalId
+    )
+
+    if (sucesso) {
+      setClientesSelecionados([])
+      await carregarDados()
+    }
+  }
+
+  async function aceitarSolicitacao(id: string) {
+    if (!profile?.salao_id) return
+
+    const { error } = await supabase
+      .from('clientes')
+      .update({ status: 'ativo' })
+      .eq('id', id)
+      .eq('salao_id', profile.salao_id)
+
+    if (error) {
+      notificar({
+        salaoId: profile.salao_id,
+        remetenteId: profile.id,
+        destinatarioId: profile.id,
+        titulo: 'Erro',
+        mensagem: `Não foi possível aprovar o cadastro: ${error.message}`,
+        tipo: 'sistema',
+      })
+      return
     }
 
-    async function aceitarSolicitacao(id: string) {
-      if (!profile?.salao_id) return
+    await carregarDados()
 
-      const { error } = await supabase
-        .from('clientes')
-        .update({ status: 'ativo' })
-        .eq('id', id)
-        .eq('salao_id', profile.salao_id)
+    notificar({
+      salaoId: profile.salao_id,
+      remetenteId: profile.id,
+      destinatarioId: profile.id,
+      titulo: 'Cliente aprovado',
+      mensagem: 'O cadastro do cliente foi aceito com sucesso.',
+      tipo: 'sistema',
+    })
+  }
 
-      if (error) {
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Erro',
-          mensagem: `Não foi possível aprovar o cadastro: ${error.message}`,
-          tipo: 'sistema',
-        })
-        return
-      }
+  async function recusarSolicitacao(id: string) {
+    if (!profile?.salao_id) return
 
+    const confirmar = window.confirm(
+      'Deseja realmente recusar esta solicitação?'
+    )
+
+    if (!confirmar) return
+
+    const { error } = await supabase
+      .from('clientes')
+      .delete()
+      .eq('id', id)
+      .eq('salao_id', profile.salao_id)
+
+    if (error) {
+      notificar({
+        salaoId: profile.salao_id,
+        remetenteId: profile.id,
+        destinatarioId: profile.id,
+        titulo: 'Erro',
+        mensagem: `Não foi possível recusar a solicitação: ${error.message}`,
+        tipo: 'sistema',
+      })
+      return
+    }
+
+    await carregarDados()
+  }
+
+  async function salvarEdicaoCliente(e: React.FormEvent) {
+    e.preventDefault()
+
+    if (!profile?.salao_id) return
+    if (!clienteEditando || !novoNomeEdicao.trim()) return
+
+    setSalvandoEdicao(true)
+
+    const { error } = await supabase
+      .from('clientes')
+      .update({
+        nome: novoNomeEdicao.trim(),
+        telefone: novoTelefoneEdicao.trim() || null,
+      })
+      .eq('id', clienteEditando.id)
+      .eq('salao_id', profile.salao_id)
+
+    if (error) {
+      console.error(error)
+
+      notificar({
+        salaoId: profile.salao_id,
+        remetenteId: profile.id,
+        destinatarioId: profile.id,
+        titulo: 'Erro',
+        mensagem: `Não foi possível atualizar o cliente: ${error.message}`,
+        tipo: 'sistema',
+      })
+    } else {
+      setClienteEditando(null)
       await carregarDados()
 
       notificar({
         salaoId: profile.salao_id,
         remetenteId: profile.id,
         destinatarioId: profile.id,
-        titulo: 'Cliente aprovado',
-        mensagem: 'O cadastro do cliente foi aceito com sucesso.',
+        titulo: 'Cliente atualizado',
+        mensagem: 'Os dados do cliente foram alterados com sucesso.',
         tipo: 'sistema',
       })
     }
 
-    async function recusarSolicitacao(id: string) {
-      if (!profile?.salao_id) return
+    setSalvandoEdicao(false)
+  }
 
-      const confirmar = window.confirm(
-        'Deseja realmente recusar esta solicitação?'
-      )
+  async function cadastrarCliente(e: React.FormEvent) {
+    e.preventDefault()
 
-      if (!confirmar) return
+    if (!profile?.salao_id) return
 
-      const { error } = await supabase
-        .from('clientes')
-        .delete()
-        .eq('id', id)
-        .eq('salao_id', profile.salao_id)
+    if (!nome.trim()) {
+      notificar({
+        salaoId: profile.salao_id,
+        remetenteId: profile.id,
+        destinatarioId: profile.id,
+        titulo: 'Atenção',
+        mensagem: 'O nome do cliente é obrigatório.',
+        tipo: 'sistema',
+      })
+      return
+    }
 
-      if (error) {
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Erro',
-          mensagem: `Não foi possível recusar a solicitação: ${error.message}`,
-          tipo: 'sistema',
-        })
-        return
-      }
+    setSalvando(true)
 
+    const { error } = await supabase
+      .from('clientes')
+      .insert({
+        salao_id: profile.salao_id,
+        nome: nome.trim(),
+        telefone: telefone.trim() || null,
+        email: email.trim() || null,
+        aniversario: aniversario || null,
+        observacoes: observacoes.trim() || null,
+        status: 'ativo',
+      })
+
+    if (error) {
+      console.error(error)
+
+      notificar({
+        salaoId: profile.salao_id,
+        remetenteId: profile.id,
+        destinatarioId: profile.id,
+        titulo: 'Erro',
+        mensagem: `Não foi possível cadastrar o cliente: ${error.message}`,
+        tipo: 'sistema',
+      })
+    } else {
+      setModalAberto(false)
+      setNome('')
+      setTelefone('')
+      setEmail('')
+      setAniversario('')
+      setObservacoes('')
       await carregarDados()
     }
 
-    async function salvarEdicaoCliente(e: React.FormEvent) {
-      e.preventDefault()
+    setSalvando(false)
+  }
 
-      if (!profile?.salao_id) return
-      if (!clienteEditando || !novoNomeEdicao.trim()) return
+  const p = profile as any
 
-      setSalvandoEdicao(true)
+  const isFuncionarioComum =
+    p?.tipo === 'funcionario' ||
+    p?.nivel === 'funcionario' ||
+    p?.cargo === 'funcionario'
 
-      const { error } = await supabase
-        .from('clientes')
-        .update({
-          nome: novoNomeEdicao.trim(),
-          telefone: novoTelefoneEdicao.trim() || null,
-        })
-        .eq('id', clienteEditando.id)
-        .eq('salao_id', profile.salao_id)
+  return (
+    <div className="min-h-screen bg-[#f8f9fa] pb-24">
 
-      if (error) {
-        console.error(error)
-
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Erro',
-          mensagem: `Não foi possível atualizar o cliente: ${error.message}`,
-          tipo: 'sistema',
-        })
-      } else {
-        setClienteEditando(null)
-        await carregarDados()
-
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Cliente atualizado',
-          mensagem: 'Os dados do cliente foram alterados com sucesso.',
-          tipo: 'sistema',
-        })
-      }
-
-      setSalvandoEdicao(false)
-    }
-
-    async function cadastrarCliente(e: React.FormEvent) {
-      e.preventDefault()
-
-      if (!profile?.salao_id) return
-
-      if (!nome.trim()) {
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Atenção',
-          mensagem: 'O nome do cliente é obrigatório.',
-          tipo: 'sistema',
-        })
-        return
-      }
-
-      setSalvando(true)
-
-      const { error } = await supabase
-        .from('clientes')
-        .insert({
-          salao_id: profile.salao_id,
-          nome: nome.trim(),
-          telefone: telefone.trim() || null,
-          email: email.trim() || null,
-          aniversario: aniversario || null,
-          observacoes: observacoes.trim() || null,
-          status: 'ativo',
-        })
-
-      if (error) {
-        console.error(error)
-
-        notificar({
-          salaoId: profile.salao_id,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: 'Erro',
-          mensagem: `Não foi possível cadastrar o cliente: ${error.message}`,
-          tipo: 'sistema',
-        })
-      } else {
-        setModalAberto(false)
-        setNome('')
-        setTelefone('')
-        setEmail('')
-        setAniversario('')
-        setObservacoes('')
-        await carregarDados()
-      }
-
-      setSalvando(false)
-    }
-
-    const p = profile as any
-
-    const isFuncionarioComum =
-      p?.tipo === 'funcionario' ||
-      p?.nivel === 'funcionario' ||
-      p?.cargo === 'funcionario'
-
-    return (
-      <div className="min-h-screen bg-[#f8f9fa] pb-24">
-
-        {/* CABEÇALHO */}
-        <div className="bg-white px-4 py-4 flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-3">
-            <button onClick={() => router.back()}>
-              <ArrowLeft size={22} className="text-gray-700" />
-            </button>
-
-            <h1 className="font-bold text-gray-900 text-lg">
-              Clientes
-            </h1>
-          </div>
-
-          <button
-            onClick={() => setModalAberto(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-semibold shadow-sm"
-            style={{ backgroundColor: cor }}
-          >
-            <Plus size={16} />
-            Novo Cliente
+      {/* CABEÇALHO */}
+      <div className="bg-white px-4 py-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3">
+          <button onClick={() => router.back()}>
+            <ArrowLeft size={22} className="text-gray-700" />
           </button>
+
+          <h1 className="font-bold text-gray-900 text-lg">
+            Clientes
+          </h1>
         </div>
 
-        {/* ABAS */}
-        <div className="flex bg-white border-b border-gray-100 px-4">
-          {[
-            ['ativos', `Cadastrados (${clientes.length})`],
-            ['pendentes', 'Solicitações'],
-            ['duplicados', 'Duplicados'],
-          ].map(([aba, label]) => (
-            <button
-              key={aba}
-              onClick={() => setAbaAtiva(aba as any)}
-              className={`flex-1 py-3 text-xs font-bold border-b-2 relative ${
-                abaAtiva === aba ? '' : 'text-gray-400 border-transparent'
-              }`}
-              style={
-                abaAtiva === aba
-                  ? { color: cor, borderColor: cor }
-                  : {}
-              }
-            >
-              {label}
+        <button
+          onClick={() => setModalAberto(true)}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-semibold shadow-sm"
+          style={{ backgroundColor: cor }}
+        >
+          <Plus size={16} />
+          Novo Cliente
+        </button>
+      </div>
 
-              {aba === 'pendentes' && solicitacoes.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] text-white bg-red-500">
-                  {solicitacoes.length}
-                </span>
-              )}
+      {/* ABAS */}
+      <div className="flex bg-white border-b border-gray-100 px-4">
+        {[
+          ['ativos', `Cadastrados (${clientes.length})`],
+          ['pendentes', 'Solicitações'],
+          ['duplicados', 'Duplicados'],
+        ].map(([aba, label]) => (
+          <button
+            key={aba}
+            onClick={() => setAbaAtiva(aba as any)}
+            className={`flex-1 py-3 text-xs font-bold border-b-2 relative ${
+              abaAtiva === aba ? '' : 'text-gray-400 border-transparent'
+            }`}
+            style={
+              abaAtiva === aba
+                ? { color: cor, borderColor: cor }
+                : {}
+            }
+          >
+            {label}
 
-              {aba === 'duplicados' && gruposDuplicados.length > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] text-white bg-amber-500">
-                  {gruposDuplicados.length}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+            {aba === 'pendentes' && solicitacoes.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] text-white bg-red-500">
+                {solicitacoes.length}
+              </span>
+            )}
 
-        <div className="px-4 py-4 flex flex-col gap-4">
+            {aba === 'duplicados' && gruposDuplicados.length > 0 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] text-white bg-amber-500">
+                {gruposDuplicados.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
-          {/* CLIENTES */}
-          {abaAtiva === 'ativos' && (
-            <>
-              <div className="relative">
-                <Search
-                  size={18}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
-                />
+      <div className="px-4 py-4 flex flex-col gap-4">
 
-                <input
-                  type="text"
-                  placeholder="Buscar por nome ou telefone..."
-                  className="input-field pl-10 text-sm bg-white"
-                  value={busca}
-                  onChange={e => setBusca(e.target.value)}
-                />
+        {/* CLIENTES */}
+        {abaAtiva === 'ativos' && (
+          <>
+            <div className="relative">
+              <Search
+                size={18}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+
+              <input
+                type="text"
+                placeholder="Buscar por nome ou telefone..."
+                className="input-field pl-10 text-sm bg-white"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+              />
+            </div>
+
+            {isFuncionarioComum && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                <p className="text-xs text-blue-700 font-medium text-center">
+                  👁️ Modo de visualização: Você pode consultar os cadastros e abrir os prontuários.
+                </p>
               </div>
+            )}
 
-              {isFuncionarioComum && (
-                <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                  <p className="text-xs text-blue-700 font-medium text-center">
-                    👁️ Modo de visualização: Você pode consultar os cadastros e abrir os prontuários.
-                  </p>
-                </div>
-              )}
-
-              {clientesFiltrados.length > 0 && (
-                <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-3 py-2.5 shadow-sm">
-                  <button
-                    onClick={selecionarTodosVisiveis}
-                    className="flex items-center gap-2 text-xs font-semibold text-gray-600"
-                  >
-                    {todosVisiveisSelecionados ? (
-                      <CheckSquare size={17} style={{ color: cor }} />
-                    ) : (
-                      <div className="w-[17px] h-[17px] rounded border-2 border-gray-300" />
-                    )}
-
-                    {todosVisiveisSelecionados
-                      ? 'Desmarcar todos'
-                      : 'Selecionar clientes'}
-                  </button>
-
-                  {clientesSelecionados.length > 0 && (
-                    <span
-                      className="text-xs font-bold"
-                      style={{ color: cor }}
-                    >
-                      {clientesSelecionados.length} selecionado
-                      {clientesSelecionados.length !== 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-              )}
-
-              {clientesSelecionados.length > 0 && (
-                <div
-                  className="bg-white border rounded-2xl p-3 shadow-sm flex items-center justify-between gap-3"
-                  style={{ borderColor: `${cor}40` }}
+            {clientesFiltrados.length > 0 && (
+              <div className="flex items-center justify-between bg-white border border-gray-100 rounded-xl px-3 py-2.5 shadow-sm">
+                <button
+                  onClick={selecionarTodosVisiveis}
+                  className="flex items-center gap-2 text-xs font-semibold text-gray-600"
                 >
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center"
-                      style={{
-                        backgroundColor: `${cor}15`,
-                        color: cor,
-                      }}
-                    >
-                      <GitMerge size={17} />
-                    </div>
+                  {todosVisiveisSelecionados ? (
+                    <CheckSquare size={17} style={{ color: cor }} />
+                  ) : (
+                    <div className="w-[17px] h-[17px] rounded border-2 border-gray-300" />
+                  )}
 
-                    <div>
-                      <p className="text-xs font-bold text-gray-900">
-                        {clientesSelecionados.length} clientes selecionados
-                      </p>
+                  {todosVisiveisSelecionados
+                    ? 'Desmarcar todos'
+                    : 'Selecionar clientes'}
+                </button>
 
-                      <p className="text-[10px] text-gray-400">
-                        Selecione pelo menos 2 para mesclar
-                      </p>
-                    </div>
+                {clientesSelecionados.length > 0 && (
+                  <span
+                    className="text-xs font-bold"
+                    style={{ color: cor }}
+                  >
+                    {clientesSelecionados.length} selecionado
+                    {clientesSelecionados.length !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {clientesSelecionados.length > 0 && (
+              <div
+                className="bg-white border rounded-2xl p-3 shadow-sm flex items-center justify-between gap-3"
+                style={{ borderColor: `${cor}40` }}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center"
+                    style={{
+                      backgroundColor: `${cor}15`,
+                      color: cor,
+                    }}
+                  >
+                    <GitMerge size={17} />
                   </div>
 
-                  <button
-                    onClick={abrirModalMesclagemManual}
-                    disabled={
-                      clientesSelecionados.length < 2 ||
-                      processandoMesclagem
-                    }
-                    className="px-3 py-2 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-40"
-                    style={{ backgroundColor: cor }}
-                  >
-                    <GitMerge size={14} />
-                    Mesclar
-                  </button>
+                  <div>
+                    <p className="text-xs font-bold text-gray-900">
+                      {clientesSelecionados.length} clientes selecionados
+                    </p>
+
+                    <p className="text-[10px] text-gray-400">
+                      Selecione pelo menos 2 para mesclar
+                    </p>
+                  </div>
                 </div>
-              )}
 
-              {carregando ? (
-                <div className="flex justify-center py-12">
-                  <Loader2
-                    size={26}
-                    className="animate-spin"
-                    style={{ color: cor }}
-                  />
-                </div>
-              ) : clientesFiltrados.length === 0 ? (
-                <div className="card text-center py-12">
-                  <User size={36} className="text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-400 text-sm">
-                    Nenhum cliente encontrado.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2.5">
-                  {clientesFiltrados.map(cliente => {
-                    const selecionado = clientesSelecionados.includes(cliente.id)
+                <button
+                  onClick={abrirModalMesclagemManual}
+                  disabled={
+                    clientesSelecionados.length < 2 ||
+                    processandoMesclagem
+                  }
+                  className="px-3 py-2 rounded-xl text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-40"
+                  style={{ backgroundColor: cor }}
+                >
+                  <GitMerge size={14} />
+                  Mesclar
+                </button>
+              </div>
+            )}
 
-                    return (
-                      <div
-                        key={cliente.id}
-                        onClick={() => router.push(`/clientes/${cliente.id}`)}
-                        className={`bg-white border shadow-sm rounded-2xl p-4 flex items-center justify-between cursor-pointer transition-all ${
-                          selecionado
-                            ? 'border-2'
-                            : 'border-gray-100 hover:border-gray-200'
-                        }`}
-                        style={
-                          selecionado
-                            ? { borderColor: cor }
-                            : {}
-                        }
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <button
-                            onClick={e => {
-                              e.stopPropagation()
-                              alternarSelecaoCliente(cliente.id)
-                            }}
-                            className="shrink-0"
-                          >
-                            {selecionado ? (
-                              <div
-                                className="w-5 h-5 rounded-md flex items-center justify-center text-white"
-                                style={{ backgroundColor: cor }}
-                              >
-                                <Check size={14} />
-                              </div>
-                            ) : (
-                              <div className="w-5 h-5 rounded-md border-2 border-gray-300 bg-white" />
-                            )}
-                          </button>
+            {carregando ? (
+              <div className="flex justify-center py-12">
+                <Loader2
+                  size={26}
+                  className="animate-spin"
+                  style={{ color: cor }}
+                />
+              </div>
+            ) : clientesFiltrados.length === 0 ? (
+              <div className="card text-center py-12">
+                <User size={36} className="text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-400 text-sm">
+                  Nenhum cliente encontrado.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {clientesFiltrados.map(cliente => {
+                  const selecionado = clientesSelecionados.includes(cliente.id)
 
-                          <div
-                            className="w-10 h-10 rounded-full flex items-center font-bold text-white text-sm justify-center shrink-0"
-                            style={{ backgroundColor: cor }}
-                          >
-                            {cliente.nome?.charAt(0).toUpperCase() || 'C'}
-                          </div>
+                  return (
+                    <div
+                      key={cliente.id}
+                      onClick={() => router.push(`/clientes/${cliente.id}`)}
+                      className={`bg-white border shadow-sm rounded-2xl p-4 flex items-center justify-between cursor-pointer transition-all ${
+                        selecionado
+                          ? 'border-2'
+                          : 'border-gray-100 hover:border-gray-200'
+                      }`}
+                      style={
+                        selecionado
+                          ? { borderColor: cor }
+                          : {}
+                      }
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            alternarSelecaoCliente(cliente.id)
+                          }}
+                          className="shrink-0"
+                        >
+                          {selecionado ? (
+                            <div
+                              className="w-5 h-5 rounded-md flex items-center justify-center text-white"
+                              style={{ backgroundColor: cor }}
+                            >
+                              <Check size={14} />
+                            </div>
+                          ) : (
+                            <div className="w-5 h-5 rounded-md border-2 border-gray-300 bg-white" />
+                          )}
+                        </button>
 
-                          <div className="min-w-0">
-                            <p className="font-bold text-gray-900 text-sm truncate">
-                              {cliente.nome}
-                            </p>
-
-                            <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
-                              <Phone size={12} />
-                              {cliente.telefone || 'Sem telefone'}
-                            </p>
-                          </div>
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center font-bold text-white text-sm justify-center shrink-0"
+                          style={{ backgroundColor: cor }}
+                        >
+                          {cliente.nome?.charAt(0).toUpperCase() || 'C'}
                         </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={e => {
-                              e.stopPropagation()
-                              setClienteEditando(cliente)
-                              setNovoNomeEdicao(cliente.nome || '')
-                              setNovoTelefoneEdicao(cliente.telefone || '')
-                            }}
-                            className="w-8 h-8 rounded-full bg-gray-50 text-gray-600 flex items-center justify-center"
-                            title="Editar nome/telefone"
-                          >
-                            <Edit3 size={14} />
-                          </button>
+                        <div className="min-w-0">
+                          <p className="font-bold text-gray-900 text-sm truncate">
+                            {cliente.nome}
+                          </p>
 
-                          {cliente.telefone && (
-                            <a
-                              href={`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center"
-                            >
-                              <MessageSquare size={14} />
-                            </a>
-                          )}
-
-                          <ChevronRight size={18} className="text-gray-300" />
+                          <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                            <Phone size={12} />
+                            {cliente.telefone || 'Sem telefone'}
+                          </p>
                         </div>
                       </div>
-                    )
-                  })}
-                </div>
-              )}
-            </>
-          )}
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={e => {
+                            e.stopPropagation()
+                            setClienteEditando(cliente)
+                            setNovoNomeEdicao(cliente.nome || '')
+                            setNovoTelefoneEdicao(cliente.telefone || '')
+                          }}
+                          className="w-8 h-8 rounded-full bg-gray-50 text-gray-600 flex items-center justify-center"
+                          title="Editar nome/telefone"
+                        >
+                          <Edit3 size={14} />
+                        </button>
+
+                        {cliente.telefone && (
+                          <a
+                            href={`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="w-8 h-8 rounded-full bg-green-50 text-green-600 flex items-center justify-center"
+                          >
+                            <MessageSquare size={14} />
+                          </a>
+                        )}
+
+                        <ChevronRight size={18} className="text-gray-300" />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+
         {/* SOLICITAÇÕES */}
         {abaAtiva === 'pendentes' && (
           <div className="flex flex-col gap-3">
@@ -1296,6 +1401,7 @@ export default function ClientesPage() {
                 )
               })}
             </div>
+
             <div className="flex gap-3 mt-1">
               <button
                 type="button"
