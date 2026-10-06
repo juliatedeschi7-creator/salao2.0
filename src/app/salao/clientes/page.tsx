@@ -32,7 +32,9 @@ export default function ClientesPage() {
   const [salao, setSalao] = useState<any>(null)
   const [clientes, setClientes] = useState<any[]>([])
   const [solicitacoes, setSolicitacoes] = useState<any[]>([])
-  const [abaAtiva, setAbaAtiva] = useState<'ativos' | 'pendentes' | 'duplicados'>('ativos')
+  const [abaAtiva, setAbaAtiva] = useState<
+    'ativos' | 'pendentes' | 'duplicados'
+  >('ativos')
   const [busca, setBusca] = useState('')
   const [carregando, setCarregando] = useState(true)
 
@@ -40,7 +42,8 @@ export default function ClientesPage() {
   const [processandoMesclagem, setProcessandoMesclagem] = useState(false)
   const [clientesSelecionados, setClientesSelecionados] = useState<string[]>([])
   const [modalMesclagemAberto, setModalMesclagemAberto] = useState(false)
-  const [clientePrincipalMesclagem, setClientePrincipalMesclagem] = useState<string | null>(null)
+  const [clientePrincipalMesclagem, setClientePrincipalMesclagem] =
+    useState<string | null>(null)
   const [erroMesclagem, setErroMesclagem] = useState('')
 
   // Novo cliente
@@ -141,6 +144,7 @@ export default function ClientesPage() {
 
         const nomeNorm = normalizarNome(cliente.nome)
         const partes = nomeNorm.split(/\s+/).filter(Boolean)
+
         if (!partes.length) return
 
         const primeiroNome = partes[0]
@@ -156,6 +160,7 @@ export default function ClientesPage() {
 
     Object.keys(gruposMap).forEach(primeiroNome => {
       const lista = gruposMap[primeiroNome]
+
       if (lista.length < 2) return
 
       const subGrupos: any[][] = []
@@ -177,7 +182,8 @@ export default function ClientesPage() {
               if (
                 pC.length > 3 &&
                 pR.length > 3 &&
-                (pC.startsWith(pR.slice(0, 3)) || pR.startsWith(pC.slice(0, 3)))
+                (pC.startsWith(pR.slice(0, 3)) ||
+                  pR.startsWith(pC.slice(0, 3)))
               ) {
                 return true
               }
@@ -256,9 +262,10 @@ export default function ClientesPage() {
 
     if (!termo) return clientes
 
-    return clientes.filter(cliente =>
-      cliente.nome?.toLowerCase().includes(termo) ||
-      cliente.telefone?.includes(termo)
+    return clientes.filter(
+      cliente =>
+        cliente.nome?.toLowerCase().includes(termo) ||
+        cliente.telefone?.includes(termo)
     )
   }, [clientes, busca])
 
@@ -306,8 +313,10 @@ export default function ClientesPage() {
   /*
    * Executa uma etapa da mesclagem.
    *
-   * As tabelas usadas aqui foram confirmadas no banco como relações
-   * reais com clientes.id através de FOREIGN KEY.
+   * IMPORTANTE:
+   * As tabelas abaixo foram confirmadas no banco.
+   * Não usamos historico_cliente nem
+   * clientes_possiveis_duplicados.
    */
   async function executarEtapa(
     tabela: string,
@@ -321,39 +330,18 @@ export default function ClientesPage() {
       .eq('cliente_id', duplicadoId)
 
     if (error) {
-      throw new Error(
-        `${descricao}: ${error.message}`
-      )
+      throw new Error(`${descricao}: ${error.message}`)
     }
   }
 
   /*
    * MESCLAGEM COMPLETA
    *
-   * A mesclagem trabalha somente com relações reais existentes
-   * no banco.
+   * 1. Remove as sugestões de mesclagem ligadas ao duplicado.
+   * 2. Transfere todos os registros relacionados ao cliente.
+   * 3. Só depois exclui o cadastro duplicado.
    *
-   * Relações confirmadas:
-   * - cliente_consentimentos
-   * - cliente_contas
-   * - cliente_enderecos
-   * - cliente_favoritos
-   * - cliente_filiais
-   * - cliente_identificadores
-   * - cliente_interacoes
-   * - cliente_preferencias
-   * - cliente_vinculos_conta
-   * - pedidos
-   * - venda_devolucoes
-   * - vendas
-   *
-   * clientes_possiveis_duplicados NÃO é histórico do cliente.
-   * É uma tabela de controle de possíveis duplicidades e, por isso,
-   * seus registros relacionados ao duplicado são removidos antes
-   * da exclusão do cadastro.
-   *
-   * O cadastro duplicado só é excluído depois que todas as
-   * transferências forem concluídas.
+   * Não usamos tabelas que não existem no banco.
    */
   async function executarMesclagem(
     grupoClientes: any[],
@@ -382,14 +370,19 @@ export default function ClientesPage() {
     try {
       for (const duplicado of duplicados) {
         /*
-         * ---------------------------------------------------------
-         * 1. LIMPA SUGESTÕES DE MESCLAGEM
-         * ---------------------------------------------------------
+         * =========================================================
+         * 1. LIMPAR SUGESTÕES DE MESCLAGEM
+         * =========================================================
          *
-         * Essas sugestões não são histórico da cliente.
-         * São apenas registros auxiliares usados para identificar
-         * possíveis duplicidades.
+         * A tabela possui duas FKs para clientes:
+         *
+         * cliente_novo_id
+         * cliente_pendente_id
+         *
+         * Ambas são NO ACTION, portanto precisamos remover
+         * essas referências antes de excluir o cliente.
          */
+
         const { error: erroSugestaoNovo } = await supabase
           .from('sugestoes_mesclagem')
           .delete()
@@ -413,98 +406,82 @@ export default function ClientesPage() {
         }
 
         /*
-         * ---------------------------------------------------------
-         * 2. LIMPA A TABELA DE POSSÍVEIS DUPLICIDADES
-         * ---------------------------------------------------------
+         * =========================================================
+         * 2. TRANSFERIR TODAS AS RELAÇÕES REAIS
+         * =========================================================
          *
-         * Essa tabela possui duas referências para clientes:
-         * cliente_id_1 -> clientes.id
-         * cliente_id_2 -> clientes.id
+         * Estas tabelas foram confirmadas pelo banco como tendo
+         * cliente_id relacionado ao cadastro de clientes.
          *
-         * Ela não deve ser transferida para o cadastro principal.
-         * É somente controle de possíveis duplicidades.
+         * cliente_pacotes_backup também é transferida porque
+         * contém cliente_id e faz parte do histórico dos pacotes,
+         * mesmo não possuindo FK formal para clientes.
          */
-        const { error: erroPossiveisDuplicados1 } = await supabase
-          .from('clientes_possiveis_duplicados')
-          .delete()
-          .eq('cliente_id_1', duplicado.id)
 
-        if (erroPossiveisDuplicados1) {
-          throw new Error(
-            `Não foi possível limpar os registros de possíveis duplicidades (cliente_id_1): ${erroPossiveisDuplicados1.message}`
-          )
-        }
-
-        const { error: erroPossiveisDuplicados2 } = await supabase
-          .from('clientes_possiveis_duplicados')
-          .delete()
-          .eq('cliente_id_2', duplicado.id)
-
-        if (erroPossiveisDuplicados2) {
-          throw new Error(
-            `Não foi possível limpar os registros de possíveis duplicidades (cliente_id_2): ${erroPossiveisDuplicados2.message}`
-          )
-        }
-
-        /*
-         * ---------------------------------------------------------
-         * 3. TRANSFERE AS RELAÇÕES REAIS DO CLIENTE
-         * ---------------------------------------------------------
-         *
-         * IMPORTANTE:
-         * Não existe mais "historico_cliente" aqui.
-         *
-         * Não devemos criar uma tabela inexistente apenas para
-         * satisfazer o código antigo.
-         */
         const etapas = [
           [
-            'cliente_consentimentos',
-            'Não foi possível transferir os consentimentos do cliente',
+            'agendamentos',
+            'Não foi possível transferir os agendamentos',
           ],
           [
-            'cliente_contas',
-            'Não foi possível transferir as contas vinculadas ao cliente',
+            'atendimento_fotos',
+            'Não foi possível transferir as fotos de atendimento',
           ],
           [
-            'cliente_enderecos',
-            'Não foi possível transferir os endereços do cliente',
+            'cliente_pacotes_backup',
+            'Não foi possível transferir o histórico de pacotes',
           ],
           [
-            'cliente_favoritos',
-            'Não foi possível transferir os favoritos do cliente',
+            'contas_clientes',
+            'Não foi possível transferir as contas do cliente',
           ],
           [
-            'cliente_filiais',
-            'Não foi possível transferir os vínculos de filiais do cliente',
+            'contratos',
+            'Não foi possível transferir os contratos',
           ],
           [
-            'cliente_identificadores',
-            'Não foi possível transferir os identificadores do cliente',
+            'depoimentos',
+            'Não foi possível transferir os depoimentos',
           ],
           [
-            'cliente_interacoes',
-            'Não foi possível transferir as interações do cliente',
+            'duvidas',
+            'Não foi possível transferir as dúvidas',
           ],
           [
-            'cliente_preferencias',
-            'Não foi possível transferir as preferências do cliente',
+            'evolucao_fotos',
+            'Não foi possível transferir as fotos de evolução',
           ],
           [
-            'cliente_vinculos_conta',
-            'Não foi possível transferir os vínculos de conta do cliente',
+            'evolucao_registros',
+            'Não foi possível transferir os registros de evolução',
           ],
           [
-            'pedidos',
-            'Não foi possível transferir os pedidos do cliente',
+            'evolucoes',
+            'Não foi possível transferir as evoluções',
           ],
           [
-            'venda_devolucoes',
-            'Não foi possível transferir as devoluções do cliente',
+            'horarios_vagos',
+            'Não foi possível transferir os horários vagos',
           ],
           [
-            'vendas',
-            'Não foi possível transferir as vendas do cliente',
+            'lembretes_agendamento_envios',
+            'Não foi possível transferir os envios de lembretes',
+          ],
+          [
+            'respostas_anamnese',
+            'Não foi possível transferir as respostas de anamnese',
+          ],
+          [
+            'series_recorrentes',
+            'Não foi possível transferir as séries recorrentes',
+          ],
+          [
+            'solicitacoes_agendamento',
+            'Não foi possível transferir as solicitações de agendamento',
+          ],
+          [
+            'solicitacoes_orcamento',
+            'Não foi possível transferir as solicitações de orçamento',
           ],
         ]
 
@@ -519,13 +496,14 @@ export default function ClientesPage() {
       }
 
       /*
-       * ---------------------------------------------------------
-       * 4. EXCLUI OS CADASTROS DUPLICADOS
-       * ---------------------------------------------------------
+       * =========================================================
+       * 3. EXCLUIR OS CADASTROS DUPLICADOS
+       * =========================================================
        *
-       * Só chegamos aqui se todas as transferências acima
-       * terminaram sem erro.
+       * Só chegamos aqui depois que todas as transferências
+       * anteriores terminaram com sucesso.
        */
+
       for (const duplicado of duplicados) {
         const { error } = await supabase
           .from('clientes')
@@ -988,12 +966,15 @@ export default function ClientesPage() {
             ) : (
               <div className="flex flex-col gap-2.5">
                 {clientesFiltrados.map(cliente => {
-                  const selecionado = clientesSelecionados.includes(cliente.id)
+                  const selecionado =
+                    clientesSelecionados.includes(cliente.id)
 
                   return (
                     <div
                       key={cliente.id}
-                      onClick={() => router.push(`/clientes/${cliente.id}`)}
+                      onClick={() =>
+                        router.push(`/clientes/${cliente.id}`)
+                      }
                       className={`bg-white border shadow-sm rounded-2xl p-4 flex items-center justify-between cursor-pointer transition-all ${
                         selecionado
                           ? 'border-2'
@@ -1050,7 +1031,9 @@ export default function ClientesPage() {
                             e.stopPropagation()
                             setClienteEditando(cliente)
                             setNovoNomeEdicao(cliente.nome || '')
-                            setNovoTelefoneEdicao(cliente.telefone || '')
+                            setNovoTelefoneEdicao(
+                              cliente.telefone || ''
+                            )
                           }}
                           className="w-8 h-8 rounded-full bg-gray-50 text-gray-600 flex items-center justify-center"
                           title="Editar nome/telefone"
@@ -1060,7 +1043,10 @@ export default function ClientesPage() {
 
                         {cliente.telefone && (
                           <a
-                            href={`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}`}
+                            href={`https://wa.me/55${cliente.telefone.replace(
+                              /\D/g,
+                              ''
+                            )}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={e => e.stopPropagation()}
@@ -1070,7 +1056,10 @@ export default function ClientesPage() {
                           </a>
                         )}
 
-                        <ChevronRight size={18} className="text-gray-300" />
+                        <ChevronRight
+                          size={18}
+                          className="text-gray-300"
+                        />
                       </div>
                     </div>
                   )
@@ -1085,7 +1074,10 @@ export default function ClientesPage() {
           <div className="flex flex-col gap-3">
             {solicitacoes.length === 0 ? (
               <div className="card text-center py-12">
-                <Clock size={36} className="text-gray-300 mx-auto mb-2" />
+                <Clock
+                  size={36}
+                  className="text-gray-300 mx-auto mb-2"
+                />
                 <p className="text-gray-400 text-sm">
                   Nenhuma solicitação de cadastro pendente.
                 </p>
@@ -1165,18 +1157,23 @@ export default function ClientesPage() {
           <div className="flex flex-col gap-4">
             {gruposDuplicados.length === 0 ? (
               <div className="card text-center py-12">
-                <GitMerge size={36} className="text-gray-300 mx-auto mb-2" />
+                <GitMerge
+                  size={36}
+                  className="text-gray-300 mx-auto mb-2"
+                />
                 <p className="text-gray-400 text-sm">
-                  Nenhum cliente com nome semelhante encontrado para mesclagem.
+                  Nenhum cliente com nome semelhante encontrado para
+                  mesclagem.
                 </p>
               </div>
             ) : (
               <>
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
                   <p className="text-xs text-amber-800 font-medium text-center">
-                    ⚠️ Encontramos cadastros com nomes semelhantes. Escolha qual será o
-                    registro principal para unificar os históricos ou clique no X para
-                    informar que aquele cadastro não é duplicado.
+                    ⚠️ Encontramos cadastros com nomes semelhantes. Escolha
+                    qual será o registro principal para unificar os históricos
+                    ou clique no X para informar que aquele cadastro não é
+                    duplicado.
                   </p>
                 </div>
 
@@ -1226,7 +1223,9 @@ export default function ClientesPage() {
                               onClick={() => {
                                 setClienteEditando(cli)
                                 setNovoNomeEdicao(cli.nome || '')
-                                setNovoTelefoneEdicao(cli.telefone || '')
+                                setNovoTelefoneEdicao(
+                                  cli.telefone || ''
+                                )
                               }}
                               className="px-2 py-1.5 rounded-lg bg-white border border-gray-200 text-gray-700 text-xs"
                               title="Editar"
@@ -1235,7 +1234,9 @@ export default function ClientesPage() {
                             </button>
 
                             <button
-                              onClick={() => ignorarDuplicado(cli.id)}
+                              onClick={() =>
+                                ignorarDuplicado(cli.id)
+                              }
                               className="px-2 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 text-xs"
                               title="Não é duplicado"
                             >
@@ -1425,7 +1426,10 @@ export default function ClientesPage() {
               >
                 {processandoMesclagem ? (
                   <>
-                    <Loader2 size={16} className="animate-spin" />
+                    <Loader2
+                      size={16}
+                      className="animate-spin"
+                    />
                     Mesclando...
                   </>
                 ) : (
@@ -1473,7 +1477,9 @@ export default function ClientesPage() {
                   required
                   className="input-field text-sm"
                   value={novoNomeEdicao}
-                  onChange={e => setNovoNomeEdicao(e.target.value)}
+                  onChange={e =>
+                    setNovoNomeEdicao(e.target.value)
+                  }
                 />
               </div>
 
@@ -1486,7 +1492,9 @@ export default function ClientesPage() {
                   type="text"
                   className="input-field text-sm"
                   value={novoTelefoneEdicao}
-                  onChange={e => setNovoTelefoneEdicao(e.target.value)}
+                  onChange={e =>
+                    setNovoTelefoneEdicao(e.target.value)
+                  }
                 />
               </div>
 
@@ -1591,7 +1599,9 @@ export default function ClientesPage() {
                   type="date"
                   className="input-field text-sm"
                   value={aniversario}
-                  onChange={e => setAniversario(e.target.value)}
+                  onChange={e =>
+                    setAniversario(e.target.value)
+                  }
                 />
               </div>
 
@@ -1604,7 +1614,9 @@ export default function ClientesPage() {
                   placeholder="Preferências, alergias, anotações..."
                   className="input-field text-sm h-20 resize-none"
                   value={observacoes}
-                  onChange={e => setObservacoes(e.target.value)}
+                  onChange={e =>
+                    setObservacoes(e.target.value)
+                  }
                 />
               </div>
 
