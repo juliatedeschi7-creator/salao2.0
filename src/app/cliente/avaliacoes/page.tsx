@@ -16,7 +16,19 @@ import {
   Eye,
   EyeOff,
   X,
+  ImagePlus,
+  Upload,
+  LoaderCircle,
 } from 'lucide-react'
+
+const BUCKET_DEPOIMENTOS = 'depoimentos'
+const LIMITE_IMAGEM = 5 * 1024 * 1024
+
+const TIPOS_IMAGEM = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]
 
 export default function ClienteAvaliacoesPage() {
   const { profile, loading } = useAuth()
@@ -31,13 +43,24 @@ export default function ClienteAvaliacoesPage() {
   const [texto, setTexto] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
-  const [erro, setErro] = useState('')
 
   const [editando, setEditando] = useState<any>(null)
   const [novoTexto, setNovoTexto] = useState('')
   const [salvandoEdicao, setSalvandoEdicao] = useState(false)
   const [alterandoVisibilidade, setAlterandoVisibilidade] =
     useState<string | null>(null)
+
+  // Formulário de depoimentos cadastrados pelo salão.
+  const [textoDono, setTextoDono] = useState('')
+  const [imagemDono, setImagemDono] = useState<File | null>(null)
+  const [previaDono, setPreviaDono] = useState('')
+  const [salvandoDono, setSalvandoDono] = useState(false)
+  const [sucessoDono, setSucessoDono] = useState('')
+  const [publicarDono, setPublicarDono] = useState(true)
+
+  const [erro, setErro] = useState('')
+  const [urlsImagens, setUrlsImagens] = useState<Record<string, string>>({})
+  const [carregandoImagens, setCarregandoImagens] = useState(false)
 
   const p = profile as any
 
@@ -48,6 +71,12 @@ export default function ClienteAvaliacoesPage() {
       p?.acesso_total
     )
 
+  // O envio de imagens exige ser o proprietário real do salão.
+  const ehProprietario =
+    !!profile &&
+    !!salao &&
+    salao.dono_id === profile.id
+
   const cor = salao?.cor_primaria || '#E91E8C'
 
   useEffect(() => {
@@ -55,6 +84,18 @@ export default function ClienteAvaliacoesPage() {
       carregarDados()
     }
   }, [loading, profile])
+
+  useEffect(() => {
+    if (!imagemDono) {
+      setPreviaDono('')
+      return
+    }
+
+    const url = URL.createObjectURL(imagemDono)
+    setPreviaDono(url)
+
+    return () => URL.revokeObjectURL(url)
+  }, [imagemDono])
 
   async function carregarDados() {
     if (!profile) return
@@ -90,8 +131,6 @@ export default function ClienteAvaliacoesPage() {
 
       setServicos(srvs || [])
 
-      // A cliente vê somente avaliações públicas
-      // e as avaliações que ela própria escreveu.
       const { data: deps, error: erroDepoimentos } = await supabase
         .from('depoimentos')
         .select('*, clientes(nome), servicos(nome)')
@@ -135,8 +174,6 @@ export default function ClienteAvaliacoesPage() {
 
       setServicos(srvs || [])
 
-      // O proprietário pode visualizar avaliações públicas e ocultas,
-      // desde que as permissões do banco autorizem essa consulta.
       const { data: deps, error: erroDepoimentos } = await supabase
         .from('depoimentos')
         .select('*, clientes(nome), servicos(nome)')
@@ -151,6 +188,55 @@ export default function ClienteAvaliacoesPage() {
       setDepoimentos(deps || [])
     }
   }
+
+  // Gera URLs temporárias para as imagens privadas.
+  // O Storage ainda precisa autorizar o usuário pela política RLS.
+  useEffect(() => {
+    let cancelado = false
+
+    async function carregarImagens() {
+      const comImagem = depoimentos.filter(
+        (d) => d.imagem_path
+      )
+
+      if (!comImagem.length) {
+        setUrlsImagens({})
+        return
+      }
+
+      setCarregandoImagens(true)
+
+      const entradas = await Promise.all(
+        comImagem.map(async (d) => {
+          const { data, error } = await supabase.storage
+            .from(BUCKET_DEPOIMENTOS)
+            .createSignedUrl(d.imagem_path, 60 * 30)
+
+          if (error || !data?.signedUrl) {
+            console.error(
+              'Não foi possível carregar a imagem do depoimento:',
+              d.id,
+              error
+            )
+            return [d.id, ''] as const
+          }
+
+          return [d.id, data.signedUrl] as const
+        })
+      )
+
+      if (!cancelado) {
+        setUrlsImagens(Object.fromEntries(entradas))
+        setCarregandoImagens(false)
+      }
+    }
+
+    carregarImagens()
+
+    return () => {
+      cancelado = true
+    }
+  }, [depoimentos])
 
   async function enviarAvaliacao() {
     if (!texto.trim() || !salao || !cliente || !profile) return
@@ -170,6 +256,7 @@ export default function ClienteAvaliacoesPage() {
       })
 
     if (erroInsert) {
+      console.error(erroInsert)
       setErro('Não foi possível enviar sua avaliação. Tente novamente.')
       setSalvando(false)
       return
@@ -179,6 +266,151 @@ export default function ClienteAvaliacoesPage() {
     setServicoId('')
     setSalvando(false)
     setSucesso(true)
+
+    await carregarDados()
+  }
+
+  function selecionarImagem(arquivo: File | null) {
+    setErro('')
+    setSucessoDono('')
+
+    if (!arquivo) {
+      setImagemDono(null)
+      return
+    }
+
+    if (!TIPOS_IMAGEM.includes(arquivo.type)) {
+      setErro('Escolha uma imagem JPG, PNG ou WebP.')
+      return
+    }
+
+    if (arquivo.size > LIMITE_IMAGEM) {
+      setErro('A imagem deve ter no máximo 5 MB.')
+      return
+    }
+
+    setImagemDono(arquivo)
+  }
+
+  async function enviarDepoimentoDono() {
+    if (!ehProprietario || !salao || !profile) {
+      setErro('Somente o proprietário do salão pode cadastrar este depoimento.')
+      return
+    }
+
+    if (!textoDono.trim()) {
+      setErro('Escreva um texto ou uma legenda para o depoimento.')
+      return
+    }
+
+    setSalvandoDono(true)
+    setErro('')
+    setSucessoDono('')
+
+    let depoimentoCriado: any = null
+    let caminhoImagem = ''
+
+    // Primeiro cria o registro para obter o ID do depoimento.
+    const { data: novoDepoimento, error: erroInsert } = await supabase
+      .from('depoimentos')
+      .insert({
+        salao_id: salao.id,
+        cliente_id: null,
+        servico_id: null,
+        texto: textoDono.trim(),
+        publico: publicarDono,
+        imagem_path: null,
+      })
+      .select('id, salao_id, texto, publico, imagem_path, created_at')
+      .single()
+
+    if (erroInsert || !novoDepoimento) {
+      console.error(erroInsert)
+      setErro(
+        'Não foi possível cadastrar o depoimento. Verifique as permissões da tabela.'
+      )
+      setSalvandoDono(false)
+      return
+    }
+
+    depoimentoCriado = novoDepoimento
+
+    if (imagemDono) {
+      const extensao =
+        imagemDono.type === 'image/png'
+          ? 'png'
+          : imagemDono.type === 'image/webp'
+            ? 'webp'
+            : 'jpg'
+
+      const nomeArquivo = `${Date.now()}-${crypto.randomUUID()}.${extensao}`
+
+      caminhoImagem =
+        `${salao.id}/${depoimentoCriado.id}/${nomeArquivo}`
+
+      const { error: erroUpload } = await supabase.storage
+        .from(BUCKET_DEPOIMENTOS)
+        .upload(caminhoImagem, imagemDono, {
+          contentType: imagemDono.type,
+          upsert: false,
+        })
+
+      if (erroUpload) {
+        console.error(erroUpload)
+
+        // Não deixa um registro incompleto quando o upload falha.
+        const { error: erroLimpeza } = await supabase
+          .from('depoimentos')
+          .delete()
+          .eq('id', depoimentoCriado.id)
+          .eq('salao_id', salao.id)
+
+        if (erroLimpeza) {
+          console.error('Erro ao limpar depoimento incompleto:', erroLimpeza)
+        }
+
+        setErro(
+          'O depoimento não foi concluído porque o envio da imagem falhou. Confira as políticas do Storage e tente novamente.'
+        )
+        setSalvandoDono(false)
+        return
+      }
+
+      const { data: atualizado, error: erroAtualizacao } = await supabase
+        .from('depoimentos')
+        .update({ imagem_path: caminhoImagem })
+        .eq('id', depoimentoCriado.id)
+        .eq('salao_id', salao.id)
+        .select('id')
+        .maybeSingle()
+
+      if (erroAtualizacao || !atualizado) {
+        console.error(erroAtualizacao)
+
+        // Tenta retirar o arquivo se não foi possível salvar seu caminho.
+        const { error: erroRemoverArquivo } = await supabase.storage
+          .from(BUCKET_DEPOIMENTOS)
+          .remove([caminhoImagem])
+
+        if (erroRemoverArquivo) {
+          console.error('Erro ao remover arquivo órfão:', erroRemoverArquivo)
+        }
+
+        setErro(
+          'A imagem foi enviada, mas não foi possível vinculá-la ao depoimento. Confira as permissões de atualização.'
+        )
+        setSalvandoDono(false)
+        await carregarDados()
+        return
+      }
+    }
+
+    setTextoDono('')
+    setImagemDono(null)
+    setPreviaDono('')
+    setPublicarDono(true)
+    setSucessoDono('Depoimento cadastrado com sucesso!')
+    setSalvandoDono(false)
 
     await carregarDados()
   }
@@ -211,7 +443,6 @@ export default function ClienteAvaliacoesPage() {
       return
     }
 
-    // Localiza o proprietário para avisá-lo sobre a edição.
     const { data: sal } = await supabase
       .from('saloes')
       .select('id, dono_id, nome')
@@ -335,15 +566,11 @@ export default function ClienteAvaliacoesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-8">
-      {/* Cabeçalho: mantém a logo, sem função para alterá-la */}
       <div
         className="px-4 pt-10 pb-6 flex items-center gap-3 shadow-sm"
         style={{ backgroundColor: cor }}
       >
-        <button
-          onClick={() => router.back()}
-          aria-label="Voltar"
-        >
+        <button onClick={() => router.back()} aria-label="Voltar">
           <ArrowLeft size={22} className="text-white" />
         </button>
 
@@ -363,13 +590,9 @@ export default function ClienteAvaliacoesPage() {
           </div>
 
           <div>
-            <h1 className="font-bold text-white text-lg">
-              Avaliações
-            </h1>
+            <h1 className="font-bold text-white text-lg">Avaliações</h1>
             {salao?.nome && (
-              <p className="text-white/80 text-xs">
-                {salao.nome}
-              </p>
+              <p className="text-white/80 text-xs">{salao.nome}</p>
             )}
           </div>
         </div>
@@ -443,6 +666,108 @@ export default function ClienteAvaliacoesPage() {
           </div>
         )}
 
+        {ehProprietario && (
+          <div className="card flex flex-col gap-3">
+            <p className="font-bold text-gray-900 flex items-center gap-2">
+              <ImagePlus size={19} style={{ color: cor }} />
+              Adicionar depoimento do salão
+            </p>
+
+            <p className="text-sm text-gray-500">
+              Você pode registrar um depoimento recebido e anexar um print
+              autorizado pela cliente. O texto ou legenda é obrigatório.
+            </p>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Texto ou legenda
+              </label>
+              <textarea
+                className="input-field resize-none"
+                rows={4}
+                placeholder="Escreva o depoimento ou uma legenda para o print..."
+                value={textoDono}
+                onChange={(e) => setTextoDono(e.target.value)}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">
+                Print do depoimento (opcional)
+              </label>
+
+              <label className="flex items-center justify-center gap-2 border-2 border-dashed rounded-2xl p-4 cursor-pointer text-sm text-gray-600 hover:bg-gray-50">
+                <Upload size={18} />
+                {imagemDono ? 'Trocar imagem' : 'Selecionar imagem'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) =>
+                    selecionarImagem(e.target.files?.[0] || null)
+                  }
+                />
+              </label>
+
+              <p className="text-xs text-gray-400 mt-1">
+                JPG, PNG ou WebP, até 5 MB.
+              </p>
+            </div>
+
+            {previaDono && (
+              <div className="border rounded-xl p-2 flex flex-col gap-2">
+                <img
+                  src={previaDono}
+                  alt="Prévia do print selecionado"
+                  className="w-full max-h-96 object-contain rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => setImagemDono(null)}
+                  className="self-start inline-flex items-center gap-1 text-sm text-red-600"
+                >
+                  <X size={15} />
+                  Remover imagem
+                </button>
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={publicarDono}
+                onChange={(e) => setPublicarDono(e.target.checked)}
+              />
+              Deixar público após cadastrar
+            </label>
+
+            {sucessoDono && (
+              <p className="text-sm text-green-700 bg-green-50 rounded-xl p-3">
+                {sucessoDono}
+              </p>
+            )}
+
+            <button
+              onClick={enviarDepoimentoDono}
+              disabled={salvandoDono || !textoDono.trim()}
+              className="w-full text-white rounded-2xl py-3 font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+              style={{ backgroundColor: cor }}
+            >
+              {salvandoDono ? (
+                <>
+                  <LoaderCircle size={17} className="animate-spin" />
+                  Salvando depoimento...
+                </>
+              ) : (
+                <>
+                  <Send size={16} />
+                  Cadastrar depoimento
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-2">
           <p className="font-bold text-gray-900">
             Avaliações do salão ({depoimentos.length})
@@ -457,9 +782,7 @@ export default function ClienteAvaliacoesPage() {
 
         {depoimentos.length === 0 ? (
           <div className="card text-center py-8">
-            <p className="text-gray-400">
-              Nenhuma avaliação ainda
-            </p>
+            <p className="text-gray-400">Nenhuma avaliação ainda</p>
           </div>
         ) : (
           depoimentos.map((d) => {
@@ -470,23 +793,23 @@ export default function ClienteAvaliacoesPage() {
 
             const podeEditar = ehMinhaAvaliacao
             const podeAlterarVisibilidade = ehDonoOuAdmin
+            const urlImagem = urlsImagens[d.id]
 
             return (
-              <div
-                key={d.id}
-                className="card flex flex-col gap-3"
-              >
+              <div key={d.id} className="card flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <div
                     className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0"
                     style={{ backgroundColor: cor }}
                   >
-                    {d.clientes?.nome?.charAt(0)?.toUpperCase() || '?'}
+                    {d.clientes?.nome?.charAt(0)?.toUpperCase() ||
+                      (d.cliente_id ? '?' : salao?.nome?.charAt(0) || 'S')}
                   </div>
 
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-gray-900 text-sm">
-                      {d.clientes?.nome || 'Cliente'}
+                      {d.clientes?.nome ||
+                        (d.cliente_id ? 'Cliente' : salao?.nome || 'Salão')}
                     </p>
 
                     {d.servicos?.nome && (
@@ -548,6 +871,32 @@ export default function ClienteAvaliacoesPage() {
                   </p>
                 )}
 
+                {d.imagem_path && (
+                  <div className="flex flex-col gap-2">
+                    {urlImagem ? (
+                      <a
+                        href={urlImagem}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block"
+                      >
+                        <img
+                          src={urlImagem}
+                          alt="Imagem do depoimento"
+                          loading="lazy"
+                          className="w-full max-h-[480px] object-contain rounded-xl border border-gray-100 bg-gray-50"
+                        />
+                      </a>
+                    ) : (
+                      <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 text-sm text-gray-500">
+                        {carregandoImagens
+                          ? 'Carregando imagem...'
+                          : 'Imagem indisponível. Confira as permissões do Storage.'}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2 pt-1">
                   {podeEditar && editando?.id !== d.id && (
                     <>
@@ -601,3 +950,5 @@ export default function ClienteAvaliacoesPage() {
     </div>
   )
 }
+
+
