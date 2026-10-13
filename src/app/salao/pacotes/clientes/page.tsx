@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -13,7 +14,8 @@ import {
   X,
   ChevronRight,
   Calendar,
-  UserPlus
+  UserPlus,
+  MessageCircle
 } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
@@ -56,7 +58,7 @@ export default function PacotesClientesPage() {
   // Sessão realizada
   const [servicoSessao, setServicoSessao] = useState('')
   const [dataSessao, setDataSessao] = useState(
-    new Date().toISOString().split('T')[0]
+    new Date().toLocaleDateString('en-CA')
   )
 
   const [salvando, setSalvando] = useState(false)
@@ -115,7 +117,6 @@ export default function PacotesClientesPage() {
 
         await carregarClientes(salaoId)
 
-        // Busca os pacotes cadastrados no salão
         const { data: listaPacotes, error: errPacotes } = await supabase
           .from('pacotes')
           .select('*')
@@ -158,8 +159,6 @@ export default function PacotesClientesPage() {
 
     setClientes(listaClientes || [])
 
-    // Se a cliente que estava selecionada foi excluída,
-    // volta automaticamente para a lista.
     if (clienteSelecionado) {
       const aindaExiste = (listaClientes || []).some(
         c => c.id === clienteSelecionado.id
@@ -202,7 +201,7 @@ export default function PacotesClientesPage() {
       setTelefoneNovoCliente('')
 
       if (novoC) {
-        abrirDetalhesCliente(novoC)
+        await abrirDetalhesCliente(novoC)
       }
     } catch (err: any) {
       alert('Erro inesperado: ' + err.message)
@@ -237,6 +236,73 @@ export default function PacotesClientesPage() {
   }
 
   // =========================================================
+  // WHATSAPP — AVISO DE PACOTE CONCLUÍDO
+  // =========================================================
+
+  function avisarPacoteFinalizado(pacote: any) {
+    const telefone = String(
+      clienteSelecionado?.telefone || ''
+    ).replace(/\D/g, '')
+
+    if (!telefone) {
+      alert(
+        'Esta cliente não possui telefone cadastrado. Cadastre o WhatsApp dela para enviar o aviso.'
+      )
+      return
+    }
+
+    // Adiciona o código do Brasil quando ainda não estiver presente.
+    const telefoneWhatsApp = telefone.startsWith('55')
+      ? telefone
+      : `55${telefone}`
+
+    const historico = Array.isArray(pacote.historico_sessoes)
+      ? pacote.historico_sessoes
+      : []
+
+    const sessoesFormatadas = historico
+      .slice()
+      .sort((a: any, b: any) =>
+        String(a.data || '').localeCompare(String(b.data || ''))
+      )
+      .map((sessao: any, index: number) => {
+        const dataFormatada = sessao.data
+          ? new Date(
+              `${String(sessao.data).split('T')[0]}T12:00:00`
+            ).toLocaleDateString('pt-BR')
+          : 'Data não informada'
+
+        return `${index + 1}. ${dataFormatada} — ${
+          sessao.servico || 'Serviço não informado'
+        }`
+      })
+
+    const nomeSalao = salao?.nome || 'nosso salão'
+
+    const mensagem = [
+      `Olá, ${clienteSelecionado?.nome || 'tudo bem'}! 🌷`,
+      '',
+      `Passando para avisar que seu pacote *${pacote.servico || 'Pacote'}* foi finalizado!`,
+      '',
+      `Sessões realizadas: ${historico.length} de ${pacote.sessoes_total || historico.length}.`,
+      '',
+      '*Histórico dos atendimentos:*',
+      ...(sessoesFormatadas.length
+        ? sessoesFormatadas
+        : ['Nenhum atendimento registrado.']),
+      '',
+      `Agradecemos pela confiança e por escolher ${nomeSalao}! 💗`,
+      'Será um prazer receber você novamente.'
+    ].join('\n')
+
+    const url = `https://wa.me/${telefoneWhatsApp}?text=${encodeURIComponent(
+      mensagem
+    )}`
+
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  // =========================================================
   // VENDER PACOTE
   // =========================================================
 
@@ -257,17 +323,6 @@ export default function PacotesClientesPage() {
         return
       }
 
-      /*
-       * CORREÇÃO IMPORTANTE:
-       *
-       * A tabela "pacotes" possui:
-       *
-       * sessoes
-       * sessoes_inclusas
-       *
-       * A quantidade correta cadastrada na página de Pacotes
-       * deve ser lida primeiro de sessoes_inclusas.
-       */
       const totalSessoes = Number(
         pacoteObj?.sessoes_inclusas ??
         pacoteObj?.sessoes ??
@@ -370,7 +425,7 @@ export default function PacotesClientesPage() {
       return
     }
 
-    if (pacoteAlvoSessao.sessoes_restantes <= 0) {
+    if (Number(pacoteAlvoSessao.sessoes_restantes) <= 0) {
       alert('Este pacote não possui mais sessões restantes.')
       return
     }
@@ -379,7 +434,7 @@ export default function PacotesClientesPage() {
 
     try {
       const novasRestantes =
-        pacoteAlvoSessao.sessoes_restantes - 1
+        Number(pacoteAlvoSessao.sessoes_restantes) - 1
 
       const novoStatus =
         novasRestantes === 0 ? 'concluido' : 'ativo'
@@ -414,14 +469,10 @@ export default function PacotesClientesPage() {
 
       setModalSessaoAberto(false)
       setServicoSessao('')
-      setDataSessao(
-        new Date().toISOString().split('T')[0]
-      )
+      setDataSessao(new Date().toLocaleDateString('en-CA'))
       setPacoteAlvoSessao(null)
 
-      await carregarPacotesDoCliente(
-        clienteSelecionado.nome
-      )
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
     } catch (err: any) {
       alert('Erro ao registrar sessão: ' + err.message)
     } finally {
@@ -445,9 +496,7 @@ export default function PacotesClientesPage() {
       return
     }
 
-    const historicoAtual = Array.isArray(
-      pacoteObj.historico_sessoes
-    )
+    const historicoAtual = Array.isArray(pacoteObj.historico_sessoes)
       ? [...pacoteObj.historico_sessoes]
       : []
 
@@ -456,13 +505,11 @@ export default function PacotesClientesPage() {
     const novasRestantes =
       Number(pacoteObj.sessoes_restantes || 0) + 1
 
-    const novoStatus = 'ativo'
-
     const { error } = await supabase
       .from('pacotes_clientes_resumo')
       .update({
         sessoes_restantes: novasRestantes,
-        status: novoStatus,
+        status: 'ativo',
         historico_sessoes: historicoAtual
       })
       .eq('id', pacoteObj.id)
@@ -473,9 +520,7 @@ export default function PacotesClientesPage() {
     }
 
     if (clienteSelecionado) {
-      await carregarPacotesDoCliente(
-        clienteSelecionado.nome
-      )
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
     }
   }
 
@@ -503,14 +548,11 @@ export default function PacotesClientesPage() {
     }
 
     if (clienteSelecionado) {
-      await carregarPacotesDoCliente(
-        clienteSelecionado.nome
-      )
+      await carregarPacotesDoCliente(clienteSelecionado.nome)
     }
   }
 
-  const cor =
-    salao?.cor_primaria || '#E91E8C'
+  const cor = salao?.cor_primaria || '#E91E8C'
 
   if (carregando || !profile) {
     return (
@@ -526,9 +568,7 @@ export default function PacotesClientesPage() {
   }
 
   const clientesFiltrados = clientes.filter(c =>
-    c.nome
-      ?.toLowerCase()
-      .includes(busca.toLowerCase()) ||
+    c.nome?.toLowerCase().includes(busca.toLowerCase()) ||
     c.telefone?.includes(busca)
   )
 
@@ -547,7 +587,6 @@ export default function PacotesClientesPage() {
 
   return (
     <div className="min-h-screen pb-24 bg-gray-50">
-
       <Header
         profile={profile}
         salaoNome={salao?.nome}
@@ -555,17 +594,10 @@ export default function PacotesClientesPage() {
       />
 
       <div className="px-4 py-5 flex flex-col gap-4 max-w-xl mx-auto">
-
-        {/* =====================================================
-            CLIENTE SELECIONADA
-        ====================================================== */}
-
+        {/* CLIENTE SELECIONADA */}
         {clienteSelecionado ? (
-
           <div className="flex flex-col gap-4">
-
             <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-3">
-
               <button
                 onClick={() => {
                   setClienteSelecionado(null)
@@ -577,119 +609,71 @@ export default function PacotesClientesPage() {
               </button>
 
               <div className="flex items-center justify-between">
-
                 <div>
                   <h1 className="text-lg font-bold text-gray-900">
                     {clienteSelecionado.nome}
                   </h1>
 
                   <p className="text-xs text-gray-500">
-                    {clienteSelecionado.telefone ||
-                      'Sem telefone'}
+                    {clienteSelecionado.telefone || 'Sem telefone'}
                   </p>
                 </div>
-
               </div>
 
               <div className="flex gap-2 pt-1">
-
                 <button
-                  onClick={() =>
-                    setModalVenderAberto(true)
-                  }
+                  onClick={() => setModalVenderAberto(true)}
                   className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  style={{ backgroundColor: cor }}
                 >
                   <Plus size={16} />
                   Vender Pacote
                 </button>
 
                 <button
-                  onClick={() =>
-                    setModalAntigoAberto(true)
-                  }
+                  onClick={() => setModalAntigoAberto(true)}
                   className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-gray-50 transition"
                 >
                   <Calendar size={16} />
                   Pacote Antigo
                 </button>
-
               </div>
-
             </div>
 
             <div className="space-y-4">
-
               <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Pacotes da cliente
               </h2>
 
               {pacotesCliente.length === 0 ? (
-
                 <div className="bg-white p-8 rounded-3xl text-center border border-gray-100 shadow-sm flex flex-col items-center gap-2">
-
-                  <AlertCircle
-                    size={32}
-                    className="text-gray-300"
-                  />
+                  <AlertCircle size={32} className="text-gray-300" />
 
                   <p className="text-gray-500 text-sm">
                     Esta cliente não possui pacotes cadastrados.
                   </p>
-
                 </div>
-
               ) : (
-
                 pacotesCliente.map(pc => {
+                  const nomeServico = pc.servico || 'Pacote'
+                  const total = Number(pc.sessoes_total) || 1
+                  const restantes = Number(pc.sessoes_restantes ?? total)
+                  const usadas = Math.max(0, total - restantes)
+                  const progressoPct = Math.min(100, (usadas / total) * 100)
+                  const status = pc.status || 'ativo'
 
-                  const nomeServico =
-                    pc.servico || 'Pacote'
-
-                  const total =
-                    Number(pc.sessoes_total) || 1
-
-                  const restantes =
-                    Number(
-                      pc.sessoes_restantes
-                    ) ?? total
-
-                  const usadas = Math.max(
-                    0,
-                    total - restantes
-                  )
-
-                  const progressoPct =
-                    Math.min(
-                      100,
-                      (usadas / total) * 100
-                    )
-
-                  const status =
-                    pc.status || 'ativo'
-
-                  const sessoesDoPacote =
-                    Array.isArray(
-                      pc.historico_sessoes
-                    )
-                      ? pc.historico_sessoes
-                      : []
+                  const sessoesDoPacote = Array.isArray(pc.historico_sessoes)
+                    ? pc.historico_sessoes
+                    : []
 
                   return (
-
                     <div
                       key={pc.id}
                       className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex flex-col gap-3"
                     >
-
                       <div className="flex items-start justify-between">
-
                         <div>
-
-                          <div className="flex items-center gap-2">
-
+                          <div className="flex items-center gap-2 flex-wrap">
                             <h3 className="font-bold text-gray-900 text-base">
                               {nomeServico}
                             </h3>
@@ -703,41 +687,25 @@ export default function PacotesClientesPage() {
                             >
                               {status}
                             </span>
-
                           </div>
-
                         </div>
 
                         <button
-                          onClick={() =>
-                            excluirPacoteCliente(
-                              pc.id
-                            )
-                          }
+                          onClick={() => excluirPacoteCliente(pc.id)}
                           className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
                           title="Remover pacote"
                         >
                           <Trash2 size={16} />
                         </button>
-
                       </div>
 
                       <div className="flex flex-col gap-1.5">
-
                         <div className="flex justify-between text-xs text-gray-500 font-medium">
-
-                          <span>
-                            {usadas} usadas
-                          </span>
-
-                          <span>
-                            {restantes} restantes
-                          </span>
-
+                          <span>{usadas} usadas</span>
+                          <span>{restantes} restantes</span>
                         </div>
 
                         <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
-
                           <div
                             className="h-full rounded-full transition-all duration-300"
                             style={{
@@ -745,92 +713,60 @@ export default function PacotesClientesPage() {
                               backgroundColor: cor
                             }}
                           />
-
                         </div>
-
                       </div>
 
                       {/* HISTÓRICO */}
-
                       <div className="flex flex-col gap-2 pt-2 border-t border-gray-50">
-
                         <span className="text-xs font-bold text-gray-400">
                           Histórico de sessões
                         </span>
 
                         {sessoesDoPacote.length === 0 ? (
-
                           <p className="text-xs text-gray-400 italic">
                             Nenhuma sessão realizada ainda.
                           </p>
-
                         ) : (
-
                           <div className="flex flex-col gap-1.5">
+                            {sessoesDoPacote.map((sessao: any, idx: number) => {
+                              const dataFormatada = sessao.data
+                                ? new Date(
+                                    `${String(sessao.data).split('T')[0]}T12:00:00`
+                                  ).toLocaleDateString('pt-BR')
+                                : ''
 
-                            {sessoesDoPacote.map(
-                              (
-                                sessao: any,
-                                idx: number
-                              ) => {
+                              return (
+                                <div
+                                  key={sessao.id || idx}
+                                  className="flex items-center justify-between text-xs bg-gray-50 px-3 py-2 rounded-xl gap-2"
+                                >
+                                  <div className="flex items-center gap-2 text-gray-700 font-medium min-w-0">
+                                    <span className="text-gray-400 shrink-0">
+                                      {dataFormatada}
+                                    </span>
 
-const dataFormatada = sessao.data
-  ? sessao.data
-      .split('T')[0]
-      .split('-')
-      .reverse()
-      .join('/')
-  : ''
+                                    <span>•</span>
 
-                                return (
-
-                                  <div
-                                    key={idx}
-                                    className="flex items-center justify-between text-xs bg-gray-50 px-3 py-2 rounded-xl"
-                                  >
-
-                                    <div className="flex items-center gap-2 text-gray-700 font-medium">
-
-                                      <span className="text-gray-400">
-                                        {dataFormatada}
-                                      </span>
-
-                                      <span>•</span>
-
-                                      <span>
-                                        {sessao.servico}
-                                      </span>
-
-                                    </div>
-
-                                    <button
-                                      onClick={() =>
-                                        excluirSessaoHistorico(
-                                          idx,
-                                          pc
-                                        )
-                                      }
-                                      className="text-gray-300 hover:text-red-500 p-1 transition"
-                                      title="Excluir sessão"
-                                    >
-                                      <X size={14} />
-                                    </button>
-
+                                    <span className="break-words">
+                                      {sessao.servico}
+                                    </span>
                                   </div>
 
-                                )
-                              }
-                            )}
-
+                                  <button
+                                    onClick={() => excluirSessaoHistorico(idx, pc)}
+                                    className="text-gray-300 hover:text-red-500 p-1 transition shrink-0"
+                                    title="Excluir sessão"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              )
+                            })}
                           </div>
-
                         )}
-
                       </div>
 
-                      {status === 'ativo' &&
-                        restantes > 0 && (
-
+                      {status === 'ativo' && restantes > 0 && (
                         <button
                           onClick={() => {
                             setPacoteAlvoSessao(pc)
@@ -845,16 +781,25 @@ const dataFormatada = sessao.data
                           <Plus size={16} />
                           Adicionar sessão realizada
                         </button>
-
                       )}
 
-                      <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50 flex justify-between">
+                      {/* WHATSAPP: aparece apenas quando o pacote está concluído */}
+                      {status === 'concluido' && (
+                        <button
+                          onClick={() => avisarPacoteFinalizado(pc)}
+                          className="w-full py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-2 transition active:scale-95 mt-1 text-white"
+                          style={{ backgroundColor: '#25D366' }}
+                        >
+                          <MessageCircle size={17} />
+                          Avisar conclusão pelo WhatsApp
+                        </button>
+                      )}
 
+                      <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-50 flex justify-between gap-3">
                         <span>
                           Vendido por:{' '}
                           <span className="font-medium text-gray-600">
-                            {profile?.nome ||
-                              'Sistema'}
+                            {profile?.nome || 'Sistema'}
                           </span>
                         </span>
 
@@ -862,40 +807,22 @@ const dataFormatada = sessao.data
                           Criado em:{' '}
                           <span className="font-medium text-gray-600">
                             {pc.created_at
-                              ? new Date(
-                                  pc.created_at
-                                ).toLocaleDateString(
-                                  'pt-BR'
-                                )
+                              ? new Date(pc.created_at).toLocaleDateString('pt-BR')
                               : '-'}
                           </span>
                         </span>
-
                       </div>
-
                     </div>
-
                   )
                 })
-
               )}
-
             </div>
-
           </div>
-
         ) : (
-
-          /* =====================================================
-             LISTA DE CLIENTES
-          ====================================================== */
-
+          /* LISTA DE CLIENTES */
           <div className="flex flex-col gap-4">
-
             <div className="flex flex-col gap-3 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
-
-              <div className="flex items-center justify-between">
-
+              <div className="flex items-center justify-between gap-3">
                 <div>
                   <h1 className="text-lg font-bold text-gray-900">
                     Pacotes por Cliente
@@ -907,22 +834,16 @@ const dataFormatada = sessao.data
                 </div>
 
                 <button
-                  onClick={() =>
-                    setModalNovoClienteAberto(true)
-                  }
-                  className="text-white px-3.5 py-2.5 rounded-2xl text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  onClick={() => setModalNovoClienteAberto(true)}
+                  className="text-white px-3.5 py-2.5 rounded-2xl text-xs font-semibold flex items-center gap-1.5 shadow-sm active:scale-95 transition shrink-0"
+                  style={{ backgroundColor: cor }}
                 >
                   <UserPlus size={16} />
                   Novo Cliente
                 </button>
-
               </div>
 
               <div className="relative">
-
                 <Search
                   size={16}
                   className="absolute left-3.5 top-3.5 text-gray-400"
@@ -932,130 +853,78 @@ const dataFormatada = sessao.data
                   type="text"
                   placeholder="Buscar cliente por nome ou telefone..."
                   value={busca}
-                  onChange={e =>
-                    setBusca(e.target.value)
-                  }
+                  onChange={e => setBusca(e.target.value)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-10 pr-4 py-3 text-xs outline-none placeholder-gray-400"
                 />
-
               </div>
-
             </div>
 
             <div className="flex flex-col gap-2">
-
               {clientesFiltrados.length === 0 ? (
-
                 <div className="bg-white p-8 rounded-3xl text-center border border-gray-100 shadow-sm flex flex-col items-center gap-2">
-
-                  <Users
-                    size={32}
-                    className="text-gray-300"
-                  />
+                  <Users size={32} className="text-gray-300" />
 
                   <p className="text-gray-500 text-sm">
                     Nenhuma cliente encontrada.
                   </p>
-
                 </div>
-
               ) : (
-
                 clientesFiltrados.map(cliente => (
-
                   <div
                     key={cliente.id}
-                    onClick={() =>
-                      abrirDetalhesCliente(
-                        cliente
-                      )
-                    }
+                    onClick={() => abrirDetalhesCliente(cliente)}
                     className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 cursor-pointer hover:border-pink-300 transition"
                   >
-
-                    <div className="flex items-center gap-3">
-
+                    <div className="flex items-center gap-3 min-w-0">
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white text-xs uppercase shrink-0"
-                        style={{
-                          backgroundColor: cor
-                        }}
+                        style={{ backgroundColor: cor }}
                       >
-                        {cliente.nome
-                          ? cliente.nome[0]
-                          : 'C'}
+                        {cliente.nome ? cliente.nome[0] : 'C'}
                       </div>
 
-                      <div>
-
+                      <div className="min-w-0">
                         <h3 className="font-bold text-gray-900 text-sm">
                           {cliente.nome}
                         </h3>
 
                         <p className="text-xs text-gray-400">
-                          {cliente.telefone ||
-                            'Sem telefone'}
+                          {cliente.telefone || 'Sem telefone'}
                         </p>
-
                       </div>
-
                     </div>
 
-                    <ChevronRight
-                      size={18}
-                      className="text-gray-400"
-                    />
-
+                    <ChevronRight size={18} className="text-gray-400 shrink-0" />
                   </div>
-
                 ))
-
               )}
-
             </div>
-
           </div>
-
         )}
-
       </div>
 
-      {/* =====================================================
-          MODAL NOVO CLIENTE
-      ====================================================== */}
-
+      {/* MODAL NOVO CLIENTE */}
       {modalNovoClienteAberto && (
-
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
-
             <div className="flex items-center justify-between">
-
               <h3 className="text-base font-bold text-gray-900">
                 Novo Cliente
               </h3>
 
               <button
-                onClick={() =>
-                  setModalNovoClienteAberto(false)
-                }
+                onClick={() => setModalNovoClienteAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X size={20} />
               </button>
-
             </div>
 
             <form
-              onSubmit={
-                cadastrarNovoClienteRapido
-              }
+              onSubmit={cadastrarNovoClienteRapido}
               className="flex flex-col gap-3"
             >
-
               <div className="flex flex-col gap-1.5">
-
                 <label className="text-xs font-semibold text-gray-900">
                   Nome completo
                 </label>
@@ -1064,19 +933,13 @@ const dataFormatada = sessao.data
                   type="text"
                   placeholder="Nome da cliente"
                   value={nomeNovoCliente}
-                  onChange={e =>
-                    setNomeNovoCliente(
-                      e.target.value
-                    )
-                  }
+                  onChange={e => setNomeNovoCliente(e.target.value)}
                   required
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none"
                 />
-
               </div>
 
               <div className="flex flex-col gap-1.5">
-
                 <label className="text-xs font-semibold text-gray-900">
                   Telefone / WhatsApp (Opcional)
                 </label>
@@ -1085,23 +948,15 @@ const dataFormatada = sessao.data
                   type="text"
                   placeholder="(00) 00000-0000"
                   value={telefoneNovoCliente}
-                  onChange={e =>
-                    setTelefoneNovoCliente(
-                      e.target.value
-                    )
-                  }
+                  onChange={e => setTelefoneNovoCliente(e.target.value)}
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none"
                 />
-
               </div>
 
               <div className="flex gap-2 pt-2">
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setModalNovoClienteAberto(false)
-                  }
+                  onClick={() => setModalNovoClienteAberto(false)}
                   className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold"
                 >
                   Cancelar
@@ -1111,89 +966,48 @@ const dataFormatada = sessao.data
                   type="submit"
                   disabled={salvando}
                   className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  style={{ backgroundColor: cor }}
                 >
-                  {salvando
-                    ? 'Salvando...'
-                    : 'Cadastrar'}
+                  {salvando ? 'Salvando...' : 'Cadastrar'}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
-
       )}
 
-      {/* =====================================================
-          MODAL VENDER PACOTE
-      ====================================================== */}
-
-      {modalVenderAberto &&
-        clienteSelecionado && (
-
+      {/* MODAL VENDER PACOTE */}
+      {modalVenderAberto && clienteSelecionado && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
-
             <div className="flex items-center justify-between">
-
               <h3 className="text-base font-bold text-gray-900">
                 Vender Pacote
               </h3>
 
               <button
-                onClick={() =>
-                  setModalVenderAberto(false)
-                }
+                onClick={() => setModalVenderAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X size={20} />
               </button>
-
             </div>
 
-            <form
-              onSubmit={venderPacote}
-              className="flex flex-col gap-3"
-            >
-
+            <form onSubmit={venderPacote} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
-
                 <label className="text-xs font-semibold text-gray-900">
                   Selecione o Pacote
                 </label>
 
                 <select
                   value={pacoteEscolhido}
-                  onChange={e =>
-                    setPacoteEscolhido(
-                      e.target.value
-                    )
-                  }
+                  onChange={e => setPacoteEscolhido(e.target.value)}
                   required
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none text-gray-700"
                 >
-
-                  <option value="">
-                    Selecione...
-                  </option>
+                  <option value="">Selecione...</option>
 
                   {pacotesDisponiveis.map(p => {
-
-                    /*
-                     * CORREÇÃO:
-                     * Prioriza sessoes_inclusas.
-                     *
-                     * Assim a quantidade exibida no seletor
-                     * é a mesma quantidade configurada na
-                     * página de gerenciamento de pacotes.
-                     */
                     const numSessoes = Number(
                       p.sessoes_inclusas ??
                       p.sessoes ??
@@ -1204,31 +1018,19 @@ const dataFormatada = sessao.data
                     )
 
                     return (
-
-                      <option
-                        key={p.id}
-                        value={p.id}
-                      >
+                      <option key={p.id} value={p.id}>
                         {p.nome} ({numSessoes}{' '}
-                        {numSessoes === 1
-                          ? 'sessão'
-                          : 'sessões'})
+                        {numSessoes === 1 ? 'sessão' : 'sessões'})
                       </option>
-
                     )
                   })}
-
                 </select>
-
               </div>
 
               <div className="flex gap-2 pt-2">
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setModalVenderAberto(false)
-                  }
+                  onClick={() => setModalVenderAberto(false)}
                   className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold"
                 >
                   Cancelar
@@ -1238,60 +1040,38 @@ const dataFormatada = sessao.data
                   type="submit"
                   disabled={salvando}
                   className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  style={{ backgroundColor: cor }}
                 >
-                  {salvando
-                    ? 'Salvando...'
-                    : 'Vender'}
+                  {salvando ? 'Salvando...' : 'Vender'}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
-
       )}
 
-      {/* =====================================================
-          MODAL PACOTE ANTIGO
-      ====================================================== */}
-
-      {modalAntigoAberto &&
-        clienteSelecionado && (
-
+      {/* MODAL PACOTE ANTIGO */}
+      {modalAntigoAberto && clienteSelecionado && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
-
             <div className="flex items-center justify-between">
-
               <h3 className="text-base font-bold text-gray-900">
                 Cadastrar Pacote Antigo
               </h3>
 
               <button
-                onClick={() =>
-                  setModalAntigoAberto(false)
-                }
+                onClick={() => setModalAntigoAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X size={20} />
               </button>
-
             </div>
 
             <form
               onSubmit={cadastrarPacoteAntigo}
               className="flex flex-col gap-3"
             >
-
               <div className="flex flex-col gap-1.5">
-
                 <label className="text-xs font-semibold text-gray-900">
                   Nome do Pacote
                 </label>
@@ -1300,19 +1080,13 @@ const dataFormatada = sessao.data
                   type="text"
                   placeholder="Ex: 4 mãos e 1 pé"
                   value={nomePacoteAntigo}
-                  onChange={e =>
-                    setNomePacoteAntigo(
-                      e.target.value
-                    )
-                  }
+                  onChange={e => setNomePacoteAntigo(e.target.value)}
                   required
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none"
                 />
-
               </div>
 
               <div className="flex flex-col gap-1.5">
-
                 <label className="text-xs font-semibold text-gray-900">
                   Total de Sessões
                 </label>
@@ -1322,24 +1096,16 @@ const dataFormatada = sessao.data
                   min="1"
                   placeholder="Ex: 5"
                   value={sessoesTotalAntigo}
-                  onChange={e =>
-                    setSessoesTotalAntigo(
-                      e.target.value
-                    )
-                  }
+                  onChange={e => setSessoesTotalAntigo(e.target.value)}
                   required
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none"
                 />
-
               </div>
 
               <div className="flex gap-2 pt-2">
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setModalAntigoAberto(false)
-                  }
+                  onClick={() => setModalAntigoAberto(false)}
                   className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold"
                 >
                   Cancelar
@@ -1349,62 +1115,38 @@ const dataFormatada = sessao.data
                   type="submit"
                   disabled={salvando}
                   className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  style={{ backgroundColor: cor }}
                 >
-                  {salvando
-                    ? 'Salvando...'
-                    : 'Cadastrar'}
+                  {salvando ? 'Salvando...' : 'Cadastrar'}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
-
       )}
 
-      {/* =====================================================
-          MODAL ADICIONAR SESSÃO
-      ====================================================== */}
-
-      {modalSessaoAberto &&
-        pacoteAlvoSessao && (
-
+      {/* MODAL ADICIONAR SESSÃO */}
+      {modalSessaoAberto && pacoteAlvoSessao && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
-
             <div className="flex items-center justify-between">
-
               <h3 className="text-base font-bold text-gray-900">
                 Adicionar Sessão Realizada
               </h3>
 
               <button
-                onClick={() =>
-                  setModalSessaoAberto(false)
-                }
+                onClick={() => setModalSessaoAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X size={20} />
               </button>
-
             </div>
 
             <form
-              onSubmit={
-                registrarSessaoRealizada
-              }
+              onSubmit={registrarSessaoRealizada}
               className="flex flex-col gap-3"
             >
-
               <div className="flex flex-col gap-1.5">
-
                 <label className="text-xs font-semibold text-gray-900">
                   Serviço Realizado
                 </label>
@@ -1413,19 +1155,13 @@ const dataFormatada = sessao.data
                   type="text"
                   placeholder="Ex: Manicure ou Pedicure"
                   value={servicoSessao}
-                  onChange={e =>
-                    setServicoSessao(
-                      e.target.value
-                    )
-                  }
+                  onChange={e => setServicoSessao(e.target.value)}
                   required
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none"
                 />
-
               </div>
 
               <div className="flex flex-col gap-1.5">
-
                 <label className="text-xs font-semibold text-gray-900">
                   Data da Sessão
                 </label>
@@ -1433,24 +1169,16 @@ const dataFormatada = sessao.data
                 <input
                   type="date"
                   value={dataSessao}
-                  onChange={e =>
-                    setDataSessao(
-                      e.target.value
-                    )
-                  }
+                  onChange={e => setDataSessao(e.target.value)}
                   required
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none"
                 />
-
               </div>
 
               <div className="flex gap-2 pt-2">
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setModalSessaoAberto(false)
-                  }
+                  onClick={() => setModalSessaoAberto(false)}
                   className="flex-1 border border-gray-200 text-gray-700 py-3 rounded-2xl text-xs font-semibold"
                 >
                   Cancelar
@@ -1460,30 +1188,20 @@ const dataFormatada = sessao.data
                   type="submit"
                   disabled={salvando}
                   className="flex-1 text-white py-3 rounded-2xl text-xs font-semibold"
-                  style={{
-                    backgroundColor: cor
-                  }}
+                  style={{ backgroundColor: cor }}
                 >
-                  {salvando
-                    ? 'Salvando...'
-                    : 'Adicionar'}
+                  {salvando ? 'Salvando...' : 'Adicionar'}
                 </button>
-
               </div>
-
             </form>
-
           </div>
-
         </div>
-
       )}
 
       <BottomNav
         items={navItems}
         corPrimaria={cor}
       />
-
     </div>
   )
 }
