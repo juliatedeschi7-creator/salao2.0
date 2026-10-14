@@ -334,7 +334,6 @@ export default function PacotesClientesPage() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-
   // VENDER PACOTE
   async function venderPacote(e: React.FormEvent) {
     e.preventDefault()
