@@ -1321,121 +1321,126 @@ const [horaAceite, setHoraAceite] = useState('')
     }
   }
   // ─── SOLICITAÇÕES ────────────────────────────────────────────────────
-  async function aceitarSolicitacao(
-    solicitacao: any
+async function aceitarSolicitacao(
+  solicitacao: any
+) {
+  if (!profile?.salao_id) return
+  // Se o pedido veio de uma conversa pelo WhatsApp,
+  // o salão informa aqui o horário que foi combinado.
+  setModalAceitar(solicitacao)
+  const dataHoraExistente =
+    solicitacao?.data_hora ||
+    solicitacao?.data_agendada
+  if (
+    dataHoraExistente &&
+    !Number.isNaN(new Date(dataHoraExistente).getTime())
   ) {
-    if (!profile?.salao_id) return
-
-    const dataHora =
-      solicitacao?.data_hora ||
-      solicitacao?.data_agendada ||
-      solicitacao?.horario_sugerido
-
-    if (!dataHora) {
-      alert(
-        solicitacao?.status === 'horario_sugerido'
-          ? 'A cliente ainda precisa escolher um dos horários enviados. Quando ela escolher, você poderá aceitar o pedido.'
-          : 'Esta solicitação não possui um horário definido. Use “Sugerir horários” para enviar horários disponíveis antes de aceitar.'
-      )
-      return
-    }
-
+    const data = new Date(dataHoraExistente)
+    const deslocamento = data.getTimezoneOffset() * 60000
+    const dataLocal = new Date(data.getTime() - deslocamento)
+      .toISOString()
+    setDataAceite(dataLocal.slice(0, 10))
+    setHoraAceite(dataLocal.slice(11, 16))
+  } else {
+    setDataAceite('')
+    setHoraAceite('')
+  }
+}
+async function confirmarAceiteSolicitacao() {
+  if (!profile?.salao_id || !modalAceitar) return
+  if (!dataAceite || !horaAceite) {
+    alert('Informe a data e o horário combinados com a cliente.')
+    return
+  }
+  const dataHora = new Date(
+    `${dataAceite}T${horaAceite}:00`
+  )
+  if (Number.isNaN(dataHora.getTime())) {
+    alert('A data ou o horário informado é inválido.')
+    return
+  }
+  setSalvando(true)
+  try {
+    // Confere se a solicitação ainda está pendente,
+    // para evitar aceitar um pedido que já foi processado.
+    const { data: pedidoAtual, error: erroConsulta } =
+      await supabase
+        .from('solicitacoes_agendamento')
+        .select('id, status')
+        .eq('id', modalAceitar.id)
+        .eq('salao_id', profile.salao_id)
+        .maybeSingle()
+    if (erroConsulta) throw erroConsulta
     if (
-      Number.isNaN(
-        new Date(dataHora).getTime()
-      )
+      !pedidoAtual ||
+      !['pendente', 'horario_sugerido'].includes(pedidoAtual.status)
     ) {
-      alert(
-        'O horário desta solicitação é inválido. Use “Sugerir horários” para definir um horário válido.'
-      )
+      alert('Esta solicitação já foi processada ou não está mais disponível.')
+      setModalAceitar(null)
+      await carregarDados()
       return
     }
-
-    setSalvando(true)
-    try {
-      const {
-        error: erroAgendamento
-      } = await supabase
+    const dataHoraISO = dataHora.toISOString()
+    // Evita criar outro agendamento idêntico para a mesma solicitação
+    // quando já existir um registro com esses dados.
+    const { data: existente, error: erroExistente } =
+      await supabase
+        .from('agendamentos')
+        .select('id')
+        .eq('salao_id', profile.salao_id)
+        .eq('cliente_id', modalAceitar.cliente_id)
+        .eq('servico_id', modalAceitar.servico_id)
+        .eq('data_hora', dataHoraISO)
+        .maybeSingle()
+    if (erroExistente) throw erroExistente
+    if (!existente) {
+      const { error: erroAgendamento } = await supabase
         .from('agendamentos')
         .insert({
-          salao_id:
-            profile.salao_id,
-          cliente_id:
-            solicitacao.cliente_id,
-          servico_id:
-            solicitacao.servico_id,
-          data_hora: dataHora,
+          salao_id: profile.salao_id,
+          cliente_id: modalAceitar.cliente_id,
+          servico_id: modalAceitar.servico_id,
+          data_hora: dataHoraISO,
           status: 'confirmado',
-          observacoes:
-            solicitacao.observacoes ||
-            null
+          observacoes: modalAceitar.observacoes || null
         })
-
-      if (erroAgendamento) {
-        throw erroAgendamento
-      }
-
-      const { error: erroSolicitacao } =
-        await supabase
-          .from(
-            'solicitacoes_agendamento'
-          )
-          .update({
-            status: 'aceito'
-          })
-          .eq(
-            'id',
-            solicitacao.id
-          )
-          .eq(
-            'salao_id',
-            profile.salao_id
-          )
-
-      if (erroSolicitacao) {
-        throw erroSolicitacao
-      }
-
-      await notificar({
-        salaoId:
-          profile.salao_id,
-        remetenteId:
-          profile.id,
-        tipo:
-          'solicitacao_aceita',
-        titulo:
-          'Agendamento confirmado',
-        mensagem: `O agendamento de ${
-          solicitacao.clientes?.nome ||
-          'cliente'
-        } foi confirmado.`,
-        destinatarioId:
-          solicitacao.clientes?.profile_id ||
-          null,
-        url: '/cliente'
-      })
-
-      setSolicitacoes(prev =>
-        prev.filter(
-          item =>
-            item.id !==
-            solicitacao.id
-        )
-      )
-      await carregarDados()
-    } catch (error: any) {
-      console.error(
-        'Erro ao aceitar solicitação:',
-        error
-      )
-      alert(
-        error?.message ||
-          'Não foi possível aceitar a solicitação.'
-      )
-    } finally {
-      setSalvando(false)
+      if (erroAgendamento) throw erroAgendamento
     }
+    const { error: erroSolicitacao } = await supabase
+      .from('solicitacoes_agendamento')
+      .update({
+        status: 'aceito'
+      })
+      .eq('id', modalAceitar.id)
+      .eq('salao_id', profile.salao_id)
+    if (erroSolicitacao) throw erroSolicitacao
+    await notificar({
+      salaoId: profile.salao_id,
+      remetenteId: profile.id,
+      tipo: 'solicitacao_aceita',
+      titulo: 'Agendamento confirmado',
+      mensagem: `O agendamento de ${
+        modalAceitar.clientes?.nome || 'cliente'
+      } foi confirmado.`,
+      destinatarioId:
+        modalAceitar.clientes?.profile_id || null,
+      url: '/cliente'
+    })
+    setModalAceitar(null)
+    setDataAceite('')
+    setHoraAceite('')
+    await carregarDados()
+    alert('Agendamento confirmado!')
+  } catch (error: any) {
+    console.error('Erro ao aceitar solicitação:', error)
+    alert(
+      error?.message ||
+      'Não foi possível confirmar o agendamento.'
+    )
+  } finally {
+    setSalvando(false)
   }
+}
   async function recusarSolicitacao(
     solicitacao: any
   ) {
@@ -2397,6 +2402,84 @@ comparecimento.
           </section>
         )}
       </main>
+{/* MODAL ACEITAR SOLICITAÇÃO */}
+{modalAceitar && (
+  <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-xl overflow-hidden">
+      <div className="p-5 border-b border-[#e8e8e8] flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-lg">
+            Confirmar horário combinado
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            {obterNomeCliente(modalAceitar)}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setModalAceitar(null)}
+          disabled={salvando}
+          className="w-9 h-9 rounded-full bg-[#f7f7f7] flex items-center justify-center text-gray-500"
+        >
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="p-5">
+        <p className="text-sm text-gray-600 mb-4">
+          Informe a data e o horário que você e a cliente combinaram pelo WhatsApp.
+        </p>
+
+        <label className="block mb-4">
+          <span className="text-sm font-medium text-gray-700">
+            Data do agendamento
+          </span>
+          <input
+            type="date"
+            value={dataAceite}
+            onChange={e => setDataAceite(e.target.value)}
+            className="w-full h-12 mt-2 rounded-xl border border-[#e2e2e2] px-3 text-sm"
+            required
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">
+            Horário combinado
+          </span>
+          <input
+            type="time"
+            value={horaAceite}
+            onChange={e => setHoraAceite(e.target.value)}
+            className="w-full h-12 mt-2 rounded-xl border border-[#e2e2e2] px-3 text-sm"
+            required
+          />
+        </label>
+
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setModalAceitar(null)}
+            disabled={salvando}
+            className="h-12 rounded-xl border border-[#e2e2e2] text-sm font-semibold text-gray-600"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            disabled={salvando || !dataAceite || !horaAceite}
+            onClick={confirmarAceiteSolicitacao}
+            className="h-12 rounded-xl bg-[var(--cor-salao)] text-white text-sm font-semibold disabled:opacity-50"
+          >
+            {salvando ? 'Salvando...' : 'Confirmar e agendar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
       {/* MODAL SUGERIR HORÁRIOS */}
       {modalSugestao && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items- center justify-center p-0 sm:p-4">
