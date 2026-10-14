@@ -279,22 +279,14 @@ export default function PacotesClientesPage() {
     }
   }
 
+
   // WHATSAPP — AVISO DE PACOTE CONCLUÍDO
   function avisarPacoteFinalizado(pacote: any) {
-    const telefone = String(
-      clienteSelecionado?.telefone || ''
-    ).replace(/\D/g, '')
+    const telefone = String(clienteSelecionado?.telefone || '').replace(/\D/g, '')
 
-    if (!telefone) {
-      alert(
-        'Esta cliente não possui telefone cadastrado. Cadastre o WhatsApp dela para enviar o aviso.'
-      )
-      return
-    }
-
-    const telefoneWhatsApp = telefone.startsWith('55')
-      ? telefone
-      : `55${telefone}`
+    const telefoneWhatsApp = telefone
+      ? (telefone.startsWith('55') ? telefone : `55${telefone}`)
+      : ''
 
     const historico = Array.isArray(pacote.historico_sessoes)
       ? pacote.historico_sessoes
@@ -335,10 +327,13 @@ export default function PacotesClientesPage() {
       'Será um prazer receber você novamente.'
     ].join('\n')
 
-    const url = `https://wa.me/${telefoneWhatsApp}?text=${encodeURIComponent(mensagem)}`
+    const url = telefoneWhatsApp
+      ? `https://wa.me/${telefoneWhatsApp}?text=${encodeURIComponent(mensagem)}`
+      : `https://wa.me/?text=${encodeURIComponent(mensagem)}`
 
     window.open(url, '_blank', 'noopener,noreferrer')
   }
+
 
   // VENDER PACOTE
   async function venderPacote(e: React.FormEvent) {
