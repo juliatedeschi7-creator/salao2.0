@@ -15,7 +15,10 @@ import {
   ChevronRight,
   Calendar,
   UserPlus,
-  MessageCircle
+  MessageCircle,
+  Pencil,
+  Save,
+  StickyNote
 } from 'lucide-react'
 import Header from '@/components/Header'
 import BottomNav from '@/components/BottomNav'
@@ -34,34 +37,34 @@ export default function PacotesClientesPage() {
   const [busca, setBusca] = useState('')
   const [carregando, setCarregando] = useState(true)
 
-  // Cliente selecionado e pacotes
   const [clienteSelecionado, setClienteSelecionado] = useState<any>(null)
   const [pacotesCliente, setPacotesCliente] = useState<any[]>([])
   const [pacotesDisponiveis, setPacotesDisponiveis] = useState<any[]>([])
 
-  // Modais
   const [modalVenderAberto, setModalVenderAberto] = useState(false)
   const [modalAntigoAberto, setModalAntigoAberto] = useState(false)
   const [modalSessaoAberto, setModalSessaoAberto] = useState(false)
   const [modalNovoClienteAberto, setModalNovoClienteAberto] = useState(false)
   const [pacoteAlvoSessao, setPacoteAlvoSessao] = useState<any>(null)
 
-  // Inputs formulários
   const [pacoteEscolhido, setPacoteEscolhido] = useState('')
   const [nomePacoteAntigo, setNomePacoteAntigo] = useState('')
   const [sessoesTotalAntigo, setSessoesTotalAntigo] = useState('')
 
-  // Novo cliente rápido
   const [nomeNovoCliente, setNomeNovoCliente] = useState('')
   const [telefoneNovoCliente, setTelefoneNovoCliente] = useState('')
 
-  // Sessão realizada
   const [servicoSessao, setServicoSessao] = useState('')
   const [dataSessao, setDataSessao] = useState(
     new Date().toLocaleDateString('en-CA')
   )
 
   const [salvando, setSalvando] = useState(false)
+
+  // Observações individuais dos pacotes
+  const [pacoteEditandoObservacao, setPacoteEditandoObservacao] = useState<string | null>(null)
+  const [textoObservacao, setTextoObservacao] = useState('')
+  const [salvandoObservacao, setSalvandoObservacao] = useState(false)
 
   useEffect(() => {
     async function carregar() {
@@ -95,9 +98,7 @@ export default function PacotesClientesPage() {
             .eq('dono_id', session.user.id)
             .maybeSingle()
 
-          if (salDono) {
-            salaoId = salDono.id
-          }
+          if (salDono) salaoId = salDono.id
         }
 
         if (!salaoId) {
@@ -124,10 +125,7 @@ export default function PacotesClientesPage() {
           .order('nome', { ascending: true })
 
         if (errPacotes) {
-          console.error(
-            'Erro ao buscar pacotes criados:',
-            errPacotes.message
-          )
+          console.error('Erro ao buscar pacotes criados:', errPacotes.message)
         } else {
           setPacotesDisponiveis(listaPacotes || [])
         }
@@ -141,10 +139,7 @@ export default function PacotesClientesPage() {
     carregar()
   }, [])
 
-  // =========================================================
   // CLIENTES
-  // =========================================================
-
   async function carregarClientes(salaoId: string) {
     const { data: listaClientes, error } = await supabase
       .from('clientes')
@@ -200,9 +195,7 @@ export default function PacotesClientesPage() {
       setNomeNovoCliente('')
       setTelefoneNovoCliente('')
 
-      if (novoC) {
-        await abrirDetalhesCliente(novoC)
-      }
+      if (novoC) await abrirDetalhesCliente(novoC)
     } catch (err: any) {
       alert('Erro inesperado: ' + err.message)
     } finally {
@@ -212,13 +205,11 @@ export default function PacotesClientesPage() {
 
   async function abrirDetalhesCliente(cliente: any) {
     setClienteSelecionado(cliente)
+    setPacoteEditandoObservacao(null)
     await carregarPacotesDoCliente(cliente.nome)
   }
 
-  // =========================================================
   // PACOTES DA CLIENTE
-  // =========================================================
-
   async function carregarPacotesDoCliente(clienteNome: string) {
     const { data: pacotes, error } = await supabase
       .from('pacotes_clientes_resumo')
@@ -235,10 +226,60 @@ export default function PacotesClientesPage() {
     setPacotesCliente(pacotes || [])
   }
 
-  // =========================================================
-  // WHATSAPP — AVISO DE PACOTE CONCLUÍDO
-  // =========================================================
+  // OBSERVAÇÕES DOS PACOTES
+  function iniciarEdicaoObservacao(pacote: any) {
+    setPacoteEditandoObservacao(pacote.id)
+    setTextoObservacao(pacote.observacao || '')
+  }
 
+  function cancelarEdicaoObservacao() {
+    setPacoteEditandoObservacao(null)
+    setTextoObservacao('')
+  }
+
+  async function salvarObservacao(pacote: any) {
+    if (!pacote?.id) return
+
+    setSalvandoObservacao(true)
+
+    try {
+      const observacaoLimpa = textoObservacao.trim()
+
+      const { data, error } = await supabase
+        .from('pacotes_clientes_resumo')
+        .update({ observacao: observacaoLimpa || null })
+        .eq('id', pacote.id)
+        .select('id, observacao')
+        .maybeSingle()
+
+      if (error) throw error
+
+      if (!data) {
+        throw new Error(
+          'Nenhum registro foi atualizado. Verifique as permissões de acesso no Supabase.'
+        )
+      }
+
+      setPacotesCliente(pacotesAtuais =>
+        pacotesAtuais.map(pc =>
+          pc.id === pacote.id
+            ? { ...pc, observacao: data.observacao }
+            : pc
+        )
+      )
+
+      setPacoteEditandoObservacao(null)
+      setTextoObservacao('')
+      alert('Observação salva com sucesso!')
+    } catch (err: any) {
+      console.error('Erro ao salvar observação:', err)
+      alert('Não foi possível salvar a observação: ' + (err.message || 'Erro desconhecido'))
+    } finally {
+      setSalvandoObservacao(false)
+    }
+  }
+
+  // WHATSAPP — AVISO DE PACOTE CONCLUÍDO
   function avisarPacoteFinalizado(pacote: any) {
     const telefone = String(
       clienteSelecionado?.telefone || ''
@@ -251,7 +292,6 @@ export default function PacotesClientesPage() {
       return
     }
 
-    // Adiciona o código do Brasil quando ainda não estiver presente.
     const telefoneWhatsApp = telefone.startsWith('55')
       ? telefone
       : `55${telefone}`
@@ -295,17 +335,12 @@ export default function PacotesClientesPage() {
       'Será um prazer receber você novamente.'
     ].join('\n')
 
-    const url = `https://wa.me/${telefoneWhatsApp}?text=${encodeURIComponent(
-      mensagem
-    )}`
+    const url = `https://wa.me/${telefoneWhatsApp}?text=${encodeURIComponent(mensagem)}`
 
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  // =========================================================
   // VENDER PACOTE
-  // =========================================================
-
   async function venderPacote(e: React.FormEvent) {
     e.preventDefault()
 
@@ -342,7 +377,8 @@ export default function PacotesClientesPage() {
           sessoes_total: totalSessoes,
           sessoes_restantes: totalSessoes,
           status: 'ativo',
-          historico_sessoes: []
+          historico_sessoes: [],
+          observacao: null
         })
 
       if (error) {
@@ -361,10 +397,7 @@ export default function PacotesClientesPage() {
     }
   }
 
-  // =========================================================
   // PACOTE ANTIGO
-  // =========================================================
-
   async function cadastrarPacoteAntigo(e: React.FormEvent) {
     e.preventDefault()
 
@@ -390,7 +423,8 @@ export default function PacotesClientesPage() {
           sessoes_total: totalNum,
           sessoes_restantes: totalNum,
           status: 'ativo',
-          historico_sessoes: []
+          historico_sessoes: [],
+          observacao: null
         })
 
       if (error) {
@@ -410,20 +444,11 @@ export default function PacotesClientesPage() {
     }
   }
 
-  // =========================================================
   // REGISTRAR SESSÃO
-  // =========================================================
-
   async function registrarSessaoRealizada(e: React.FormEvent) {
     e.preventDefault()
 
-    if (
-      !pacoteAlvoSessao ||
-      !clienteSelecionado ||
-      !servicoSessao
-    ) {
-      return
-    }
+    if (!pacoteAlvoSessao || !clienteSelecionado || !servicoSessao) return
 
     if (Number(pacoteAlvoSessao.sessoes_restantes) <= 0) {
       alert('Este pacote não possui mais sessões restantes.')
@@ -436,8 +461,7 @@ export default function PacotesClientesPage() {
       const novasRestantes =
         Number(pacoteAlvoSessao.sessoes_restantes) - 1
 
-      const novoStatus =
-        novasRestantes === 0 ? 'concluido' : 'ativo'
+      const novoStatus = novasRestantes === 0 ? 'concluido' : 'ativo'
 
       const novaSessaoObj = {
         id: Math.random().toString(36).substring(2, 9),
@@ -451,10 +475,7 @@ export default function PacotesClientesPage() {
         ? pacoteAlvoSessao.historico_sessoes
         : []
 
-      const novoHistorico = [
-        novaSessaoObj,
-        ...historicoAtual
-      ]
+      const novoHistorico = [novaSessaoObj, ...historicoAtual]
 
       const { error: errUp } = await supabase
         .from('pacotes_clientes_resumo')
@@ -480,19 +501,9 @@ export default function PacotesClientesPage() {
     }
   }
 
-  // =========================================================
   // EXCLUIR SESSÃO DO HISTÓRICO
-  // =========================================================
-
-  async function excluirSessaoHistorico(
-    indexSessao: number,
-    pacoteObj: any
-  ) {
-    if (
-      !confirm(
-        'Deseja excluir esta sessão e devolver 1 crédito ao pacote?'
-      )
-    ) {
+  async function excluirSessaoHistorico(indexSessao: number, pacoteObj: any) {
+    if (!confirm('Deseja excluir esta sessão e devolver 1 crédito ao pacote?')) {
       return
     }
 
@@ -502,8 +513,7 @@ export default function PacotesClientesPage() {
 
     historicoAtual.splice(indexSessao, 1)
 
-    const novasRestantes =
-      Number(pacoteObj.sessoes_restantes || 0) + 1
+    const novasRestantes = Number(pacoteObj.sessoes_restantes || 0) + 1
 
     const { error } = await supabase
       .from('pacotes_clientes_resumo')
@@ -524,16 +534,9 @@ export default function PacotesClientesPage() {
     }
   }
 
-  // =========================================================
   // EXCLUIR PACOTE DA CLIENTE
-  // =========================================================
-
   async function excluirPacoteCliente(pacoteId: string) {
-    if (
-      !confirm(
-        'Deseja realmente remover este pacote e todo o seu histórico?'
-      )
-    ) {
+    if (!confirm('Deseja realmente remover este pacote e todo o seu histórico?')) {
       return
     }
 
@@ -559,9 +562,7 @@ export default function PacotesClientesPage() {
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div
           className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-          style={{
-            borderColor: cor
-          }}
+          style={{ borderColor: cor }}
         />
       </div>
     )
@@ -573,16 +574,8 @@ export default function PacotesClientesPage() {
   )
 
   const navItems = [
-    {
-      icon: Users,
-      label: 'Início',
-      href: '/salao'
-    },
-    {
-      icon: CreditCard,
-      label: 'Pacotes por Cliente',
-      href: '/salao/pacotes/clientes'
-    }
+    { icon: Users, label: 'Início', href: '/salao' },
+    { icon: CreditCard, label: 'Pacotes por Cliente', href: '/salao/pacotes/clientes' }
   ]
 
   return (
@@ -594,7 +587,6 @@ export default function PacotesClientesPage() {
       />
 
       <div className="px-4 py-5 flex flex-col gap-4 max-w-xl mx-auto">
-        {/* CLIENTE SELECIONADA */}
         {clienteSelecionado ? (
           <div className="flex flex-col gap-4">
             <div className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-3">
@@ -602,6 +594,7 @@ export default function PacotesClientesPage() {
                 onClick={() => {
                   setClienteSelecionado(null)
                   setPacotesCliente([])
+                  setPacoteEditandoObservacao(null)
                 }}
                 className="text-xs font-semibold text-gray-400 hover:text-gray-600 flex items-center gap-1 self-start"
               >
@@ -613,7 +606,6 @@ export default function PacotesClientesPage() {
                   <h1 className="text-lg font-bold text-gray-900">
                     {clienteSelecionado.nome}
                   </h1>
-
                   <p className="text-xs text-gray-500">
                     {clienteSelecionado.telefone || 'Sem telefone'}
                   </p>
@@ -648,7 +640,6 @@ export default function PacotesClientesPage() {
               {pacotesCliente.length === 0 ? (
                 <div className="bg-white p-8 rounded-3xl text-center border border-gray-100 shadow-sm flex flex-col items-center gap-2">
                   <AlertCircle size={32} className="text-gray-300" />
-
                   <p className="text-gray-500 text-sm">
                     Esta cliente não possui pacotes cadastrados.
                   </p>
@@ -666,6 +657,8 @@ export default function PacotesClientesPage() {
                     ? pc.historico_sessoes
                     : []
 
+                  const editandoEstaObservacao = pacoteEditandoObservacao === pc.id
+
                   return (
                     <div
                       key={pc.id}
@@ -677,7 +670,6 @@ export default function PacotesClientesPage() {
                             <h3 className="font-bold text-gray-900 text-base">
                               {nomeServico}
                             </h3>
-
                             <span
                               className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                                 status === 'ativo'
@@ -704,7 +696,6 @@ export default function PacotesClientesPage() {
                           <span>{usadas} usadas</span>
                           <span>{restantes} restantes</span>
                         </div>
-
                         <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-300"
@@ -716,7 +707,73 @@ export default function PacotesClientesPage() {
                         </div>
                       </div>
 
-                      {/* HISTÓRICO */}
+                      {/* OBSERVAÇÃO INDIVIDUAL DO PACOTE */}
+                      <div className="flex flex-col gap-2 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                            <StickyNote size={15} />
+                            Observação do pacote
+                          </span>
+
+                          {!editandoEstaObservacao && (
+                            <button
+                              type="button"
+                              onClick={() => iniciarEdicaoObservacao(pc)}
+                              className="flex items-center gap-1 text-xs font-semibold text-amber-800 hover:text-amber-950"
+                            >
+                              <Pencil size={13} />
+                              {pc.observacao ? 'Editar' : 'Adicionar'}
+                            </button>
+                          )}
+                        </div>
+
+                        {editandoEstaObservacao ? (
+                          <>
+                            <textarea
+                              value={textoObservacao}
+                              onChange={e => setTextoObservacao(e.target.value)}
+                              placeholder="Ex.: Havia R$ 10,00 de crédito na conta. Descontou esse valor e pagou o restante no Pix."
+                              rows={4}
+                              maxLength={2000}
+                              className="w-full resize-y rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-amber-200"
+                            />
+
+                            <p className="text-[10px] text-amber-800">
+                              {textoObservacao.length}/2000 caracteres
+                            </p>
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={cancelarEdicaoObservacao}
+                                disabled={salvandoObservacao}
+                                className="flex-1 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-xs font-semibold text-gray-700 disabled:opacity-50"
+                              >
+                                Cancelar
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => salvarObservacao(pc)}
+                                disabled={salvandoObservacao}
+                                className="flex-1 flex items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                                style={{ backgroundColor: cor }}
+                              >
+                                <Save size={14} />
+                                {salvandoObservacao ? 'Salvando...' : 'Salvar observação'}
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <p className={`text-sm whitespace-pre-wrap break-words ${
+                            pc.observacao ? 'text-gray-700' : 'text-gray-400 italic'
+                          }`}>
+                            {pc.observacao || 'Nenhuma observação registrada para este pacote.'}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* HISTÓRICO DE SESSÕES */}
                       <div className="flex flex-col gap-2 pt-2 border-t border-gray-50">
                         <span className="text-xs font-bold text-gray-400">
                           Histórico de sessões
@@ -744,9 +801,7 @@ export default function PacotesClientesPage() {
                                     <span className="text-gray-400 shrink-0">
                                       {dataFormatada}
                                     </span>
-
                                     <span>•</span>
-
                                     <span className="break-words">
                                       {sessao.servico}
                                     </span>
@@ -773,17 +828,13 @@ export default function PacotesClientesPage() {
                             setModalSessaoAberto(true)
                           }}
                           className="w-full border py-3 rounded-2xl text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 mt-1"
-                          style={{
-                            borderColor: cor,
-                            color: cor
-                          }}
+                          style={{ borderColor: cor, color: cor }}
                         >
                           <Plus size={16} />
                           Adicionar sessão realizada
                         </button>
                       )}
 
-                      {/* WHATSAPP: aparece apenas quando o pacote está concluído */}
                       {status === 'concluido' && (
                         <button
                           onClick={() => avisarPacoteFinalizado(pc)}
@@ -802,7 +853,6 @@ export default function PacotesClientesPage() {
                             {profile?.nome || 'Sistema'}
                           </span>
                         </span>
-
                         <span>
                           Criado em:{' '}
                           <span className="font-medium text-gray-600">
@@ -819,7 +869,6 @@ export default function PacotesClientesPage() {
             </div>
           </div>
         ) : (
-          /* LISTA DE CLIENTES */
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 bg-white p-4 rounded-3xl border border-gray-100 shadow-sm">
               <div className="flex items-center justify-between gap-3">
@@ -827,7 +876,6 @@ export default function PacotesClientesPage() {
                   <h1 className="text-lg font-bold text-gray-900">
                     Pacotes por Cliente
                   </h1>
-
                   <p className="text-xs text-gray-500">
                     Selecione uma cliente para gerenciar os pacotes
                   </p>
@@ -848,7 +896,6 @@ export default function PacotesClientesPage() {
                   size={16}
                   className="absolute left-3.5 top-3.5 text-gray-400"
                 />
-
                 <input
                   type="text"
                   placeholder="Buscar cliente por nome ou telefone..."
@@ -863,7 +910,6 @@ export default function PacotesClientesPage() {
               {clientesFiltrados.length === 0 ? (
                 <div className="bg-white p-8 rounded-3xl text-center border border-gray-100 shadow-sm flex flex-col items-center gap-2">
                   <Users size={32} className="text-gray-300" />
-
                   <p className="text-gray-500 text-sm">
                     Nenhuma cliente encontrada.
                   </p>
@@ -882,18 +928,15 @@ export default function PacotesClientesPage() {
                       >
                         {cliente.nome ? cliente.nome[0] : 'C'}
                       </div>
-
                       <div className="min-w-0">
                         <h3 className="font-bold text-gray-900 text-sm">
                           {cliente.nome}
                         </h3>
-
                         <p className="text-xs text-gray-400">
                           {cliente.telefone || 'Sem telefone'}
                         </p>
                       </div>
                     </div>
-
                     <ChevronRight size={18} className="text-gray-400 shrink-0" />
                   </div>
                 ))
@@ -908,10 +951,7 @@ export default function PacotesClientesPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900">
-                Novo Cliente
-              </h3>
-
+              <h3 className="text-base font-bold text-gray-900">Novo Cliente</h3>
               <button
                 onClick={() => setModalNovoClienteAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -920,15 +960,11 @@ export default function PacotesClientesPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={cadastrarNovoClienteRapido}
-              className="flex flex-col gap-3"
-            >
+            <form onSubmit={cadastrarNovoClienteRapido} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-900">
                   Nome completo
                 </label>
-
                 <input
                   type="text"
                   placeholder="Nome da cliente"
@@ -943,7 +979,6 @@ export default function PacotesClientesPage() {
                 <label className="text-xs font-semibold text-gray-900">
                   Telefone / WhatsApp (Opcional)
                 </label>
-
                 <input
                   type="text"
                   placeholder="(00) 00000-0000"
@@ -961,7 +996,6 @@ export default function PacotesClientesPage() {
                 >
                   Cancelar
                 </button>
-
                 <button
                   type="submit"
                   disabled={salvando}
@@ -981,10 +1015,7 @@ export default function PacotesClientesPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-gray-900">
-                Vender Pacote
-              </h3>
-
+              <h3 className="text-base font-bold text-gray-900">Vender Pacote</h3>
               <button
                 onClick={() => setModalVenderAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -998,7 +1029,6 @@ export default function PacotesClientesPage() {
                 <label className="text-xs font-semibold text-gray-900">
                   Selecione o Pacote
                 </label>
-
                 <select
                   value={pacoteEscolhido}
                   onChange={e => setPacoteEscolhido(e.target.value)}
@@ -1006,7 +1036,6 @@ export default function PacotesClientesPage() {
                   className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3 px-4 text-xs outline-none text-gray-700"
                 >
                   <option value="">Selecione...</option>
-
                   {pacotesDisponiveis.map(p => {
                     const numSessoes = Number(
                       p.sessoes_inclusas ??
@@ -1019,8 +1048,7 @@ export default function PacotesClientesPage() {
 
                     return (
                       <option key={p.id} value={p.id}>
-                        {p.nome} ({numSessoes}{' '}
-                        {numSessoes === 1 ? 'sessão' : 'sessões'})
+                        {p.nome} ({numSessoes} {numSessoes === 1 ? 'sessão' : 'sessões'})
                       </option>
                     )
                   })}
@@ -1035,7 +1063,6 @@ export default function PacotesClientesPage() {
                 >
                   Cancelar
                 </button>
-
                 <button
                   type="submit"
                   disabled={salvando}
@@ -1058,7 +1085,6 @@ export default function PacotesClientesPage() {
               <h3 className="text-base font-bold text-gray-900">
                 Cadastrar Pacote Antigo
               </h3>
-
               <button
                 onClick={() => setModalAntigoAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -1067,15 +1093,11 @@ export default function PacotesClientesPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={cadastrarPacoteAntigo}
-              className="flex flex-col gap-3"
-            >
+            <form onSubmit={cadastrarPacoteAntigo} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-900">
                   Nome do Pacote
                 </label>
-
                 <input
                   type="text"
                   placeholder="Ex: 4 mãos e 1 pé"
@@ -1090,7 +1112,6 @@ export default function PacotesClientesPage() {
                 <label className="text-xs font-semibold text-gray-900">
                   Total de Sessões
                 </label>
-
                 <input
                   type="number"
                   min="1"
@@ -1110,7 +1131,6 @@ export default function PacotesClientesPage() {
                 >
                   Cancelar
                 </button>
-
                 <button
                   type="submit"
                   disabled={salvando}
@@ -1133,7 +1153,6 @@ export default function PacotesClientesPage() {
               <h3 className="text-base font-bold text-gray-900">
                 Adicionar Sessão Realizada
               </h3>
-
               <button
                 onClick={() => setModalSessaoAberto(false)}
                 className="text-gray-400 hover:text-gray-600"
@@ -1142,15 +1161,11 @@ export default function PacotesClientesPage() {
               </button>
             </div>
 
-            <form
-              onSubmit={registrarSessaoRealizada}
-              className="flex flex-col gap-3"
-            >
+            <form onSubmit={registrarSessaoRealizada} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-gray-900">
                   Serviço Realizado
                 </label>
-
                 <input
                   type="text"
                   placeholder="Ex: Manicure ou Pedicure"
@@ -1165,7 +1180,6 @@ export default function PacotesClientesPage() {
                 <label className="text-xs font-semibold text-gray-900">
                   Data da Sessão
                 </label>
-
                 <input
                   type="date"
                   value={dataSessao}
@@ -1183,7 +1197,6 @@ export default function PacotesClientesPage() {
                 >
                   Cancelar
                 </button>
-
                 <button
                   type="submit"
                   disabled={salvando}
@@ -1198,10 +1211,7 @@ export default function PacotesClientesPage() {
         </div>
       )}
 
-      <BottomNav
-        items={navItems}
-        corPrimaria={cor}
-      />
+      <BottomNav items={navItems} corPrimaria={cor} />
     </div>
   )
 }
