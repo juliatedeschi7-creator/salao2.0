@@ -1,13 +1,15 @@
+
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { QRCodeCanvas } from 'qrcode.react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Bell, Link, Copy, Check, LogOut, Palette,
-  Smartphone, ChevronRight, UserCheck, Edit3, Save,
-  X, FileText, MessageSquare, Clock, Plus, Trash2, Eye
+  Smartphone, UserCheck, Edit3, Save, X, FileText,
+  MessageSquare, Clock, Plus, Trash2, Eye
 } from 'lucide-react'
 
 import {
@@ -24,36 +26,41 @@ const MODULOS = [
   { key: 'combos', label: 'Combos', desc: 'Cliente pode ver combos promocionais' },
 ]
 
-export default function ConfiguracoesPage() {
+type LembreteAgendamentoConfig = {
+  id?: string
+  salao_id?: string
+  antecedencia_minutos: number
+  ativo: boolean
+  titulo: string
+  mensagem: string
+  ordem: number
+}
 
+export default function ConfiguracoesPage() {
   const { profile, loading, signOut } = useAuth()
   const router = useRouter()
 
   const [salao, setSalao] = useState<any>(null)
   const [copiado, setCopiado] = useState<string | null>(null)
 
-  // Informações
   const [editandoInfo, setEditandoInfo] = useState(false)
   const [formInfo, setFormInfo] = useState({
     nome: '',
     telefone: '',
     instagram: '',
     cidade: '',
-    descricao: ''
+    descricao: '',
   })
   const [salvandoInfo, setSalvandoInfo] = useState(false)
   const [infoSalva, setInfoSalva] = useState(false)
   const [erroInfo, setErroInfo] = useState('')
 
-  // Cores
   const [salvandoCor, setSalvandoCor] = useState(false)
   const [corSelecionada, setCorSelecionada] = useState('#E91E8C')
 
-  // Aprovação Automática
   const [aprovacaoAutomatica, setAprovacaoAutomatica] = useState(false)
   const [salvandoAprovacao, setSalvandoAprovacao] = useState(false)
 
-  // Módulos do Cliente
   const [modulos, setModulos] = useState<Record<string, boolean>>({
     agendamentos: true,
     pacotes: true,
@@ -64,18 +71,15 @@ export default function ConfiguracoesPage() {
   const [salvandoModulos, setSalvandoModulos] = useState(false)
   const [modulosSalvos, setModulosSalvos] = useState(false)
 
-  // Aviso de Serviços
   const [avisoServicos, setAvisoServicos] = useState('')
   const [salvandoAviso, setSalvandoAviso] = useState(false)
 
-  // Mensagens do WhatsApp
   const [mensagemConfirmacao, setMensagemConfirmacao] = useState('')
   const [mensagemSugestao, setMensagemSugestao] = useState('')
   const [mensagemIndisponivel, setMensagemIndisponivel] = useState('')
   const [salvandoMensagens, setSalvandoMensagens] = useState(false)
   const [mensagensSalvas, setMensagensSalvas] = useState(false)
 
-  // Push Notifications
   const [pushAtivo, setPushAtivo] = useState(false)
   const [ativandoPush, setAtivandoPush] = useState(false)
   const [testandoPush, setTestandoPush] = useState(false)
@@ -84,65 +88,45 @@ export default function ConfiguracoesPage() {
     msg: string
   } | null>(null)
 
-  // Lembretes automáticos de agendamento
-  type LembreteAgendamentoConfig = {
-    id?: string
-    salao_id?: string
-    antecedencia_minutos: number
-    ativo: boolean
-    titulo: string
-    mensagem: string
-    ordem: number
-  }
-
-  const [lembretesAgendamento, setLembretesAgendamento] = useState<LembreteAgendamentoConfig[]>([])
+  const [lembretesAgendamento, setLembretesAgendamento] =
+    useState<LembreteAgendamentoConfig[]>([])
   const [carregandoLembretes, setCarregandoLembretes] = useState(false)
   const [salvandoLembretes, setSalvandoLembretes] = useState(false)
   const [lembretesSalvos, setLembretesSalvos] = useState(false)
   const [erroLembretes, setErroLembretes] = useState('')
   const [previewLembrete, setPreviewLembrete] = useState<string | null>(null)
 
+  // QR Code do salão
+  const qrRef = useRef<HTMLCanvasElement>(null)
+
   useEffect(() => {
     if (!loading && profile?.salao_id) carregarDados()
-  }, [loading])
+  }, [loading, profile?.salao_id])
 
   async function carregarDados() {
+    if (!profile?.salao_id) return
 
-    const { data: sal } = await supabase
+    const { data: sal, error } = await supabase
       .from('saloes')
       .select('*')
-      .eq('id', profile!.salao_id!)
+      .eq('id', profile.salao_id)
       .single()
 
+    if (error) {
+      console.error('Erro ao carregar salão:', error)
+      return
+    }
+
     setSalao(sal)
-
     setAvisoServicos(sal?.aviso_servicos || '')
-
-    const corAtual = sal?.cor_primaria || '#E91E8C'
-
-    setCorSelecionada(corAtual)
-
-    setAprovacaoAutomatica(
-      sal?.aprovacao_automatica_clientes === true
-    )
-
-    setMensagemConfirmacao(
-      sal?.mensagem_confirmacao || ''
-    )
-
-    setMensagemSugestao(
-      sal?.mensagem_sugestao || ''
-    )
-
-    setMensagemIndisponivel(
-      sal?.mensagem_indisponivel || ''
-    )
+    setCorSelecionada(sal?.cor_primaria || '#E91E8C')
+    setAprovacaoAutomatica(sal?.aprovacao_automatica_clientes === true)
+    setMensagemConfirmacao(sal?.mensagem_confirmacao || '')
+    setMensagemSugestao(sal?.mensagem_sugestao || '')
+    setMensagemIndisponivel(sal?.mensagem_indisponivel || '')
 
     if (sal?.modulos_cliente) {
-      setModulos(prev => ({
-        ...prev,
-        ...sal.modulos_cliente
-      }))
+      setModulos(prev => ({ ...prev, ...sal.modulos_cliente }))
     }
 
     setFormInfo({
@@ -154,16 +138,11 @@ export default function ConfiguracoesPage() {
     })
 
     if (profile?.id) {
-
-      const ativo = await verificarPushAtivo(
-        profile.id
-      )
-
+      const ativo = await verificarPushAtivo(profile.id)
       setPushAtivo(ativo)
     }
-    if (profile?.salao_id) {
-      await carregarLembretesAgendamento()
-    }
+
+    await carregarLembretesAgendamento()
   }
 
   async function carregarLembretesAgendamento() {
@@ -201,16 +180,17 @@ export default function ConfiguracoesPage() {
   }
 
   function adicionarLembreteAgendamento() {
-    const novo: LembreteAgendamentoConfig = {
-      antecedencia_minutos: 120,
-      ativo: true,
-      titulo: 'Lembrete de agendamento',
-      mensagem:
-        'Olá, {cliente}! Este é um lembrete do seu agendamento no {salao}, {data} às {hora}.',
-      ordem: lembretesAgendamento.length,
-    }
-
-    setLembretesAgendamento(prev => [...prev, novo])
+    setLembretesAgendamento(prev => [
+      ...prev,
+      {
+        antecedencia_minutos: 120,
+        ativo: true,
+        titulo: 'Lembrete de agendamento',
+        mensagem:
+          'Olá, {cliente}! Este é um lembrete do seu agendamento no {salao}, {data} às {hora}.',
+        ordem: prev.length,
+      },
+    ])
   }
 
   function atualizarLembreteAgendamento(
@@ -219,19 +199,13 @@ export default function ConfiguracoesPage() {
     valor: string | number | boolean
   ) {
     setLembretesAgendamento(prev =>
-      prev.map((item, i) =>
-        i === index
-          ? { ...item, [campo]: valor }
-          : item
-      )
+      prev.map((item, i) => i === index ? { ...item, [campo]: valor } : item)
     )
   }
 
   function removerLembreteAgendamento(index: number) {
     setLembretesAgendamento(prev =>
-      prev
-        .filter((_, i) => i !== index)
-        .map((item, i) => ({ ...item, ordem: i }))
+      prev.filter((_, i) => i !== index).map((item, i) => ({ ...item, ordem: i }))
     )
   }
 
@@ -245,10 +219,7 @@ export default function ConfiguracoesPage() {
       const horas = minutos / 60
       return `${horas} ${horas === 1 ? 'hora' : 'horas'} antes`
     }
-
-    const horas = Math.floor(minutos / 60)
-    const resto = minutos % 60
-    return `${horas}h${resto.toString().padStart(2, '0')} antes`
+    return `${Math.floor(minutos / 60)}h${(minutos % 60).toString().padStart(2, '0')} antes`
   }
 
   function obterUnidadeAntecedencia(minutos: number) {
@@ -292,9 +263,7 @@ export default function ConfiguracoesPage() {
     )
 
     if (invalidos) {
-      setErroLembretes(
-        'Preencha a antecedência, o título e a mensagem de todos os lembretes.'
-      )
+      setErroLembretes('Preencha a antecedência, o título e a mensagem de todos os lembretes.')
       setSalvandoLembretes(false)
       return
     }
@@ -308,10 +277,7 @@ export default function ConfiguracoesPage() {
       if (erroAtuais) throw erroAtuais
 
       const idsAtuais = (atuais || []).map((item: any) => item.id)
-      const idsMantidos = lembretesAgendamento
-        .map(item => item.id)
-        .filter(Boolean) as string[]
-
+      const idsMantidos = lembretesAgendamento.map(item => item.id).filter(Boolean) as string[]
       const idsRemover = idsAtuais.filter(id => !idsMantidos.includes(id))
 
       if (idsRemover.length > 0) {
@@ -325,7 +291,6 @@ export default function ConfiguracoesPage() {
 
       for (let i = 0; i < lembretesAgendamento.length; i++) {
         const item = lembretesAgendamento[i]
-
         const dados = {
           salao_id: profile.salao_id,
           antecedencia_minutos: Number(item.antecedencia_minutos),
@@ -355,20 +320,16 @@ export default function ConfiguracoesPage() {
 
       await carregarLembretesAgendamento()
       setLembretesSalvos(true)
-
       setTimeout(() => setLembretesSalvos(false), 2500)
     } catch (error: any) {
       console.error('Erro ao salvar lembretes de agendamento:', error)
-      setErroLembretes(
-        error?.message || 'Não foi possível salvar os lembretes.'
-      )
+      setErroLembretes(error?.message || 'Não foi possível salvar os lembretes.')
     } finally {
       setSalvandoLembretes(false)
     }
   }
 
   async function salvarInfo() {
-
     if (!formInfo.nome.trim()) {
       setErroInfo('O nome do salão é obrigatório.')
       return
@@ -389,1421 +350,896 @@ export default function ConfiguracoesPage() {
       .eq('id', profile!.salao_id!)
 
     if (error) {
-
-      setErroInfo(
-        'Erro: ' + error.message
-      )
-
+      setErroInfo('Erro: ' + error.message)
     } else {
-
       setEditandoInfo(false)
       setInfoSalva(true)
-
-      carregarDados()
-
-      setTimeout(
-        () => setInfoSalva(false),
-        3000
-      )
+      await carregarDados()
+      setTimeout(() => setInfoSalva(false), 3000)
     }
 
     setSalvandoInfo(false)
   }
 
   async function salvarAviso() {
-
     setSalvandoAviso(true)
 
-    await supabase
+    const { error } = await supabase
       .from('saloes')
-      .update({
-        aviso_servicos: avisoServicos
-      })
+      .update({ aviso_servicos: avisoServicos })
       .eq('id', profile!.salao_id!)
 
+    if (error) console.error('Erro ao salvar aviso:', error)
     setSalvandoAviso(false)
   }
 
   async function salvarMensagens() {
-
     setSalvandoMensagens(true)
-
-    await supabase
-      .from('saloes')
-      .update({
-        mensagem_confirmacao: mensagemConfirmacao,
-        mensagem_sugestao: mensagemSugestao,
-        mensagem_indisponivel: mensagemIndisponivel
-      })
-      .eq('id', profile!.salao_id!)
-
-    setSalvandoMensagens(false)
-
-    setMensagensSalvas(true)
-
-    setTimeout(
-      () => setMensagensSalvas(false),
-      2500
-    )
-  }
-
-  async function salvarModulos() {
-
-    setSalvandoModulos(true)
-
-    await supabase
-      .from('saloes')
-      .update({
-        modulos_cliente: modulos
-      })
-      .eq('id', profile!.salao_id!)
-
-    setSalvandoModulos(false)
-
-    setModulosSalvos(true)
-
-    setTimeout(
-      () => setModulosSalvos(false),
-      2500
-    )
-  }
-
-  async function toggleAprovacaoAutomatica() {
-
-    const novoValor = !aprovacaoAutomatica
-
-    setSalvandoAprovacao(true)
 
     const { error } = await supabase
       .from('saloes')
       .update({
-        aprovacao_automatica_clientes: novoValor
+        mensagem_confirmacao: mensagemConfirmacao,
+        mensagem_sugestao: mensagemSugestao,
+        mensagem_indisponivel: mensagemIndisponivel,
       })
+      .eq('id', profile!.salao_id!)
+
+    if (error) {
+      console.error('Erro ao salvar mensagens:', error)
+    } else {
+      setMensagensSalvas(true)
+      setTimeout(() => setMensagensSalvas(false), 2500)
+    }
+
+    setSalvandoMensagens(false)
+  }
+
+  async function salvarModulos() {
+    setSalvandoModulos(true)
+
+    const { error } = await supabase
+      .from('saloes')
+      .update({ modulos_cliente: modulos })
+      .eq('id', profile!.salao_id!)
+
+    if (error) {
+      console.error('Erro ao salvar módulos:', error)
+    } else {
+      setModulosSalvos(true)
+      setTimeout(() => setModulosSalvos(false), 2500)
+    }
+
+    setSalvandoModulos(false)
+  }
+
+  async function toggleAprovacaoAutomatica() {
+    const novoValor = !aprovacaoAutomatica
+    setSalvandoAprovacao(true)
+
+    const { error } = await supabase
+      .from('saloes')
+      .update({ aprovacao_automatica_clientes: novoValor })
       .eq('id', profile!.salao_id!)
 
     if (!error) {
       setAprovacaoAutomatica(novoValor)
+    } else {
+      console.error('Erro ao alterar aprovação automática:', error)
     }
 
     setSalvandoAprovacao(false)
   }
 
   async function salvarCor() {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(corSelecionada)) return
 
     setSalvandoCor(true)
 
-    await supabase
+    const { error } = await supabase
       .from('saloes')
       .update({
         cor_primaria: corSelecionada,
-        cor_secundaria: corSelecionada + '18'
+        cor_secundaria: corSelecionada + '18',
       })
       .eq('id', profile!.salao_id!)
 
-    setSalvandoCor(false)
-
-    carregarDados()
-  }
-
-  // =========================================================
-  // ATIVAR PUSH
-  // =========================================================
-
-  async function ativarPush() {
-
-    setAtivandoPush(true)
-
-    setResultadoPush(null)
-
-    const ok = await registrarPush(
-      profile!.id
-    )
-
-    setPushAtivo(ok)
-
-    setAtivandoPush(false)
-
-    if (ok) {
-
-      setResultadoPush({
-        ok: true,
-        msg: 'Push ativado! Agora clique em testar.'
-      })
-
+    if (error) {
+      console.error('Erro ao salvar cor:', error)
     } else {
-
-      const erro =
-        obterUltimoErroPush()
-
-      setResultadoPush({
-        ok: false,
-        msg: erro ||
-          'Não foi possível ativar. Verifique as permissões do seu navegador.'
-      })
+      await carregarDados()
     }
 
-    setTimeout(
-      () => setResultadoPush(null),
-      10000
-    )
+    setSalvandoCor(false)
   }
 
-  // =========================================================
-  // TESTAR PUSH
-  // =========================================================
+  async function ativarPush() {
+    setAtivandoPush(true)
+    setResultadoPush(null)
+
+    const ok = await registrarPush(profile!.id)
+    setPushAtivo(ok)
+    setAtivandoPush(false)
+
+    setResultadoPush(
+      ok
+        ? { ok: true, msg: 'Push ativado! Agora clique em testar.' }
+        : {
+            ok: false,
+            msg: obterUltimoErroPush() ||
+              'Não foi possível ativar. Verifique as permissões do seu navegador.',
+          }
+    )
+
+    setTimeout(() => setResultadoPush(null), 10000)
+  }
 
   async function testarPush() {
-
     setTestandoPush(true)
-
     setResultadoPush(null)
 
     try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 15000)
 
-      const controller =
-        new AbortController()
-
-      const timeout =
-        setTimeout(
-          () => controller.abort(),
-          15000
-        )
-
-      const res =
-        await fetch(
-          '/api/push/test/',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type':
-                'application/json'
-            },
-            body: JSON.stringify({
-              profileId:
-                profile!.id
-            }),
-            signal: controller.signal
-          }
-        )
+      const res = await fetch('/api/push/test/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: profile!.id }),
+        signal: controller.signal,
+      })
 
       clearTimeout(timeout)
-
-      const json =
-        await res.json()
+      const json = await res.json()
 
       setResultadoPush({
         ok: json.ok,
         msg: json.ok
           ? '✓ Push enviado! Aguarde a notificação.'
-          : '✗ Erro: ' +
-            (
-              json.erro ||
-              JSON.stringify(json)
-            )
+          : '✗ Erro: ' + (json.erro || JSON.stringify(json)),
       })
-
     } catch (err: any) {
-
-      if (err.name === 'AbortError') {
-
-        setResultadoPush({
-          ok: false,
-          msg:
-            'Timeout — servidor demorou a responder.'
-        })
-
-      } else {
-
-        setResultadoPush({
-          ok: false,
-          msg:
-            'Erro de conexão: ' +
-            err.message
-        })
-      }
+      setResultadoPush({
+        ok: false,
+        msg: err.name === 'AbortError'
+          ? 'Timeout — servidor demorou a responder.'
+          : 'Erro de conexão: ' + err.message,
+      })
     }
 
     setTestandoPush(false)
   }
 
-  function copiarTexto(
-    texto: string,
-    id: string
-  ) {
-
+  function copiarTexto(texto: string, id: string) {
     navigator.clipboard.writeText(texto)
-
-    setCopiado(id)
-
-    setTimeout(
-      () => setCopiado(null),
-      2000
-    )
+      .then(() => {
+        setCopiado(id)
+        setTimeout(() => setCopiado(null), 2000)
+      })
+      .catch(error => {
+        console.error('Erro ao copiar link:', error)
+      })
   }
 
-  const cor =
-    salao?.cor_primaria ||
-    '#E91E8C'
+  function baixarQRCode() {
+    const canvas = qrRef.current
+
+    if (!canvas || !linkPublico) return
+
+    const link = document.createElement('a')
+    link.download = `qr-code-${salao?.slug || 'salao'}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  }
+
+  const cor = salao?.cor_primaria || '#E91E8C'
 
   const origem =
     typeof window !== 'undefined'
       ? window.location.origin
       : ''
 
+  // O QR Code abre a página pública do salão, não o login.
+  const linkPublico =
+    salao?.slug && origem
+      ? `${origem}/bio/${salao.slug}`
+      : ''
+
+  const linkCadastro =
+    salao?.slug && origem
+      ? `${origem}/cadastro?salao=${encodeURIComponent(salao.slug)}`
+      : ''
+
+  const linkLogin =
+    salao?.slug && origem
+      ? `${origem}/login?salao=${encodeURIComponent(salao.slug)}`
+      : ''
+
   return (
-
     <div className="min-h-screen bg-[#f8f9fa] pb-12">
-
-      {/* Header */}
-
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm sticky top-0 z-10">
-
-        <button
-          onClick={() => router.back()}
-        >
-          <ArrowLeft
-            size={22}
-            className="text-gray-700"
-          />
+        <button onClick={() => router.back()} type="button">
+          <ArrowLeft size={22} className="text-gray-700" />
         </button>
-
         <h1 className="font-bold text-gray-900 text-lg">
           Configurações Gerais
         </h1>
-
       </div>
 
       <div className="px-4 py-4 flex flex-col gap-4 max-w-2xl mx-auto">
 
         {/* 1. Informações do Salão */}
-
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-
           <div className="flex items-center justify-between">
-
-            <p className="font-bold text-gray-900">
-              Informações do Salão
-            </p>
+            <p className="font-bold text-gray-900">Informações do Salão</p>
 
             {!editandoInfo ? (
-
               <button
-                onClick={() =>
-                  setEditandoInfo(true)
-                }
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-medium transition-transform active:scale-95"
-                style={{
-                  backgroundColor: cor
-                }}
+                type="button"
+                onClick={() => setEditandoInfo(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-medium"
+                style={{ backgroundColor: cor }}
               >
-                <Edit3 size={13} />
-                Editar
+                <Edit3 size={13} /> Editar
               </button>
-
             ) : (
-
               <button
+                type="button"
                 onClick={() => {
                   setEditandoInfo(false)
-
                   setFormInfo({
-                    nome:
-                      salao?.nome || '',
-                    telefone:
-                      salao?.telefone || '',
-                    instagram:
-                      salao?.instagram || '',
-                    cidade:
-                      salao?.cidade || '',
-                    descricao:
-                      salao?.descricao || ''
+                    nome: salao?.nome || '',
+                    telefone: salao?.telefone || '',
+                    instagram: salao?.instagram || '',
+                    cidade: salao?.cidade || '',
+                    descricao: salao?.descricao || '',
                   })
                 }}
                 className="flex items-center gap-1 text-gray-400 text-sm"
               >
-                <X size={16} />
-                Cancelar
+                <X size={16} /> Cancelar
               </button>
-
             )}
-
           </div>
 
           {infoSalva && (
-
             <div className="bg-green-50 border border-green-200 rounded-xl px-3 py-2">
-
               <p className="text-green-600 text-xs font-semibold text-center">
                 ✓ Informações atualizadas com sucesso!
               </p>
-
             </div>
-
           )}
 
           {!editandoInfo ? (
-
             <div className="flex flex-col gap-2">
-
               {[
-                {
-                  label: 'Nome',
-                  value: salao?.nome
-                },
-                {
-                  label: 'Cidade',
-                  value: salao?.cidade
-                },
-                {
-                  label: 'Telefone',
-                  value: salao?.telefone
-                },
-                {
-                  label: 'Instagram',
-                  value: salao?.instagram
-                },
-                {
-                  label: 'Descrição',
-                  value: salao?.descricao
-                },
-              ].map(
-                ({
-                  label,
-                  value
-                }) => value ? (
-
-                  <div
-                    key={label}
-                    className="flex justify-between text-sm gap-2"
-                  >
-
-                    <span className="text-gray-400 shrink-0">
-                      {label}
-                    </span>
-
-                    <span className="font-medium text-gray-900 text-right truncate">
-                      {value}
-                    </span>
-
-                  </div>
-
-                ) : null
-              )}
-
+                { label: 'Nome', value: salao?.nome },
+                { label: 'Cidade', value: salao?.cidade },
+                { label: 'Telefone', value: salao?.telefone },
+                { label: 'Instagram', value: salao?.instagram },
+                { label: 'Descrição', value: salao?.descricao },
+              ].map(({ label, value }) => value ? (
+                <div key={label} className="flex justify-between text-sm gap-2">
+                  <span className="text-gray-400 shrink-0">{label}</span>
+                  <span className="font-medium text-gray-900 text-right truncate">{value}</span>
+                </div>
+              ) : null)}
             </div>
-
           ) : (
-
             <div className="flex flex-col gap-3">
-
               <div>
-
-                <label className="text-xs font-semibold text-gray-500 block mb-1">
-                  Nome do salão
-                </label>
-
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Nome do salão</label>
                 <input
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
                   value={formInfo.nome}
-                  onChange={e =>
-                    setFormInfo(p => ({
-                      ...p,
-                      nome: e.target.value
-                    }))
-                  }
+                  onChange={e => setFormInfo(p => ({ ...p, nome: e.target.value }))}
                   placeholder="Ex: Espaço de Beleza"
                 />
-
               </div>
 
               <div>
-
-                <label className="text-xs font-semibold text-gray-500 block mb-1">
-                  Telefone / WhatsApp
-                </label>
-
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Telefone / WhatsApp</label>
                 <input
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
                   value={formInfo.telefone}
-                  onChange={e =>
-                    setFormInfo(p => ({
-                      ...p,
-                      telefone: e.target.value
-                    }))
-                  }
+                  onChange={e => setFormInfo(p => ({ ...p, telefone: e.target.value }))}
                   placeholder="Ex: 11999999999"
                 />
-
               </div>
 
               <div>
-
-                <label className="text-xs font-semibold text-gray-500 block mb-1">
-                  Instagram
-                </label>
-
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Instagram</label>
                 <input
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
                   value={formInfo.instagram}
-                  onChange={e =>
-                    setFormInfo(p => ({
-                      ...p,
-                      instagram: e.target.value
-                    }))
-                  }
+                  onChange={e => setFormInfo(p => ({ ...p, instagram: e.target.value }))}
                   placeholder="Ex: @salao"
                 />
-
               </div>
 
               <div>
-
-                <label className="text-xs font-semibold text-gray-500 block mb-1">
-                  Cidade
-                </label>
-
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Cidade</label>
                 <input
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
                   value={formInfo.cidade}
-                  onChange={e =>
-                    setFormInfo(p => ({
-                      ...p,
-                      cidade: e.target.value
-                    }))
-                  }
+                  onChange={e => setFormInfo(p => ({ ...p, cidade: e.target.value }))}
                   placeholder="Ex: São Paulo - SP"
                 />
-
               </div>
 
               <div>
-
-                <label className="text-xs font-semibold text-gray-500 block mb-1">
-                  Descrição curta
-                </label>
-
+                <label className="text-xs font-semibold text-gray-500 block mb-1">Descrição curta</label>
                 <textarea
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none"
                   rows={2}
                   value={formInfo.descricao}
-                  onChange={e =>
-                    setFormInfo(p => ({
-                      ...p,
-                      descricao: e.target.value
-                    }))
-                  }
+                  onChange={e => setFormInfo(p => ({ ...p, descricao: e.target.value }))}
                 />
-
               </div>
 
-              {erroInfo && (
-                <p className="text-red-600 text-xs">
-                  {erroInfo}
-                </p>
-              )}
+              {erroInfo && <p className="text-red-600 text-xs">{erroInfo}</p>}
 
               <button
+                type="button"
                 onClick={salvarInfo}
                 disabled={salvandoInfo}
                 className="w-full py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2"
-                style={{
-                  backgroundColor: cor
-                }}
+                style={{ backgroundColor: cor }}
               >
                 <Save size={16} />
-                {salvandoInfo
-                  ? 'Salvando...'
-                  : 'Salvar Informações'}
+                {salvandoInfo ? 'Salvando...' : 'Salvar Informações'}
               </button>
-
             </div>
-
           )}
-
         </div>
 
-        {/* 2. Cor do Tema do Salão */}
-
+        {/* 2. Cor do Tema */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-
           <p className="font-bold text-gray-900 flex items-center gap-2">
-            <Palette size={18} />
-            Cor do Tema do Salão
+            <Palette size={18} /> Cor do Tema do Salão
           </p>
-
           <p className="text-xs text-gray-400">
             Escolha qualquer cor usando o seletor ou insira o código hexadecimal:
           </p>
 
           <div className="flex items-center gap-3">
-
             <div className="relative w-14 h-14 rounded-2xl overflow-hidden shadow-inner border-2 border-gray-200 shrink-0">
-
               <input
                 type="color"
-                value={corSelecionada}
-                onChange={e =>
-                  setCorSelecionada(e.target.value)
-                }
+                value={/^#[0-9A-Fa-f]{6}$/.test(corSelecionada) ? corSelecionada : '#E91E8C'}
+                onChange={e => setCorSelecionada(e.target.value)}
                 className="absolute -top-2 -left-2 w-20 h-20 cursor-pointer border-0 p-0"
               />
-
             </div>
-
             <div className="flex-1 flex flex-col gap-1">
-
-              <span className="text-xs font-semibold text-gray-700">
-                Código da Cor (Hex)
-              </span>
-
+              <span className="text-xs font-semibold text-gray-700">Código da Cor (Hex)</span>
               <input
                 type="text"
                 value={corSelecionada}
-                onChange={e =>
-                  setCorSelecionada(e.target.value)
-                }
+                onChange={e => setCorSelecionada(e.target.value)}
                 className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono uppercase"
                 maxLength={7}
               />
-
             </div>
-
           </div>
 
           {corSelecionada !== salao?.cor_primaria && (
-
             <button
+              type="button"
               onClick={salvarCor}
-              disabled={salvandoCor}
-              className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-1 shadow-sm transition-transform active:scale-95"
-              style={{
-                backgroundColor:
-                  corSelecionada
-              }}
+              disabled={salvandoCor || !/^#[0-9A-Fa-f]{6}$/.test(corSelecionada)}
+              className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-1"
+              style={{ backgroundColor: /^#[0-9A-Fa-f]{6}$/.test(corSelecionada) ? corSelecionada : cor }}
             >
-              {salvandoCor
-                ? 'Salvando...'
-                : 'Aplicar Nova Cor'}
+              {salvandoCor ? 'Salvando...' : 'Aplicar Nova Cor'}
             </button>
-
           )}
-
         </div>
 
-        {/* 3. Modelos de Mensagens para WhatsApp */}
-
+        {/* 3. Mensagens do WhatsApp */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-
           <p className="font-bold text-gray-900 flex items-center gap-2">
-            <MessageSquare size={18} />
-            Modelos de Mensagens (WhatsApp)
+            <MessageSquare size={18} /> Modelos de Mensagens (WhatsApp)
           </p>
-
           <p className="text-xs text-gray-400">
-            Personalize os textos que serão enviados para os clientes. Você pode usar tags como{' '}
-            <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">
-              &#123;cliente&#125;
-            </code>
-            ,{' '}
-            <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">
-              &#123;servico&#125;
-            </code>
-            ,{' '}
-            <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">
-              &#123;data&#125;
-            </code>
-            {' '}e{' '}
-            <code className="bg-gray-100 px-1 py-0.5 rounded text-gray-700">
-              &#123;hora&#125;
-            </code>
-            .
+            Personalize os textos enviados para os clientes. Você pode usar as variáveis
+            {' '}<code>{'{cliente}'}</code>, <code>{'{servico}'}</code>, <code>{'{data}'}</code> e <code>{'{hora}'}</code>.
           </p>
 
-          <div className="flex flex-col gap-3 mt-1">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Confirmação de Agendamento</label>
+            <textarea
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none"
+              rows={3}
+              placeholder="Olá {cliente}, passando para confirmar o seu agendamento..."
+              value={mensagemConfirmacao}
+              onChange={e => setMensagemConfirmacao(e.target.value)}
+            />
+          </div>
 
-            <div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Sugestão de Horários</label>
+            <textarea
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none"
+              rows={3}
+              placeholder="Olá {cliente}, esse horário não está disponível, mas temos..."
+              value={mensagemSugestao}
+              onChange={e => setMensagemSugestao(e.target.value)}
+            />
+          </div>
 
-              <label className="text-xs font-semibold text-gray-600 block mb-1">
-                Confirmação de Agendamento
-              </label>
-
-              <textarea
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none"
-                rows={3}
-                placeholder="Olá &#123;cliente&#125;, passando para confirmar o seu agendamento..."
-                value={mensagemConfirmacao}
-                onChange={e =>
-                  setMensagemConfirmacao(
-                    e.target.value
-                  )
-                }
-              />
-
-            </div>
-
-            <div>
-
-              <label className="text-xs font-semibold text-gray-600 block mb-1">
-                Sugestão de Horários
-              </label>
-
-              <textarea
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none"
-                rows={3}
-                placeholder="Olá &#123;cliente&#125;, esse horário não está disponível, mas temos..."
-                value={mensagemSugestao}
-                onChange={e =>
-                  setMensagemSugestao(
-                    e.target.value
-                  )
-                }
-              />
-
-            </div>
-
-            <div>
-
-              <label className="text-xs font-semibold text-gray-600 block mb-1">
-                Horário Indisponível / Aviso de Indisponibilidade
-              </label>
-
-              <textarea
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none"
-                rows={3}
-                placeholder="Olá &#123;cliente&#125;, infelizmente esse horário não está mais disponível..."
-                value={mensagemIndisponivel}
-                onChange={e =>
-                  setMensagemIndisponivel(
-                    e.target.value
-                  )
-                }
-              />
-
-            </div>
-
+          <div>
+            <label className="text-xs font-semibold text-gray-600 block mb-1">Horário Indisponível / Aviso de Indisponibilidade</label>
+            <textarea
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none"
+              rows={3}
+              placeholder="Olá {cliente}, infelizmente esse horário não está mais disponível..."
+              value={mensagemIndisponivel}
+              onChange={e => setMensagemIndisponivel(e.target.value)}
+            />
           </div>
 
           <button
+            type="button"
             onClick={salvarMensagens}
             disabled={salvandoMensagens}
             className="w-full py-3 rounded-xl text-white font-semibold text-sm mt-1"
-            style={{
-              backgroundColor: cor
-            }}
+            style={{ backgroundColor: cor }}
           >
-            {mensagensSalvas
-              ? '✓ Mensagens Salvas!'
-              : salvandoMensagens
-                ? 'Salvando...'
-                : 'Salvar Modelos de Mensagens'}
+            {mensagensSalvas ? '✓ Mensagens Salvas!' : salvandoMensagens ? 'Salvando...' : 'Salvar Modelos de Mensagens'}
           </button>
-
         </div>
 
-        {/* 4. Aparência do App do Cliente */}
-
+        {/* 4. Módulos do Cliente */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
-
           <div>
-
             <p className="font-bold text-gray-900 flex items-center gap-2">
-              <Smartphone size={18} />
-              Módulos Visíveis no App do Cliente
+              <Smartphone size={18} /> Módulos Visíveis no App do Cliente
             </p>
-
-            <p className="text-xs text-gray-400 mt-0.5">
-              Escolha o que os clientes podem visualizar
-            </p>
-
+            <p className="text-xs text-gray-400 mt-0.5">Escolha o que os clientes podem visualizar</p>
           </div>
 
           {MODULOS.map(m => (
-
-            <div
-              key={m.key}
-              className="flex items-center justify-between"
-            >
-
+            <div key={m.key} className="flex items-center justify-between">
               <div className="flex-1 pr-4">
-
-                <p className="text-sm font-medium text-gray-800">
-                  {m.label}
-                </p>
-
-                <p className="text-xs text-gray-400">
-                  {m.desc}
-                </p>
-
+                <p className="text-sm font-medium text-gray-800">{m.label}</p>
+                <p className="text-xs text-gray-400">{m.desc}</p>
               </div>
-
               <button
-                onClick={() =>
-                  setModulos(prev => ({
-                    ...prev,
-                    [m.key]:
-                      !prev[m.key]
-                  }))
-                }
+                type="button"
+                onClick={() => setModulos(prev => ({ ...prev, [m.key]: !prev[m.key] }))}
                 className="relative w-12 h-6 rounded-full transition-colors shrink-0"
-                style={{
-                  backgroundColor:
-                    modulos[m.key]
-                      ? cor
-                      : '#d1d5db'
-                }}
+                style={{ backgroundColor: modulos[m.key] ? cor : '#d1d5db' }}
               >
-
-                <div
-                  className={
-                    'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' +
-                    (
-                      modulos[m.key]
-                        ? 'left-6'
-                        : 'left-0.5'
-                    )
-                  }
-                />
-
+                <div className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (modulos[m.key] ? 'left-6' : 'left-0.5')} />
               </button>
-
             </div>
-
           ))}
 
           <button
+            type="button"
             onClick={salvarModulos}
             disabled={salvandoModulos}
             className="w-full py-3 rounded-xl text-white font-semibold text-sm"
-            style={{
-              backgroundColor: cor
-            }}
+            style={{ backgroundColor: cor }}
           >
-            {modulosSalvos
-              ? '✓ Salvo!'
-              : salvandoModulos
-                ? 'Salvando...'
-                : 'Salvar Módulos'}
+            {modulosSalvos ? '✓ Salvo!' : salvandoModulos ? 'Salvando...' : 'Salvar Módulos'}
           </button>
-
         </div>
 
         {/* 5. Aprovação de Clientes */}
-
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-
           <div className="flex items-center gap-2">
-
-            <UserCheck
-              size={18}
-              className="text-gray-700"
-            />
-
-            <p className="font-bold text-gray-900">
-              Aprovação de Novas Clientes
-            </p>
-
+            <UserCheck size={18} className="text-gray-700" />
+            <p className="font-bold text-gray-900">Aprovação de Novas Clientes</p>
           </div>
 
           <div className="flex items-center justify-between">
-
             <div className="flex-1 pr-4">
-
-              <p className="text-sm font-medium text-gray-800">
-                Aprovar automaticamente
-              </p>
-
+              <p className="text-sm font-medium text-gray-800">Aprovar automaticamente</p>
               <p className="text-xs text-gray-400 mt-0.5">
                 {aprovacaoAutomatica
                   ? 'Clientes entram direto ao se cadastrar.'
                   : 'Você aprova manualmente cada nova cliente.'}
               </p>
-
             </div>
 
             <button
+              type="button"
               onClick={toggleAprovacaoAutomatica}
               disabled={salvandoAprovacao}
-              className={`relative w-12 h-6 rounded-full transition-all shrink-0 ${
-                salvandoAprovacao
-                  ? 'opacity-60'
-                  : ''
-              }`}
-              style={{
-                backgroundColor:
-                  aprovacaoAutomatica
-                    ? cor
-                    : '#d1d5db'
-              }}
+              className="relative w-12 h-6 rounded-full transition-all shrink-0"
+              style={{ backgroundColor: aprovacaoAutomatica ? cor : '#d1d5db' }}
             >
-
-              <div
-                className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${
-                  aprovacaoAutomatica
-                    ? 'left-6'
-                    : 'left-0.5'
-                }`}
-              />
-
+              <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${aprovacaoAutomatica ? 'left-6' : 'left-0.5'}`} />
             </button>
-
           </div>
-
         </div>
 
-        {/* 6. Aviso em Serviços */}
-
+        {/* 6. Aviso nos Serviços */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-
           <p className="font-bold text-gray-900 flex items-center gap-2">
-            <FileText size={18} />
-            Aviso na Página de Serviços
+            <FileText size={18} /> Aviso na Página de Serviços
           </p>
-
           <textarea
             className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-xs resize-none"
             rows={4}
             placeholder="Ex: Os tempos exibidos são estimativas..."
             value={avisoServicos}
-            onChange={e =>
-              setAvisoServicos(
-                e.target.value
-              )
-            }
+            onChange={e => setAvisoServicos(e.target.value)}
           />
-
           <button
+            type="button"
             onClick={salvarAviso}
             disabled={salvandoAviso}
             className="w-full py-3 rounded-xl text-white font-semibold text-sm"
-            style={{
-              backgroundColor: cor
-            }}
+            style={{ backgroundColor: cor }}
           >
-            {salvandoAviso
-              ? 'Salvando...'
-              : 'Salvar Aviso'}
+            {salvandoAviso ? 'Salvando...' : 'Salvar Aviso'}
           </button>
-
         </div>
 
         {/* 7. Links de Clientes */}
-
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-
           <p className="font-bold text-gray-900 flex items-center gap-2">
-            <Link size={18} />
-            Links de Acesso para Clientes
+            <Link size={18} /> Links de Acesso para Clientes
           </p>
 
-          <div className="flex flex-col gap-3">
-
-            <div>
-
-              <p className="text-xs text-gray-500 font-semibold mb-1">
-                Link de Cadastro
-              </p>
-
-              <button
-                onClick={() =>
-                  copiarTexto(
-                    `${origem}/cadastro?salao=${salao?.slug}`,
-                    'cadastro'
-                  )
-                }
-                className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-xs font-semibold w-full"
-                style={{
-                  backgroundColor: cor
-                }}
-              >
-
-                {copiado === 'cadastro'
-                  ? (
-                    <>
-                      <Check size={16} />
-                      Copiado!
-                    </>
-                  )
-                  : (
-                    <>
-                      <Copy size={16} />
-                      Copiar Link de Cadastro
-                    </>
-                  )}
-
-              </button>
-
-            </div>
-
-            <div>
-
-              <p className="text-xs text-gray-500 font-semibold mb-1">
-                Link de Login
-              </p>
-
-              <button
-                onClick={() =>
-                  copiarTexto(
-                    `${origem}/login?salao=${salao?.slug}`,
-                    'login'
-                  )
-                }
-                className="flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold w-full"
-                style={{
-                  borderColor: cor,
-                  color: cor
-                }}
-              >
-
-                {copiado === 'login'
-                  ? (
-                    <>
-                      <Check size={16} />
-                      Copiado!
-                    </>
-                  )
-                  : (
-                    <>
-                      <Copy size={16} />
-                      Copiar Link de Entrar
-                    </>
-                  )}
-
-              </button>
-
-            </div>
-
+          <div>
+            <p className="text-xs text-gray-500 font-semibold mb-1">Link de Cadastro</p>
+            <button
+              type="button"
+              disabled={!linkCadastro}
+              onClick={() => copiarTexto(linkCadastro, 'cadastro')}
+              className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-xs font-semibold w-full disabled:opacity-50"
+              style={{ backgroundColor: cor }}
+            >
+              {copiado === 'cadastro' ? <><Check size={16} /> Copiado!</> : <><Copy size={16} /> Copiar Link de Cadastro</>}
+            </button>
           </div>
 
+          <div>
+            <p className="text-xs text-gray-500 font-semibold mb-1">Link de Login</p>
+            <button
+              type="button"
+              disabled={!linkLogin}
+              onClick={() => copiarTexto(linkLogin, 'login')}
+              className="flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold w-full disabled:opacity-50"
+              style={{ borderColor: cor, color: cor }}
+            >
+              {copiado === 'login' ? <><Check size={16} /> Copiado!</> : <><Copy size={16} /> Copiar Link de Entrar</>}
+            </button>
+          </div>
         </div>
 
+        {/* 8. Página Pública e QR Code */}
+        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
+          <p className="font-bold text-gray-900 flex items-center gap-2">
+            <Smartphone size={18} /> Página Pública e QR Code
+          </p>
 
-        {/* 8. Lembretes Automáticos de Agendamento */}
+          <p className="text-xs text-gray-500">
+            Este endereço abre a página de apresentação do salão antes do login ou cadastro.
+            O QR Code abaixo direciona para essa página.
+          </p>
 
+          {linkPublico ? (
+            <>
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                <p className="text-xs font-semibold text-gray-500 mb-2">Link público do salão</p>
+                <p className="text-sm text-gray-800 break-all">{linkPublico}</p>
+
+                <button
+                  type="button"
+                  onClick={() => copiarTexto(linkPublico, 'publico')}
+                  className="mt-3 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white text-xs font-semibold w-full"
+                  style={{ backgroundColor: cor }}
+                >
+                  {copiado === 'publico'
+                    ? <><Check size={16} /> Link copiado!</>
+                    : <><Copy size={16} /> Copiar link público</>}
+                </button>
+
+                <a
+                  href={linkPublico}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold"
+                  style={{ borderColor: cor, color: cor }}
+                >
+                  <Eye size={16} /> Abrir página pública
+                </a>
+              </div>
+
+              <div className="flex flex-col items-center gap-3 py-3">
+                <p className="font-semibold text-sm text-gray-800">QR Code do seu salão</p>
+
+                <div className="bg-white p-3 rounded-xl border border-gray-200">
+                  <QRCodeCanvas
+                    ref={qrRef}
+                    value={linkPublico}
+                    size={240}
+                    level="H"
+                    marginSize={4}
+                  />
+                </div>
+
+                <p className="text-xs text-gray-500 text-center">
+                  A cliente pode apontar a câmera do celular para abrir a página pública do salão.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={baixarQRCode}
+                  className="w-full py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2"
+                  style={{ backgroundColor: cor }}
+                >
+                  <Copy size={16} /> Baixar QR Code em PNG
+                </button>
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-amber-600">
+              Não foi possível montar o link público. Verifique se o salão possui um slug cadastrado.
+            </p>
+          )}
+        </div>
+
+        {/* 9. Lembretes Automáticos de Agendamento */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-4">
-
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="font-bold text-gray-900 flex items-center gap-2">
-                <Clock size={18} />
-                Lembretes Automáticos de Agendamento
+                <Clock size={18} /> Lembretes Automáticos de Agendamento
               </p>
               <p className="text-xs text-gray-400 mt-1">
                 Envie lembretes automaticamente antes do horário marcado.
                 Você pode configurar mais de um lembrete para o mesmo agendamento.
               </p>
             </div>
+
             <button
+              type="button"
               onClick={adicionarLembreteAgendamento}
               className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-xs font-bold"
               style={{ backgroundColor: cor }}
             >
-              <Plus size={15} />
-              Adicionar
+              <Plus size={15} /> Adicionar
             </button>
           </div>
 
           <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-xs font-semibold text-gray-700 mb-1">
-              Como funciona
-            </p>
+            <p className="text-xs font-semibold text-gray-700 mb-1">Como funciona</p>
             <p className="text-xs text-gray-500 leading-relaxed">
               Cada regra ativa será aplicada aos agendamentos elegíveis.
-              Você pode criar quantos lembretes quiser e definir uma antecedência
-              diferente para cada um. Por exemplo: 24 horas antes, 2 horas antes
-              e 30 minutos antes do atendimento.
+              Você pode criar lembretes com antecedências diferentes, por exemplo:
+              24 horas antes, 2 horas antes e 30 minutos antes.
             </p>
           </div>
 
           {erroLembretes && (
             <div className="bg-red-50 border border-red-100 rounded-xl px-3 py-2">
-              <p className="text-xs font-semibold text-red-600">
-                {erroLembretes}
-              </p>
+              <p className="text-xs font-semibold text-red-600">{erroLembretes}</p>
             </div>
           )}
 
           {carregandoLembretes ? (
-            <div className="py-6 text-center text-xs text-gray-400">
-              Carregando lembretes...
-            </div>
+            <div className="py-6 text-center text-xs text-gray-400">Carregando lembretes...</div>
           ) : lembretesAgendamento.length === 0 ? (
             <div className="border border-dashed border-gray-200 rounded-xl p-5 text-center">
               <Bell size={22} className="mx-auto text-gray-300 mb-2" />
-              <p className="text-sm font-semibold text-gray-600">
-                Nenhum lembrete configurado
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Adicione o primeiro lembrete e escolha a antecedência que quiser.
-              </p>
+              <p className="text-sm font-semibold text-gray-600">Nenhum lembrete configurado</p>
+              <p className="text-xs text-gray-400 mt-1">Adicione o primeiro lembrete e escolha a antecedência.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {lembretesAgendamento.map((item, index) => (
-                <div
-                  key={item.id || `novo-${index}`}
-                  className="border border-gray-200 rounded-2xl p-3 flex flex-col gap-3"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-8 h-8 rounded-xl flex items-center justify-center"
-                        style={{
-                          backgroundColor: cor + '18',
-                          color: cor
-                        }}
-                      >
-                        <Bell size={16} />
+              {lembretesAgendamento.map((item, index) => {
+                const chave = item.id || `novo-${index}`
+                const unidade = obterUnidadeAntecedencia(Number(item.antecedencia_minutos) || 1)
+
+                return (
+                  <div key={chave} className="border border-gray-200 rounded-2xl p-3 flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ backgroundColor: cor + '18', color: cor }}>
+                          <Bell size={16} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-800">Lembrete {index + 1}</p>
+                          <p className="text-[11px] text-gray-400">{formatarAntecedencia(Number(item.antecedencia_minutos))}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-800">
-                          Lembrete {index + 1}
-                        </p>
-                        <p className="text-[11px] text-gray-400">
-                          {formatarAntecedencia(
-                            Number(item.antecedencia_minutos)
-                          )}
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setPreviewLembrete(
-                            previewLembrete === (item.id || `novo-${index}`)
-                              ? null
-                              : (item.id || `novo-${index}`)
-                          )
-                        }
-                        className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500"
-                        title="Visualizar exemplo"
-                      >
-                        <Eye size={16} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => removerLembreteAgendamento(index)}
-                        className="w-9 h-9 rounded-xl border border-red-100 flex items-center justify-center text-red-400"
-                        title="Excluir lembrete"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          atualizarLembreteAgendamento(
-                            index,
-                            'ativo',
-                            !item.ativo
-                          )
-                        }
-                        className="relative w-12 h-6 rounded-full transition-colors shrink-0"
-                        style={{
-                          backgroundColor: item.ativo ? cor : '#d1d5db'
-                        }}
-                        aria-label={
-                          item.ativo
-                            ? 'Desativar lembrete'
-                            : 'Ativar lembrete'
-                        }
-                      >
-                        <div
-                          className={
-                            'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' +
-                            (item.ativo ? 'left-6' : 'left-0.5')
-                          }
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1">
-                      Antecedência do lembrete
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={1}
-                        inputMode="numeric"
-                        value={obterValorAntecedencia(
-                          Number(item.antecedencia_minutos) || 1,
-                          obterUnidadeAntecedencia(
-                            Number(item.antecedencia_minutos) || 1
-                          )
-                        )}
-                        onChange={e => {
-                          const unidade = obterUnidadeAntecedencia(
-                            Number(item.antecedencia_minutos) || 1
-                          )
-                          const valor = Math.max(
-                            1,
-                            Number(e.target.value) || 1
-                          )
-
-                          atualizarLembreteAgendamento(
-                            index,
-                            'antecedencia_minutos',
-                            converterParaMinutos(valor, unidade)
-                          )
-                        }}
-                        className="flex-1 min-w-0 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
-                      />
-
-                      <select
-                        value={obterUnidadeAntecedencia(
-                          Number(item.antecedencia_minutos) || 1
-                        )}
-                        onChange={e => {
-                          const novaUnidade = e.target.value
-                          const minutosAtuais =
-                            Number(item.antecedencia_minutos) || 1
-                          const valorAtual = obterValorAntecedencia(
-                            minutosAtuais,
-                            novaUnidade
-                          )
-
-                          atualizarLembreteAgendamento(
-                            index,
-                            'antecedencia_minutos',
-                            converterParaMinutos(
-                              valorAtual,
-                              novaUnidade
-                            )
-                          )
-                        }}
-                        className="flex-1 min-w-0 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
-                      >
-                        <option value="minutos">minutos antes</option>
-                        <option value="horas">horas antes</option>
-                        <option value="dias">dias antes</option>
-                      </select>
-                    </div>
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      Você pode escolher qualquer quantidade. Ex.: 30 minutos, 2 horas, 5 horas ou 3 dias.
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1">
-                      Título da notificação
-                    </label>
-                    <input
-                      type="text"
-                      value={item.titulo}
-                      onChange={e =>
-                        atualizarLembreteAgendamento(
-                          index,
-                          'titulo',
-                          e.target.value
-                        )
-                      }
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
-                      placeholder="Lembrete de agendamento"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600 block mb-1">
-                      Mensagem
-                    </label>
-                    <textarea
-                      rows={4}
-                      value={item.mensagem}
-                      onChange={e =>
-                        atualizarLembreteAgendamento(
-                          index,
-                          'mensagem',
-                          e.target.value
-                        )
-                      }
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none"
-                      placeholder="Olá {cliente}! Este é um lembrete..."
-                    />
-                  </div>
-
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <p className="text-[11px] font-semibold text-gray-600 mb-2">
-                      Variáveis disponíveis
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        '{cliente}',
-                        '{salao}',
-                        '{data}',
-                        '{hora}',
-                        '{servico}'
-                      ].map(tag => (
+                      <div className="flex items-center gap-2">
                         <button
-                          key={tag}
                           type="button"
-                          onClick={() => {
-                            const novoTexto =
-                              item.mensagem + (item.mensagem ? ' ' : '') + tag
-                            atualizarLembreteAgendamento(
-                              index,
-                              'mensagem',
-                              novoTexto
-                            )
-                          }}
-                          className="bg-white border border-gray-200 px-2 py-1 rounded-lg text-[11px] font-mono text-gray-600"
+                          onClick={() => setPreviewLembrete(previewLembrete === chave ? null : chave)}
+                          className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-500"
+                          title="Visualizar exemplo"
                         >
-                          {tag}
+                          <Eye size={16} />
                         </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-gray-400 mt-2">
-                      Toque em uma variável para adicioná-la ao final da mensagem.
-                    </p>
-                  </div>
 
-                  {previewLembrete === (item.id || `novo-${index}`) && (
-                    <div
-                      className="rounded-2xl p-3 border"
-                      style={{
-                        backgroundColor: cor + '0D',
-                        borderColor: cor + '30'
-                      }}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <Bell size={15} style={{ color: cor }} />
-                        <p className="text-xs font-bold text-gray-700">
-                          Prévia da notificação
-                        </p>
+                        <button
+                          type="button"
+                          onClick={() => removerLembreteAgendamento(index)}
+                          className="w-9 h-9 rounded-xl border border-red-100 flex items-center justify-center text-red-400"
+                          title="Excluir lembrete"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => atualizarLembreteAgendamento(index, 'ativo', !item.ativo)}
+                          className="relative w-12 h-6 rounded-full transition-colors shrink-0"
+                          style={{ backgroundColor: item.ativo ? cor : '#d1d5db' }}
+                          aria-label={item.ativo ? 'Desativar lembrete' : 'Ativar lembrete'}
+                        >
+                          <div className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (item.ativo ? 'left-6' : 'left-0.5')} />
+                        </button>
                       </div>
-                      <p className="text-sm font-bold text-gray-900">
-                        {renderizarPreviewLembrete(item.titulo)}
-                      </p>
-                      <p className="text-xs text-gray-600 mt-1 leading-relaxed">
-                        {renderizarPreviewLembrete(item.mensagem)}
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Antecedência do lembrete</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={1}
+                          inputMode="numeric"
+                          value={obterValorAntecedencia(Number(item.antecedencia_minutos) || 1, unidade)}
+                          onChange={e => {
+                            const valor = Math.max(1, Number(e.target.value) || 1)
+                            atualizarLembreteAgendamento(index, 'antecedencia_minutos', converterParaMinutos(valor, unidade))
+                          }}
+                          className="flex-1 min-w-0 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
+                        />
+                        <select
+                          value={unidade}
+                          onChange={e => {
+                            const novaUnidade = e.target.value
+                            const valorAtual = obterValorAntecedencia(Number(item.antecedencia_minutos) || 1, novaUnidade)
+                            atualizarLembreteAgendamento(index, 'antecedencia_minutos', converterParaMinutos(valorAtual, novaUnidade))
+                          }}
+                          className="flex-1 min-w-0 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
+                        >
+                          <option value="minutos">minutos antes</option>
+                          <option value="horas">horas antes</option>
+                          <option value="dias">dias antes</option>
+                        </select>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Ex.: 30 minutos, 2 horas, 5 horas ou 3 dias.
                       </p>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Título da notificação</label>
+                      <input
+                        type="text"
+                        value={item.titulo}
+                        onChange={e => atualizarLembreteAgendamento(index, 'titulo', e.target.value)}
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm"
+                        placeholder="Lembrete de agendamento"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 block mb-1">Mensagem</label>
+                      <textarea
+                        rows={4}
+                        value={item.mensagem}
+                        onChange={e => atualizarLembreteAgendamento(index, 'mensagem', e.target.value)}
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm resize-none"
+                        placeholder="Olá {cliente}! Este é um lembrete..."
+                      />
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-gray-600 mb-2">Variáveis disponíveis</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['{cliente}', '{salao}', '{data}', '{hora}', '{servico}'].map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => atualizarLembreteAgendamento(index, 'mensagem', item.mensagem + (item.mensagem ? ' ' : '') + tag)}
+                            className="bg-white border border-gray-200 px-2 py-1 rounded-lg text-[11px] font-mono text-gray-600"
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-2">Toque em uma variável para adicioná-la ao final da mensagem.</p>
+                    </div>
+
+                    {previewLembrete === chave && (
+                      <div className="rounded-2xl p-3 border" style={{ backgroundColor: cor + '0D', borderColor: cor + '30' }}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Bell size={15} style={{ color: cor }} />
+                          <p className="text-xs font-bold text-gray-700">Prévia da notificação</p>
+                        </div>
+                        <p className="text-sm font-bold text-gray-900">{renderizarPreviewLembrete(item.titulo)}</p>
+                        <p className="text-xs text-gray-600 mt-1 leading-relaxed">{renderizarPreviewLembrete(item.mensagem)}</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
 
           {lembretesAgendamento.length > 0 && (
             <button
+              type="button"
               onClick={salvarLembretesAgendamento}
               disabled={salvandoLembretes}
               className="w-full py-3 rounded-xl text-white font-semibold text-sm"
               style={{ backgroundColor: cor }}
             >
-              {lembretesSalvos
-                ? '✓ Lembretes Salvos!'
-                : salvandoLembretes
-                  ? 'Salvando...'
-                  : 'Salvar Lembretes'}
+              {lembretesSalvos ? '✓ Lembretes Salvos!' : salvandoLembretes ? 'Salvando...' : 'Salvar Lembretes'}
             </button>
           )}
 
           <p className="text-[10px] text-gray-400 leading-relaxed">
-            Desativar uma regra impede novos envios dessa regra. O histórico
-            dos envios permanece separado para acompanhamento.
+            Desativar uma regra impede novos envios dessa regra. O histórico dos envios permanece separado.
           </p>
-
         </div>
 
-        {/* 8. Notificações Push */}
-
+        {/* 10. Notificações Push */}
         <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
-
           <p className="font-bold text-gray-900 flex items-center gap-2">
-            <Bell size={18} />
-            Notificações Push
+            <Bell size={18} /> Notificações Push
           </p>
 
           {resultadoPush && (
-
-            <div
-              className={`rounded-xl px-3 py-2 text-xs font-semibold ${
-                resultadoPush.ok
-                  ? 'bg-green-50 text-green-700'
-                  : 'bg-red-50 text-red-600'
-              }`}
-            >
+            <div className={`rounded-xl px-3 py-2 text-xs font-semibold ${resultadoPush.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
               {resultadoPush.msg}
             </div>
-
           )}
 
           <div className="flex items-center justify-between">
-
             <div>
-
-              <p className="text-xs font-semibold text-gray-800">
-                Status neste dispositivo
+              <p className="text-xs font-semibold text-gray-800">Status neste dispositivo</p>
+              <p className={`text-xs mt-0.5 font-bold ${pushAtivo ? 'text-emerald-600' : 'text-gray-400'}`}>
+                {pushAtivo ? '● Ativo' : '○ Não ativado'}
               </p>
-
-              <p
-                className={`text-xs mt-0.5 font-bold ${
-                  pushAtivo
-                    ? 'text-emerald-600'
-                    : 'text-gray-400'
-                }`}
-              >
-                {pushAtivo
-                  ? '● Ativo'
-                  : '○ Não ativado'}
-              </p>
-
             </div>
 
             {!pushAtivo ? (
-
               <button
+                type="button"
                 onClick={ativarPush}
                 disabled={ativandoPush}
                 className="px-4 py-2 rounded-xl text-white text-xs font-bold"
-                style={{
-                  backgroundColor: cor
-                }}
+                style={{ backgroundColor: cor }}
               >
-                {ativandoPush
-                  ? 'Ativando...'
-                  : 'Ativar Push'}
+                {ativandoPush ? 'Ativando...' : 'Ativar Push'}
               </button>
-
             ) : (
-
               <button
+                type="button"
                 onClick={testarPush}
                 disabled={testandoPush}
                 className="px-3 py-1.5 rounded-xl border text-xs font-bold"
-                style={{
-                  borderColor: cor,
-                  color: cor
-                }}
+                style={{ borderColor: cor, color: cor }}
               >
-                {testandoPush
-                  ? 'Enviando...'
-                  : 'Testar'}
+                {testandoPush ? 'Enviando...' : 'Testar'}
               </button>
-
             )}
-
           </div>
-
         </div>
 
-        {/* Botão Sair */}
-
+        {/* Sair da conta */}
         <button
+          type="button"
           onClick={signOut}
           className="flex items-center justify-center gap-2 text-gray-400 text-sm py-4 hover:text-red-500 transition-colors"
         >
-          <LogOut size={16} />
-          Sair da conta
+          <LogOut size={16} /> Sair da conta
         </button>
 
       </div>
-
     </div>
   )
 }
-
