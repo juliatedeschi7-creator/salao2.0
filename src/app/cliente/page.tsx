@@ -1,7 +1,6 @@
-
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
@@ -21,7 +20,8 @@ import {
   Wallet,
   X,
   Phone,
-  Save
+  Save,
+  RefreshCw
 } from 'lucide-react'
 
 import {
@@ -34,6 +34,31 @@ import {
   verificarSuportePush,
   obterUltimoErroPush
 } from '@/lib/push-client'
+
+const TEMPO_LIMITE = 12000
+
+function comTempoLimite<T>(
+  operacao: PromiseLike<T>,
+  mensagem = 'A operação demorou mais do que o esperado.'
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const temporizador = setTimeout(
+      () => reject(new Error(mensagem)),
+      TEMPO_LIMITE
+    )
+
+    Promise.resolve(operacao).then(
+      resultado => {
+        clearTimeout(temporizador)
+        resolve(resultado)
+      },
+      erro => {
+        clearTimeout(temporizador)
+        reject(erro)
+      }
+    )
+  })
+}
 
 function formatarTelefone(valor: string) {
   const numeros = valor.replace(/\D/g, '').slice(0, 11)
@@ -74,44 +99,339 @@ export default function ClientePage() {
   const [ativandoPush, setAtivandoPush] = useState(false)
   const [erroPush, setErroPush] = useState('')
   const [carregandoDados, setCarregandoDados] = useState(true)
+  const [erroCarregamento, setErroCarregamento] = useState('')
 
   const [pushAtivoConta, setPushAtivoConta] = useState(false)
   const [verificandoPush, setVerificandoPush] = useState(true)
   const [testandoPush, setTestandoPush] = useState(false)
   const [resultadoTestePush, setResultadoTestePush] = useState('')
+  const [tentativaPush, setTentativaPush] = useState(0)
 
-  // Atualização obrigatória do telefone de clientes antigos.
   const [telefone, setTelefone] = useState('')
   const [salvandoTelefone, setSalvandoTelefone] = useState(false)
   const [erroTelefone, setErroTelefone] = useState('')
   const [sucessoTelefone, setSucessoTelefone] = useState(false)
 
+  // Identificadores impedem que operações antigas alterem uma sessão nova.
+  const requisicaoDados = useRef(0)
+  const requisicaoPush = useRef(0)
+  const requisicaoTelefone = useRef(0)
+
   const precisaTelefone =
-    !!cliente &&
-    !cliente.telefone?.replace(/\D/g, '')
+    !!cliente && !cliente.telefone?.replace(/\D/g, '')
+
+  // ============================================================
+  // AUTENTICAÇÃO
+  // ============================================================
 
   useEffect(() => {
     if (!loading && !profile) {
-      router.push('/login')
-      return
+      router.replace('/login')
     }
+  }, [loading, profile?.id, router])
 
-    if (profile) {
-      carregarDados()
+  // ============================================================
+  // CONTADOR DE NOTIFICAÇÕES
+  // ============================================================
+
+  const carregarContadorNotificacoes = useCallback(async () => {
+    if (!profile?.id) return
+
+    const idConta = profile.id
+
+    try {
+      const { count, error } = await comTempoLimite(
+        supabase
+          .from('notificacoes')
+          .select('*', { count: 'exact', head: true })
+          .eq('destinatario_id', idConta)
+          .eq('lida', false)
+      )
+
+      if (profile.id !== idConta) return
+
+      if (error) {
+        console.error(
+          '[CLIENTE] Erro ao atualizar contador:',
+          error
+        )
+        return
+      }
+
+      setNotifCount(count || 0)
+    } catch (error) {
+      console.error(
+        '[CLIENTE] Erro ao carregar contador:',
+        error
+      )
     }
-  }, [loading, profile])
+  }, [profile?.id])
 
-  async function verificarStatusPush() {
-    if (!profile?.id) {
+  useEffect(() => {
+    if (!profile?.id) return
+
+    const idConta = profile.id
+
+    const channel = supabase
+      .channel(`cliente-notificacoes-${idConta}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notificacoes',
+          filter: `destinatario_id=eq.${idConta}`
+        },
+        () => {
+          if (profile?.id === idConta) {
+            void carregarContadorNotificacoes()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [profile?.id, carregarContadorNotificacoes])
+
+  // ============================================================
+  // CARREGAMENTO PRINCIPAL
+  // O painel NÃO espera a verificação do Push.
+  // ============================================================
+
+  const carregarDados = useCallback(async () => {
+    if (!profile?.id) return
+
+    const idConta = profile.id
+    const idRequisicao = ++requisicaoDados.current
+
+    const requisicaoAtual = () =>
+      requisicaoDados.current === idRequisicao &&
+      profile?.id === idConta
+
+    setCarregandoDados(true)
+    setErroCarregamento('')
+
+    // Limpa os dados da sessão anterior.
+    setCliente(null)
+    setSalao(null)
+    setAgendamentos([])
+    setPacotesAtivos(0)
+    setContratosCount(0)
+    setContasCount(0)
+    setTelefone('')
+    setErroTelefone('')
+    setSucessoTelefone(false)
+
+    try {
+      const { data: cli, error: errCli } = await comTempoLimite(
+        supabase
+          .from('clientes')
+          .select('*, saloes(*)')
+          .eq('profile_id', idConta)
+          .maybeSingle(),
+        'Não foi possível carregar seu cadastro. Verifique sua conexão e tente novamente.'
+      )
+
+      if (!requisicaoAtual()) return
+
+      if (errCli) {
+        console.error('[CLIENTE] Erro ao buscar cliente:', errCli)
+        throw new Error(
+          'Não foi possível consultar seu cadastro. Tente novamente.'
+        )
+      }
+
+      setCliente(cli)
+      setTelefone(cli?.telefone ? formatarTelefone(cli.telefone) : '')
+
+      let salaoEncontrado = cli?.saloes || null
+
+      if (!salaoEncontrado && profile.salao_id) {
+        const { data: sal, error: erroSalao } = await comTempoLimite(
+          supabase
+            .from('saloes')
+            .select('*')
+            .eq('id', profile.salao_id)
+            .maybeSingle()
+        )
+
+        if (!requisicaoAtual()) return
+
+        if (erroSalao) {
+          console.error(
+            '[CLIENTE] Erro ao buscar salão:',
+            erroSalao
+          )
+        } else {
+          salaoEncontrado = sal
+        }
+      }
+
+      if (!requisicaoAtual()) return
+
+      setSalao(salaoEncontrado)
+
+      // Se ainda não existe registro em clientes, não presumimos
+      // que ele deva ser criado automaticamente.
+      if (!cli?.id) {
+        setErroCarregamento(
+          'Não encontramos um cadastro de cliente vinculado a esta conta. Seus dados não foram alterados. Entre em contato com o salão para verificar seu cadastro.'
+        )
+        return
+      }
+
+      const tarefas = await Promise.allSettled([
+        comTempoLimite(
+          supabase
+            .from('agendamentos')
+            .select(
+              '*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)'
+            )
+            .eq('cliente_id', cli.id)
+            .order('data_hora', { ascending: false })
+            .limit(10)
+        ),
+
+        comTempoLimite(
+          supabase
+            .from('pacotes_clientes_resumo')
+            .select(
+              'id, cliente_nome, servico, sessoes_total, sessoes_restantes, status'
+            )
+            .eq('cliente_nome', cli.nome)
+        ),
+
+        comTempoLimite(
+          supabase
+            .from('contratos')
+            .select('*', { count: 'exact', head: true })
+            .eq('cliente_id', cli.id)
+        ),
+
+        comTempoLimite(
+          supabase
+            .from('contas_clientes')
+            .select('*', { count: 'exact', head: true })
+            .eq('cliente_id', cli.id)
+        ),
+
+        comTempoLimite(
+          supabase
+            .from('notificacoes')
+            .select('*', { count: 'exact', head: true })
+            .eq('destinatario_id', idConta)
+            .eq('lida', false)
+        )
+      ])
+
+      if (!requisicaoAtual()) return
+
+      const [ags, pacotes, contratos, contas, notificacoes] = tarefas
+
+      if (ags.status === 'fulfilled' && !ags.value.error) {
+        setAgendamentos(ags.value.data || [])
+      } else {
+        console.error(
+          '[CLIENTE] Não foi possível carregar agendamentos:',
+          ags.status === 'rejected'
+            ? ags.reason
+            : ags.value.error
+        )
+        setAgendamentos([])
+      }
+
+      if (pacotes.status === 'fulfilled' && !pacotes.value.error) {
+        setPacotesAtivos(
+          (pacotes.value.data || []).filter(
+            (p: any) => p.status === 'ativo'
+          ).length
+        )
+      } else {
+        console.error(
+          '[CLIENTE] Não foi possível carregar pacotes:',
+          pacotes.status === 'rejected'
+            ? pacotes.reason
+            : pacotes.value.error
+        )
+        setPacotesAtivos(0)
+      }
+
+      if (
+        contratos.status === 'fulfilled' &&
+        !contratos.value.error
+      ) {
+        setContratosCount(contratos.value.count || 0)
+      } else {
+        setContratosCount(0)
+      }
+
+      if (contas.status === 'fulfilled' && !contas.value.error) {
+        setContasCount(contas.value.count || 0)
+      } else {
+        setContasCount(0)
+      }
+
+      if (
+        notificacoes.status === 'fulfilled' &&
+        !notificacoes.value.error
+      ) {
+        setNotifCount(notificacoes.value.count || 0)
+      }
+
+    } catch (error: any) {
+      if (!requisicaoAtual()) return
+
+      console.error('[CLIENTE] Erro no carregamento:', error)
+
+      setErroCarregamento(
+        error?.message ||
+          'Não foi possível carregar seus dados. Tente novamente.'
+      )
+    } finally {
+      if (requisicaoAtual()) {
+        setCarregandoDados(false)
+      }
+    }
+  }, [profile?.id, profile?.salao_id])
+
+  useEffect(() => {
+    if (loading || !profile?.id) return
+
+    void carregarDados()
+
+    return () => {
+      // Invalida consultas iniciadas pela sessão anterior.
+      requisicaoDados.current += 1
+    }
+  }, [loading, profile?.id, carregarDados])
+
+  // ============================================================
+  // VERIFICAÇÃO DO PUSH EM PARALELO COM O PAINEL
+  // ============================================================
+
+  const verificarStatusPush = useCallback(async () => {
+    const idConta = profile?.id
+
+    if (!idConta) {
       setVerificandoPush(false)
       return
     }
 
+    const idRequisicao = ++requisicaoPush.current
+
+    const requisicaoAtual = () =>
+      requisicaoPush.current === idRequisicao &&
+      profile?.id === idConta
+
     setVerificandoPush(true)
+    setErroPush('')
 
     try {
       const suporte = verificarSuportePush()
-      const permissao = obterPermissaoPush()
+
+      if (!requisicaoAtual()) return
 
       if (!suporte) {
         setPushAtivoConta(false)
@@ -119,63 +439,104 @@ export default function ClientePage() {
         return
       }
 
-      if (verificarPushDesativadoParaConta(profile.id)) {
+      if (verificarPushDesativadoParaConta(idConta)) {
         setPushAtivoConta(false)
-        setErroPush('')
+        setModalPushLembrete(false)
         return
       }
 
-      const pushAtivo = await verificarPushAtivo()
+      const pushAtivo = await comTempoLimite(
+        verificarPushAtivo(),
+        'A verificação das notificações demorou demais. Você pode tentar novamente.'
+      )
+
+      if (!requisicaoAtual()) return
 
       if (!pushAtivo) {
         setPushAtivoConta(false)
-        setErroPush('')
         setModalPushLembrete(true)
         return
       }
 
-      const vinculado = await verificarPushVinculadoAConta(profile.id)
+      const vinculado = await comTempoLimite(
+        verificarPushVinculadoAConta(idConta),
+        'Não foi possível confirmar o vínculo das notificações. Tente novamente.'
+      )
+
+      if (!requisicaoAtual()) return
 
       if (vinculado) {
         setPushAtivoConta(true)
         setModalPushLembrete(false)
-        setErroPush('')
         return
       }
 
-      if (permissao === 'granted') {
-        const vinculacao = await vincularPushAConta(profile.id)
+      if (obterPermissaoPush() === 'granted') {
+        const vinculacao = await comTempoLimite(
+          vincularPushAConta(idConta),
+          'Não foi possível vincular as notificações a esta conta.'
+        )
+
+        if (!requisicaoAtual()) return
 
         if (vinculacao) {
-          setPushAtivoConta(true)
-          setModalPushLembrete(false)
-          setErroPush('')
-        } else {
-          setPushAtivoConta(false)
-          setErroPush(
-            obterUltimoErroPush() ||
-            'Não foi possível vincular as notificações a esta conta.'
+          const confirmado = await comTempoLimite(
+            verificarPushVinculadoAConta(idConta),
+            'Não foi possível confirmar o vínculo das notificações.'
           )
-          setModalPushLembrete(true)
+
+          if (!requisicaoAtual()) return
+
+          if (confirmado) {
+            setPushAtivoConta(true)
+            setModalPushLembrete(false)
+            return
+          }
         }
+
+        setPushAtivoConta(false)
+        setErroPush(
+          obterUltimoErroPush() ||
+            'Não foi possível confirmar o vínculo das notificações com esta conta.'
+        )
+        setModalPushLembrete(true)
       } else {
         setPushAtivoConta(false)
-        setErroPush('')
         setModalPushLembrete(true)
       }
     } catch (error: any) {
+      if (!requisicaoAtual()) return
+
       console.error('[CLIENTE] Erro ao verificar Push:', error)
+
       setPushAtivoConta(false)
       setErroPush(
         obterUltimoErroPush() ||
-        error?.message ||
-        'Não foi possível verificar as notificações.'
+          error?.message ||
+          'Não foi possível verificar as notificações.'
       )
-      setModalPushLembrete(true)
+      setModalPushLembrete(false)
     } finally {
-      setVerificandoPush(false)
+      if (requisicaoAtual()) {
+        setVerificandoPush(false)
+      }
     }
-  }
+  }, [profile?.id])
+
+  useEffect(() => {
+    if (loading || !profile?.id) return
+
+    void verificarStatusPush()
+
+    return () => {
+      // Impede que uma verificação antiga altere a tela.
+      requisicaoPush.current += 1
+    }
+  }, [loading, profile?.id, tentativaPush, verificarStatusPush])
+
+  // ============================================================
+  // TESTE DE NOTIFICAÇÃO
+  // ============================================================
 
   async function testarPushCliente() {
     if (!profile?.id) {
@@ -189,20 +550,23 @@ export default function ClientePage() {
     setResultadoTestePush('')
 
     try {
-      const resposta = await fetch('/api/notificar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          salaoId: profile.salao_id || null,
-          remetenteId: profile.id,
-          destinatarioId: profile.id,
-          titulo: '🔔 Teste de notificação',
-          mensagem:
-            'Se você recebeu esta mensagem, o Push da sua conta está funcionando corretamente.',
-          tipo: 'teste_push_cliente',
-          url: '/cliente'
-        })
-      })
+      const resposta = await comTempoLimite(
+        fetch('/api/notificar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            salaoId: profile.salao_id || null,
+            remetenteId: profile.id,
+            destinatarioId: profile.id,
+            titulo: '🔔 Teste de notificação',
+            mensagem:
+              'Se você recebeu esta mensagem, o Push da sua conta está funcionando corretamente.',
+            tipo: 'teste_push_cliente',
+            url: '/cliente'
+          })
+        }),
+        'O teste demorou demais. Verifique sua conexão e tente novamente.'
+      )
 
       let resultado: any = null
 
@@ -215,205 +579,34 @@ export default function ClientePage() {
       if (!resposta.ok) {
         setResultadoTestePush(
           resultado?.erro ||
-          `Erro HTTP ${resposta.status} ao testar o Push.`
+            `Erro HTTP ${resposta.status} ao testar o Push.`
         )
         return
       }
 
       if (resultado?.pushEnviado && resultado?.enviados > 0) {
         setResultadoTestePush(
-          'Push enviado pelo servidor. Verifique se a notificação apareceu neste iPhone.'
+          'Push enviado pelo servidor. Verifique se a notificação apareceu neste dispositivo.'
         )
       } else {
         setResultadoTestePush(
           resultado?.motivo ||
-          'O servidor não encontrou uma subscription ativa para esta conta.'
+            'O servidor não encontrou uma assinatura ativa para esta conta.'
         )
       }
     } catch (error: any) {
       console.error('[CLIENTE] Erro no teste de Push:', error)
       setResultadoTestePush(
-        error?.message ||
-        'Não foi possível realizar o teste de Push.'
+        error?.message || 'Não foi possível realizar o teste de Push.'
       )
     } finally {
       setTestandoPush(false)
     }
   }
 
-  async function carregarContadorNotificacoes() {
-    if (!profile?.id) return
-
-    try {
-      const { count, error } = await supabase
-        .from('notificacoes')
-        .select('*', { count: 'exact', head: true })
-        .eq('destinatario_id', profile.id)
-        .eq('lida', false)
-
-      if (error) {
-        console.error(
-          '[CLIENTE] Erro ao atualizar contador de notificações:',
-          error
-        )
-        return
-      }
-
-      setNotifCount(count || 0)
-    } catch (error) {
-      console.error(
-        '[CLIENTE] Erro ao carregar contador de notificações:',
-        error
-      )
-    }
-  }
-
-  useEffect(() => {
-    if (!profile?.id) return
-
-    const channel = supabase
-      .channel(`cliente-notificacoes-${profile.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notificacoes',
-          filter: `destinatario_id=eq.${profile.id}`
-        },
-        async () => {
-          await carregarContadorNotificacoes()
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [profile?.id])
-
-  async function carregarDados() {
-    if (!profile) return
-
-    setCarregandoDados(true)
-
-    try {
-      const { data: cli, error: errCli } = await supabase
-        .from('clientes')
-        .select('*, saloes(*)')
-        .eq('profile_id', profile.id)
-        .maybeSingle()
-
-      if (errCli) {
-        console.error('Erro ao buscar cliente:', errCli.message)
-      }
-
-      setCliente(cli)
-
-      // Preenche o campo caso o telefone já exista.
-      setTelefone(cli?.telefone ? formatarTelefone(cli.telefone) : '')
-
-      let salaoEncontrado = cli?.saloes
-
-      if (!salaoEncontrado && profile.salao_id) {
-        const { data: sal } = await supabase
-          .from('saloes')
-          .select('*')
-          .eq('id', profile.salao_id)
-          .maybeSingle()
-
-        salaoEncontrado = sal
-      }
-
-      setSalao(salaoEncontrado)
-
-      if (cli?.id) {
-        try {
-          const { data: ags, error } = await supabase
-            .from('agendamentos')
-            .select(
-              '*, servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)'
-            )
-            .eq('cliente_id', cli.id)
-            .order('data_hora', { ascending: false })
-            .limit(10)
-
-          if (error) {
-            console.error('[CLIENTE] Erro ao buscar agendamentos:', error)
-          }
-
-          setAgendamentos(ags || [])
-        } catch (error) {
-          console.error('[CLIENTE] Erro nos agendamentos:', error)
-          setAgendamentos([])
-        }
-
-        try {
-          const { data: pacotesCliente, error } = await supabase
-            .from('pacotes_clientes_resumo')
-            .select(
-              'id, cliente_nome, servico, sessoes_total, sessoes_restantes, status'
-            )
-            .eq('cliente_nome', cli.nome)
-
-          if (error) {
-            console.error('[CLIENTE] Erro ao buscar pacotes:', error)
-            setPacotesAtivos(0)
-          } else {
-            setPacotesAtivos(
-              (pacotesCliente || []).filter(
-                (p: any) => p.status === 'ativo'
-              ).length
-            )
-          }
-        } catch (error) {
-          console.error('[CLIENTE] Erro ao carregar pacotes:', error)
-          setPacotesAtivos(0)
-        }
-
-        await carregarContadorNotificacoes()
-
-        try {
-          const { count, error } = await supabase
-            .from('contratos')
-            .select('*', { count: 'exact', head: true })
-            .eq('cliente_id', cli.id)
-
-          if (error) {
-            console.error('[CLIENTE] Erro ao buscar contratos:', error)
-          }
-
-          setContratosCount(count || 0)
-        } catch {
-          setContratosCount(0)
-        }
-
-        try {
-          const { count, error } = await supabase
-            .from('contas_clientes')
-            .select('*', { count: 'exact', head: true })
-            .eq('cliente_id', cli.id)
-
-          if (error) {
-            console.error('[CLIENTE] Erro ao buscar contas:', error)
-          }
-
-          setContasCount(count || 0)
-        } catch {
-          setContasCount(0)
-        }
-
-        await verificarStatusPush()
-      } else {
-        setVerificandoPush(false)
-      }
-    } catch (error) {
-      console.error('Erro geral no carregamento:', error)
-      setVerificandoPush(false)
-    } finally {
-      setCarregandoDados(false)
-    }
-  }
+  // ============================================================
+  // ATUALIZAÇÃO DO TELEFONE
+  // ============================================================
 
   async function salvarTelefone() {
     if (!profile?.id || !cliente?.id) {
@@ -432,6 +625,14 @@ export default function ClientePage() {
 
     if (salvandoTelefone) return
 
+    const idConta = profile.id
+    const idCliente = cliente.id
+    const idRequisicao = ++requisicaoTelefone.current
+
+    const requisicaoAtual = () =>
+      requisicaoTelefone.current === idRequisicao &&
+      profile?.id === idConta
+
     setSalvandoTelefone(true)
     setErroTelefone('')
     setSucessoTelefone(false)
@@ -439,13 +640,18 @@ export default function ClientePage() {
     try {
       const telefoneLimpo = telefone.replace(/\D/g, '')
 
-      const { data, error } = await supabase
-        .from('clientes')
-        .update({ telefone: telefoneLimpo })
-        .eq('id', cliente.id)
-        .eq('profile_id', profile.id)
-        .select('id, telefone')
-        .maybeSingle()
+      const { data, error } = await comTempoLimite(
+        supabase
+          .from('clientes')
+          .update({ telefone: telefoneLimpo })
+          .eq('id', idCliente)
+          .eq('profile_id', idConta)
+          .select('id, telefone')
+          .maybeSingle(),
+        'O salvamento demorou demais. Confira sua conexão e tente novamente.'
+      )
+
+      if (!requisicaoAtual()) return
 
       if (error) {
         console.error('[CLIENTE] Erro ao salvar telefone:', error)
@@ -462,22 +668,32 @@ export default function ClientePage() {
         return
       }
 
-      setCliente((atual: any) => ({
-        ...atual,
-        telefone: data.telefone
-      }))
+      setCliente((atual: any) =>
+        atual?.id === idCliente
+          ? { ...atual, telefone: data.telefone }
+          : atual
+      )
 
       setTelefone(formatarTelefone(data.telefone))
       setSucessoTelefone(true)
-    } catch (error) {
-      console.error('[CLIENTE] Erro inesperado ao salvar telefone:', error)
+    } catch (error: any) {
+      if (!requisicaoAtual()) return
+
+      console.error('[CLIENTE] Erro ao salvar telefone:', error)
       setErroTelefone(
-        'Ocorreu um erro inesperado ao salvar seu telefone. Tente novamente.'
+        error?.message ||
+          'Ocorreu um erro inesperado ao salvar seu telefone.'
       )
     } finally {
-      setSalvandoTelefone(false)
+      if (requisicaoAtual()) {
+        setSalvandoTelefone(false)
+      }
     }
   }
+
+  // ============================================================
+  // ATIVAÇÃO DO PUSH
+  // ============================================================
 
   async function ativarPushAgora() {
     if (!profile?.id) {
@@ -486,6 +702,8 @@ export default function ClientePage() {
     }
 
     if (ativandoPush) return
+
+    const idConta = profile.id
 
     setAtivandoPush(true)
     setErroPush('')
@@ -507,32 +725,46 @@ export default function ClientePage() {
         return
       }
 
-      const resultado = await registrarPush(profile.id)
+      const resultado = await comTempoLimite(
+        registrarPush(idConta),
+        'A ativação das notificações demorou demais. Tente novamente.'
+      )
+
+      if (profile?.id !== idConta) return
 
       if (resultado) {
-        const vinculado = await verificarPushVinculadoAConta(profile.id)
+        let vinculado = await comTempoLimite(
+          verificarPushVinculadoAConta(idConta)
+        )
+
+        if (!vinculado) {
+          const vinculacao = await comTempoLimite(
+            vincularPushAConta(idConta)
+          )
+
+          if (profile?.id !== idConta) return
+
+          if (vinculacao) {
+            vinculado = await comTempoLimite(
+              verificarPushVinculadoAConta(idConta)
+            )
+          }
+        }
+
+        if (profile?.id !== idConta) return
 
         if (vinculado) {
           setPushAtivoConta(true)
           setModalPushLembrete(false)
+          setErroPush('')
+          setVerificandoPush(false)
           return
-        }
-
-        const vinculacao = await vincularPushAConta(profile.id)
-
-        if (vinculacao) {
-          const confirmado = await verificarPushVinculadoAConta(profile.id)
-
-          if (confirmado) {
-            setPushAtivoConta(true)
-            setModalPushLembrete(false)
-            return
-          }
         }
 
         setPushAtivoConta(false)
         setErroPush(
-          'A permissão foi concedida, mas não conseguimos confirmar o vínculo das notificações com esta conta. Tente novamente.'
+          obterUltimoErroPush() ||
+            'A permissão foi concedida, mas não conseguimos confirmar o vínculo das notificações com esta conta. Tente novamente.'
         )
         return
       }
@@ -549,19 +781,30 @@ export default function ClientePage() {
         )
       } else {
         setErroPush(
-          'Não foi possível ativar as notificações. Verifique as permissões do navegador e tente novamente.'
+          obterUltimoErroPush() ||
+            'Não foi possível ativar as notificações. Verifique as permissões do navegador e tente novamente.'
         )
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (profile?.id !== idConta) return
+
       console.error('[CLIENTE] Erro ao ativar Push:', error)
       setPushAtivoConta(false)
       setErroPush(
-        'Ocorreu um erro ao ativar as notificações. Tente novamente.'
+        obterUltimoErroPush() ||
+          error?.message ||
+          'Ocorreu um erro ao ativar as notificações. Tente novamente.'
       )
     } finally {
-      setAtivandoPush(false)
+      if (profile?.id === idConta) {
+        setAtivandoPush(false)
+      }
     }
   }
+
+  // ============================================================
+  // DADOS DE APRESENTAÇÃO
+  // ============================================================
 
   const cor = salao?.cor_primaria || '#E91E8C'
   const partes = salao?.nome?.split(' - ')
@@ -638,6 +881,10 @@ export default function ClientePage() {
     }
   ].filter(Boolean) as any[]
 
+  // ============================================================
+  // TELAS DE CARREGAMENTO E RECUPERAÇÃO
+  // ============================================================
+
   if (loading && !profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -646,16 +893,60 @@ export default function ClientePage() {
     )
   }
 
-  if (carregandoDados) {
+  if (!profile) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin" />
+        <div className="text-sm text-gray-500">Redirecionando para o login...</div>
       </div>
     )
   }
 
+  if (carregandoDados) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50 px-6">
+        <div className="w-8 h-8 border-4 border-pink-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-gray-500">Carregando sua área da cliente...</p>
+      </div>
+    )
+  }
+
+  if (erroCarregamento) {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-5 py-10 bg-gray-50">
+        <section className="w-full max-w-md bg-white rounded-3xl p-6 shadow-lg text-center">
+          <div className="w-14 h-14 rounded-2xl bg-pink-50 flex items-center justify-center mx-auto mb-4">
+            <RefreshCw size={25} className="text-pink-600" />
+          </div>
+
+          <h1 className="text-xl font-bold text-gray-900">
+            Não conseguimos carregar sua área
+          </h1>
+
+          <p className="text-sm text-gray-500 mt-3 leading-relaxed">
+            {erroCarregamento}
+          </p>
+
+          <button
+            onClick={() => void carregarDados()}
+            className="w-full mt-6 rounded-xl py-3.5 bg-pink-600 text-white font-semibold flex items-center justify-center gap-2"
+          >
+            <RefreshCw size={17} />
+            Tentar novamente
+          </button>
+
+          <button
+            onClick={() => void signOut()}
+            className="w-full py-3 text-sm text-gray-400"
+          >
+            Sair da conta
+          </button>
+        </section>
+      </main>
+    )
+  }
+
   // ============================================================
-  // BLOQUEIO DO PAINEL ATÉ O CLIENTE INFORMAR O TELEFONE
+  // BLOQUEIO DO PAINEL ATÉ INFORMAR O TELEFONE
   // ============================================================
 
   if (cliente && precisaTelefone) {
@@ -685,7 +976,7 @@ export default function ClientePage() {
             className="mt-6 flex flex-col gap-4"
             onSubmit={event => {
               event.preventDefault()
-              salvarTelefone()
+              void salvarTelefone()
             }}
           >
             <label className="flex flex-col gap-2">
@@ -741,7 +1032,7 @@ export default function ClientePage() {
 
             <button
               type="button"
-              onClick={signOut}
+              onClick={() => void signOut()}
               className="w-full py-2 text-sm text-gray-400"
             >
               Sair da conta
@@ -751,6 +1042,10 @@ export default function ClientePage() {
       </main>
     )
   }
+
+  // ============================================================
+  // PAINEL DA CLIENTE
+  // ============================================================
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f0f0f5' }}>
@@ -780,6 +1075,7 @@ export default function ClientePage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => router.push('/cliente/notificacoes')}
+              aria-label="Abrir notificações"
               className={`relative w-10 h-10 rounded-2xl backdrop-blur flex items-center justify-center transition-all ${
                 notifCount > 0
                   ? 'bg-white/35 scale-105 shadow-lg'
@@ -836,6 +1132,8 @@ export default function ClientePage() {
         </div>
       </div>
 
+      {/* NOTIFICAÇÕES: carregamento independente do painel */}
+
       {!verificandoPush && (
         <div className="px-4 -mt-5 relative z-10 mb-3">
           <div className="w-full rounded-2xl px-4 py-3 shadow-md bg-white">
@@ -853,7 +1151,9 @@ export default function ClientePage() {
               </div>
 
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-400 font-medium">Notificações</p>
+                <p className="text-xs text-gray-400 font-medium">
+                  Notificações
+                </p>
                 <p className="text-sm font-bold text-gray-900">
                   {pushAtivoConta
                     ? 'Ativadas neste dispositivo'
@@ -873,12 +1173,22 @@ export default function ClientePage() {
                   Ativar
                 </button>
               )}
+
+              <button
+                onClick={() => setTentativaPush(valor => valor + 1)}
+                disabled={verificandoPush}
+                title="Verificar notificações novamente"
+                aria-label="Verificar notificações novamente"
+                className="p-2 rounded-lg text-gray-400 disabled:opacity-50"
+              >
+                <RefreshCw size={15} />
+              </button>
             </div>
 
             {pushAtivoConta && (
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <button
-                  onClick={testarPushCliente}
+                  onClick={() => void testarPushCliente()}
                   disabled={testandoPush}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all disabled:opacity-60"
                   style={{ backgroundColor: `${cor}12`, color: cor }}
@@ -918,10 +1228,21 @@ export default function ClientePage() {
         </div>
       )}
 
+      {verificandoPush && (
+        <div className="px-4 -mt-5 relative z-10 mb-3">
+          <div className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
+            <RefreshCw size={16} className="animate-spin text-gray-400" />
+            <p className="text-xs text-gray-500">
+              Verificando notificações em segundo plano...
+            </p>
+          </div>
+        </div>
+      )}
+
       {proximos.length > 0 && (
         <div
           className={`px-4 relative z-10 mb-3 ${
-            verificandoPush ? '-mt-5' : 'mt-0'
+            verificandoPush ? 'mt-0' : 'mt-0'
           }`}
         >
           <button
@@ -1119,9 +1440,7 @@ export default function ClientePage() {
                       style={{ color: cor }}
                     >
                       R${' '}
-                      {Number(ag.valor)
-                        .toFixed(2)
-                        .replace('.', ',')}
+                      {Number(ag.valor).toFixed(2).replace('.', ',')}
                     </p>
                   )}
                 </div>
@@ -1155,13 +1474,15 @@ export default function ClientePage() {
         )}
 
         <button
-          onClick={signOut}
+          onClick={() => void signOut()}
           className="flex items-center justify-center gap-2 text-gray-400 text-sm py-2"
         >
           <LogOut size={15} />
           Sair da conta
         </button>
       </div>
+
+      {/* JANELA DE ATIVAÇÃO DO PUSH */}
 
       {modalPushLembrete && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-end">
@@ -1176,6 +1497,7 @@ export default function ClientePage() {
 
               <button
                 onClick={() => setModalPushLembrete(false)}
+                aria-label="Fechar"
                 className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center"
               >
                 <X size={16} className="text-white" />
@@ -1201,11 +1523,18 @@ export default function ClientePage() {
               {erroPush && (
                 <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
                   <p className="text-red-600 text-sm">{erroPush}</p>
+                  <button
+                    onClick={() => setTentativaPush(valor => valor + 1)}
+                    disabled={verificandoPush || ativandoPush}
+                    className="mt-2 text-sm font-semibold text-red-700 underline disabled:opacity-50"
+                  >
+                    Verificar novamente
+                  </button>
                 </div>
               )}
 
               <button
-                onClick={ativarPushAgora}
+                onClick={() => void ativarPushAgora()}
                 disabled={ativandoPush}
                 className="w-full py-3.5 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
                 style={{ backgroundColor: cor }}
