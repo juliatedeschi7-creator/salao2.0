@@ -30,7 +30,6 @@ const [filtro, setFiltro] = useState<
 const [carregando, setCarregando] = useState(false)
 const [confirmandoExclusao, setConfirmandoExclusao] = useState(null)
 
-// Compatível com os campos existentes em profiles.
 const ehAdministrador =
 profile?.role === ‘dono_salao’ &&
 profile?.nivel_acesso === ‘total’
