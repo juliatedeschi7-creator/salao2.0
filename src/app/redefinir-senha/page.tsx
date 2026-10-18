@@ -30,122 +30,115 @@ export default function RedefinirSenhaPage() {
 
   useEffect(() => {
     let montado = true
+    let recuperacaoConfirmada = false
+
+    const mostrarErroLink = (mensagem: string) => {
+      if (!montado) return
+
+      setTemSessao(false)
+      setErro(mensagem)
+      setVerificando(false)
+    }
 
     const verificarRecuperacao = async () => {
       try {
         setVerificando(true)
         setErro('')
 
-        /*
-         * SUPABASE PKCE
-         *
-         * Quando o projeto usa PKCE, o link de recuperação chega
-         * com ?code=...
-         *
-         * Precisamos trocar esse code por uma sessão antes de
-         * tentar atualizar a senha.
-         */
-        if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search)
-          const code = params.get('code')
+        const url = new URL(window.location.href)
+        const params = url.searchParams
+        const hashParams = new URLSearchParams(
+          url.hash.startsWith('#') ? url.hash.slice(1) : url.hash
+        )
 
-          if (code) {
-            const { error } =
-              await supabase.auth.exchangeCodeForSession(code)
+        // O Supabase pode devolver erros na query ou no fragmento.
+        const erroUrl =
+          params.get('error_description') ||
+          hashParams.get('error_description')
 
-            if (error) {
-              console.error(
-                'Erro ao trocar código de recuperação por sessão:',
-                error
-              )
+        const codigoErro =
+          params.get('error_code') ||
+          hashParams.get('error_code')
 
-              if (montado) {
-                setErro(
-                  'O link de recuperação é inválido, expirou ou já foi utilizado. Solicite um novo link pelo e-mail.'
-                )
-                setTemSessao(false)
-              }
+        if (erroUrl || params.has('error') || hashParams.has('error')) {
+          const mensagem =
+            codigoErro === 'otp_expired'
+              ? 'Este link de recuperação expirou ou já foi utilizado. Solicite um novo e-mail e abra o link mais recente.'
+              : 'Não foi possível validar este link de recuperação. Solicite um novo e-mail.'
 
-              return
-            }
-          }
-        }
-
-        /*
-         * Depois do exchangeCodeForSession, verificamos se existe
-         * uma sessão válida.
-         */
-        const { data, error } = await supabase.auth.getSession()
-
-        if (error) {
-          console.error('Erro ao verificar sessão:', error)
-
-          if (montado) {
-            setErro(
-              'Não foi possível validar o link de recuperação. Solicite um novo link pelo e-mail.'
-            )
-            setTemSessao(false)
-          }
-
+          mostrarErroLink(mensagem)
           return
         }
 
-        if (data.session) {
-          if (montado) {
-            setTemSessao(true)
-            setErro('')
-          }
+        // Guardamos a indicação de que esta página foi aberta
+        // pelo fluxo de recuperação antes de consultar a sessão.
+        const temCodigoPKCE = params.has('code')
+        const tipoHash = hashParams.get('type')
+        const temTokenRecuperacao =
+          tipoHash === 'recovery' &&
+          !!hashParams.get('access_token')
 
-          return
-        }
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange((event, session) => {
+          if (!montado) return
 
-        /*
-         * Caso o Supabase ainda esteja processando o fluxo de
-         * recuperação, aguardamos o evento PASSWORD_RECOVERY.
-         */
-        if (montado) {
-          setTemSessao(false)
-        }
-      } catch (err) {
-        console.error('Erro inesperado na recuperação:', err)
-
-        if (montado) {
-          setErro(
-            'Não foi possível validar o link de recuperação. Solicite um novo link pelo e-mail.'
-          )
-          setTemSessao(false)
-        }
-      } finally {
-        if (montado) {
-          setVerificando(false)
-        }
-      }
-    }
-
-    const {
-      data: listener,
-    } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Evento de autenticação:', event)
-
-        if (
-          event === 'PASSWORD_RECOVERY' ||
-          event === 'SIGNED_IN'
-        ) {
-          if (session && montado) {
+          if (event === 'PASSWORD_RECOVERY' && session) {
+            recuperacaoConfirmada = true
             setTemSessao(true)
             setErro('')
             setVerificando(false)
           }
+        })
+
+        // O cliente Supabase pode processar o código da URL
+        // automaticamente. Não chamamos exchangeCodeForSession
+        // novamente, pois isso pode consumir o mesmo código duas vezes.
+        const { data, error } = await supabase.auth.getSession()
+
+        if (!montado) {
+          subscription.unsubscribe()
+          return
         }
+
+        if (error) {
+          mostrarErroLink(
+            'Não foi possível validar o link. Solicite um novo e-mail de recuperação.'
+          )
+          subscription.unsubscribe()
+          return
+        }
+
+        if (data.session && (temCodigoPKCE || temTokenRecuperacao)) {
+          recuperacaoConfirmada = true
+          setTemSessao(true)
+          setErro('')
+          setVerificando(false)
+          return () => subscription.unsubscribe()
+        }
+
+        // Não aceitamos uma sessão antiga ou um login comum
+        // como autorização para alterar a senha.
+        if (!recuperacaoConfirmada) {
+          mostrarErroLink(
+            'Não encontramos uma sessão de recuperação válida. Solicite um novo link pelo e-mail e abra-o sem utilizar links antigos.'
+          )
+        }
+      } catch (err) {
+        console.error('Erro ao validar recuperação de senha:', err)
+
+        mostrarErroLink(
+          'Ocorreu um erro ao validar o link. Solicite um novo e-mail de recuperação.'
+        )
+      } finally {
+        if (montado) setVerificando(false)
       }
-    )
+    }
 
     verificarRecuperacao()
 
     return () => {
       montado = false
-      listener.subscription.unsubscribe()
     }
   }, [])
 
@@ -179,16 +172,19 @@ export default function RedefinirSenhaPage() {
 
       if (error) {
         console.error('Erro ao atualizar senha:', error)
-        setErro(error.message)
-        setSalvando(false)
+        setErro(
+          'Não foi possível atualizar a senha: ' + error.message
+        )
         return
       }
 
       setSucesso(true)
-      setSalvando(false)
+
+      // Encerra a sessão de recuperação depois da alteração.
+      await supabase.auth.signOut()
 
       setTimeout(() => {
-        router.push('/login')
+        router.replace('/login')
       }, 1800)
     } catch (err) {
       console.error('Erro inesperado ao salvar senha:', err)
@@ -196,7 +192,7 @@ export default function RedefinirSenhaPage() {
       setErro(
         'Não foi possível alterar sua senha. Tente novamente.'
       )
-
+    } finally {
       setSalvando(false)
     }
   }
@@ -243,7 +239,7 @@ export default function RedefinirSenhaPage() {
 
             <button
               type="button"
-              onClick={() => router.push('/login')}
+              onClick={() => router.replace('/login')}
               className="w-full mt-7 rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] text-white py-3.5 font-medium transition"
             >
               Voltar para o login
@@ -273,7 +269,6 @@ export default function RedefinirSenhaPage() {
           {erro && (
             <div className="mb-5 rounded-2xl bg-red-50 border border-red-100 px-4 py-3 flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-
               <p className="text-sm text-red-600 leading-relaxed">
                 {erro}
               </p>
@@ -317,14 +312,10 @@ export default function RedefinirSenhaPage() {
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setMostrarSenha((valor) => !valor)
-                    }
+                    onClick={() => setMostrarSenha((valor) => !valor)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     aria-label={
-                      mostrarSenha
-                        ? 'Ocultar senha'
-                        : 'Mostrar senha'
+                      mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'
                     }
                   >
                     {mostrarSenha ? (
@@ -347,13 +338,9 @@ export default function RedefinirSenhaPage() {
 
                 <div className="relative">
                   <input
-                    type={
-                      mostrarConfirmacao ? 'text' : 'password'
-                    }
+                    type={mostrarConfirmacao ? 'text' : 'password'}
                     value={confirmarSenha}
-                    onChange={(e) =>
-                      setConfirmarSenha(e.target.value)
-                    }
+                    onChange={(e) => setConfirmarSenha(e.target.value)}
                     placeholder="Digite a senha novamente"
                     autoComplete="new-password"
                     className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 pr-12 text-gray-800 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
@@ -398,7 +385,7 @@ export default function RedefinirSenhaPage() {
 
               <button
                 type="button"
-                onClick={() => router.push('/login')}
+                onClick={() => router.replace('/login')}
                 className="w-full text-sm text-gray-500 hover:text-gray-700 py-2"
               >
                 Voltar para o login
