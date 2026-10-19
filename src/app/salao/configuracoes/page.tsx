@@ -521,15 +521,65 @@ export default function ConfiguracoesPage() {
       })
   }
 
-  function baixarQRCode() {
+
+  async function baixarQRCode() {
     const canvas = qrRef.current
 
-    if (!canvas || !linkPublico) return
+    if (!canvas || !linkPublico) {
+      alert('O QR Code ainda não está pronto. Aguarde e tente novamente.')
+      return
+    }
 
-    const link = document.createElement('a')
-    link.download = `qr-code-${salao?.slug || 'salao'}.png`
-    link.href = canvas.toDataURL('image/png')
-    link.click()
+    try {
+      const imagem = document.createElement('canvas')
+      const margem = 40
+      const tamanho = canvas.width
+      imagem.width = tamanho + margem * 2
+      imagem.height = tamanho + margem * 2
+
+      const contexto = imagem.getContext('2d')
+
+      if (!contexto) {
+        throw new Error('Não foi possível preparar a imagem.')
+      }
+
+      // Fundo branco para facilitar a leitura ao imprimir.
+      contexto.fillStyle = '#FFFFFF'
+      contexto.fillRect(0, 0, imagem.width, imagem.height)
+      contexto.drawImage(canvas, margem, margem, tamanho, tamanho)
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        imagem.toBlob(resultado => {
+          if (resultado) {
+            resolve(resultado)
+          } else {
+            reject(new Error('Não foi possível gerar o arquivo PNG.'))
+          }
+        }, 'image/png')
+      })
+
+      const urlTemporaria = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const nomeArquivo = `qr-code-${salao?.slug || 'salao'}.png`
+
+      link.href = urlTemporaria
+      link.download = nomeArquivo
+      link.style.display = 'none'
+
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+
+      // Libera o endereço temporário após iniciar o download.
+      window.setTimeout(() => {
+        URL.revokeObjectURL(urlTemporaria)
+      }, 1500)
+    } catch (erro) {
+      console.error('Erro ao baixar QR Code:', erro)
+      alert(
+        'Não foi possível baixar o QR Code automaticamente. Tente novamente ou abra a página em outro navegador.'
+      )
+    }
   }
 
   const cor = salao?.cor_primaria || '#E91E8C'
