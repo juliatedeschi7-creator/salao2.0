@@ -10,12 +10,17 @@ export default function AdminPage() {
   const router = useRouter()
   const [stats, setStats] = useState({ total: 0, ativos: 0, pausados: 0, pendentes: 0, totalUsuarios: 0 })
 
-  useEffect(() => {
-    if (loading) return
-    if (!profile) return
-    if (profile.tipo !== 'admin_geral') { router.replace('/login'); return }
-    carregarStats()
-  }, [profile, loading])
+useEffect(() => {
+  if (loading) return
+  if (!profile) return
+
+  if (profile.role !== 'admin_geral') {
+    router.replace('/login')
+    return
+  }
+
+  carregarStats()
+}, [profile, loading])
 
   async function carregarStats() {
     const { data } = await supabase
