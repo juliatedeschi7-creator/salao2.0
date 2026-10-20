@@ -43,6 +43,7 @@ export default function NotificacoesDonoPage() {
 const [modalAceitar, setModalAceitar] = useState<any>(null)
 const [dataAceite, setDataAceite] = useState('')
 const [horaAceite, setHoraAceite] = useState('')
+const [etapaAceite, setEtapaAceite] = useState<'perguntar' | 'combinado'>('perguntar')
   const [modalSugestao, setModalSugestao] = useState<any>(null)
   const [modalConfirmar, setModalConfirmar] = useState<any>(null)
   const [horariosLivres, setHorariosLivres] = useState(['', '', ''])
@@ -50,6 +51,9 @@ const [horaAceite, setHoraAceite] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
   const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
+const [etapaAceite, setEtapaAceite] = useState<
+  'perguntar' | 'combinado'
+>('perguntar')
   // ─── CONTROLE DO PACOTE NA CONFIRMAÇÃO ────────────────────────────────
   const [sessaoJaRegistradaNoPacote, setSessaoJaRegistradaNoPacote] =
     useState(false)
@@ -265,33 +269,43 @@ const [horaAceite, setHoraAceite] = useState('')
       }
     )
   }
-  function formatarPeriodoPreferido(solicitacao: any) {
-    const periodo =
-      solicitacao?.periodo_preferido ??
-      solicitacao?.periodo_desejado ??
-      solicitacao?.periodo ??
-      solicitacao?.turno
-    if (!periodo) return null
-    const valor = String(periodo).trim()
-    const mapa: Record<string, string> = {
-      manha: 'Manhã',
-      manhã: 'Manhã',
-      tarde: 'Tarde',
-      noite: 'Noite',
-      qualquer: 'Qualquer horário',
-      qualquer_horario: 'Qualquer horário',
-      qualquer_horário: 'Qualquer horário',
-      indiferente: 'Qualquer horário'
-    }
-    const normalizado = valor
-      .toLowerCase()
-      .replace(/\s+/g, '_')
-    return (
-      mapa[normalizado] ||
-      valor.charAt(0).toUpperCase() +
-        valor.slice(1)
-    )
+
+function formatarPeriodoPreferido(solicitacao: any) {
+  const periodo =
+    solicitacao?.periodo_preferido ??
+    solicitacao?.periodo_desejado ??
+    solicitacao?.periodo ??
+    solicitacao?.turno
+
+  if (!periodo) return null
+
+  const valor = String(periodo).trim()
+  if (!valor) return null
+
+  const mapa: Record<string, string> = {
+    manha: 'Manhã',
+    manhã: 'Manhã',
+    tarde: 'Tarde',
+    noite: 'Noite',
+    qualquer: 'Qualquer horário',
+    qualquer_horario: 'Qualquer horário',
+    qualquer_horário: 'Qualquer horário',
+    indiferente: 'Qualquer horário'
   }
+
+  const normalizado = valor
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+
+  // Mantém a compatibilidade com os períodos antigos.
+  if (mapa[normalizado]) {
+    return mapa[normalizado]
+  }
+
+  // Preserva o texto personalizado informado pela cliente,
+  // por exemplo: "Pode: das 13:00 às 16:00 | Não pode: a partir das 17h".
+  return valor
+}
   function enviarWhatsAppHorarios(
     solicitacao: any
   ) {
@@ -1321,24 +1335,24 @@ const [horaAceite, setHoraAceite] = useState('')
     }
   }
   // ─── SOLICITAÇÕES ────────────────────────────────────────────────────
-async function aceitarSolicitacao(
-  solicitacao: any
-) {
+async function aceitarSolicitacao(solicitacao: any) {
   if (!profile?.salao_id) return
-  // Se o pedido veio de uma conversa pelo WhatsApp,
-  // o salão informa aqui o horário que foi combinado.
+
   setModalAceitar(solicitacao)
+  setEtapaAceite('perguntar')
+
   const dataHoraExistente =
     solicitacao?.data_hora ||
     solicitacao?.data_agendada
+
   if (
     dataHoraExistente &&
     !Number.isNaN(new Date(dataHoraExistente).getTime())
   ) {
     const data = new Date(dataHoraExistente)
     const deslocamento = data.getTimezoneOffset() * 60000
-    const dataLocal = new Date(data.getTime() - deslocamento)
-      .toISOString()
+    const dataLocal = new Date(data.getTime() - deslocamento).toISOString()
+
     setDataAceite(dataLocal.slice(0, 10))
     setHoraAceite(dataLocal.slice(11, 16))
   } else {
@@ -2415,67 +2429,110 @@ comparecimento.
             {obterNomeCliente(modalAceitar)}
           </p>
         </div>
-
         <button
           type="button"
-          onClick={() => setModalAceitar(null)}
+          onClick={() => {
+            setEtapaAceite('perguntar')
+            setModalAceitar(null)
+          }}
           disabled={salvando}
           className="w-9 h-9 rounded-full bg-[#f7f7f7] flex items-center justify-center text-gray-500"
         >
           <X size={18} />
         </button>
       </div>
-
       <div className="p-5">
-        <p className="text-sm text-gray-600 mb-4">
-          Informe a data e o horário que você e a cliente combinaram pelo WhatsApp.
-        </p>
-
-        <label className="block mb-4">
-          <span className="text-sm font-medium text-gray-700">
-            Data do agendamento
-          </span>
-          <input
-            type="date"
-            value={dataAceite}
-            onChange={e => setDataAceite(e.target.value)}
-            className="w-full h-12 mt-2 rounded-xl border border-[#e2e2e2] px-3 text-sm"
-            required
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-medium text-gray-700">
-            Horário combinado
-          </span>
-          <input
-            type="time"
-            value={horaAceite}
-            onChange={e => setHoraAceite(e.target.value)}
-            className="w-full h-12 mt-2 rounded-xl border border-[#e2e2e2] px-3 text-sm"
-            required
-          />
-        </label>
-
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setModalAceitar(null)}
-            disabled={salvando}
-            className="h-12 rounded-xl border border-[#e2e2e2] text-sm font-semibold text-gray-600"
-          >
-            Cancelar
-          </button>
-
-          <button
-            type="button"
-            disabled={salvando || !dataAceite || !horaAceite}
-            onClick={confirmarAceiteSolicitacao}
-            className="h-12 rounded-xl bg-[var(--cor-salao)] text-white text-sm font-semibold disabled:opacity-50"
-          >
-            {salvando ? 'Salvando...' : 'Confirmar e agendar'}
-          </button>
-        </div>
+        {etapaAceite === 'perguntar' ? (
+          <div>
+            <p className="text-sm text-gray-600 mb-5">
+              Você já mandou mensagem para esta cliente e combinou um horário?
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setEtapaAceite('combinado')}
+                disabled={salvando}
+                className="w-full h-12 rounded-xl bg-[var(--cor-salao)] text-white text-sm font-semibold disabled:opacity-50"
+              >
+                Sim, já combinamos
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHorariosLivres(['', '', ''])
+                  setModalAceitar(null)
+                  setModalSugestao(modalAceitar)
+                  setEtapaAceite('perguntar')
+                }}
+                disabled={salvando}
+                className="w-full h-12 rounded-xl border border-[#e2e2e2] text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Não, preciso sugerir opções
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEtapaAceite('perguntar')
+                  setModalAceitar(null)
+                }}
+                disabled={salvando}
+                className="w-full h-12 rounded-xl text-sm font-semibold text-gray-500"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm text-gray-600 mb-4">
+              Informe a data e o horário que você e a cliente combinaram.
+              Após confirmar, o agendamento será registrado na agenda do salão.
+            </p>
+            <label className="block mb-4">
+              <span className="text-sm font-medium text-gray-700">
+                Data do agendamento
+              </span>
+              <input
+                type="date"
+                value={dataAceite}
+                onChange={e => setDataAceite(e.target.value)}
+                min={new Date().toLocaleDateString('en-CA')}
+                className="w-full h-12 mt-2 rounded-xl border border-[#e2e2e2] px-3 text-sm"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">
+                Horário combinado
+              </span>
+              <input
+                type="time"
+                value={horaAceite}
+                onChange={e => setHoraAceite(e.target.value)}
+                className="w-full h-12 mt-2 rounded-xl border border-[#e2e2e2] px-3 text-sm"
+                required
+              />
+            </label>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setEtapaAceite('perguntar')}
+                disabled={salvando}
+                className="h-12 rounded-xl border border-[#e2e2e2] text-sm font-semibold text-gray-600 disabled:opacity-50"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                disabled={salvando || !dataAceite || !horaAceite}
+                onClick={confirmarAceiteSolicitacao}
+                className="h-12 rounded-xl bg-[var(--cor-salao)] text-white text-sm font-semibold disabled:opacity-50"
+              >
+                {salvando ? 'Salvando...' : 'Confirmar e agendar'}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   </div>
