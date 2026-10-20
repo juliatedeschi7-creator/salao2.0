@@ -51,9 +51,6 @@ const [etapaAceite, setEtapaAceite] = useState<'perguntar' | 'combinado'>('pergu
   const [salvando, setSalvando] = useState(false)
   const [coberturas, setCoberturas] = useState<CoberturaServico[]>([])
   const [carregandoCoberturas, setCarregandoCoberturas] = useState(false)
-const [etapaAceite, setEtapaAceite] = useState<
-  'perguntar' | 'combinado'
->('perguntar')
   // ─── CONTROLE DO PACOTE NA CONFIRMAÇÃO ────────────────────────────────
   const [sessaoJaRegistradaNoPacote, setSessaoJaRegistradaNoPacote] =
     useState(false)
