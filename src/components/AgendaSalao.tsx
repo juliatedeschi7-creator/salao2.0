@@ -12,6 +12,8 @@ type Agendamento = {
   servico_id: string
   servicos_ids?: string[]
   profissional_id?: string
+  profissionais_ids?: string[]
+  profissionais_nomes?: string[]
   data_hora: string
   duracao_minutos: number
   status: string
@@ -20,7 +22,12 @@ type Agendamento = {
   clientes?: { nome: string; telefone?: string }
   servicos?: { nome: string; preco: number }
   profiles?: { nome: string }
-  servicos_detalhes?: { id: string; nome: string; preco: number; duracao_minutos: number }[]
+  servicos_detalhes?: {
+    id: string
+    nome: string
+    preco: number
+    duracao_minutos: number
+  }[]
 }
 
 function formatarDuracao(min: number) {
@@ -69,23 +76,102 @@ export default function AgendaPage() {
     setCarregando(false)
   }
 
-  async function carregarAgendamentos() {
-    const inicio = getInicioSemana(dataBase)
-    const fim = new Date(inicio); fim.setDate(fim.getDate() + 60)
+async function carregarAgendamentos() {
+  if (!profile?.salao_id) return
 
-    const { data: ags } = await supabase.from('agendamentos')
-      .select('*, clientes(nome, telefone), servicos(nome, preco), profiles!agendamentos_profissional_id_fkey(nome)')
-      .eq('salao_id', profile!.salao_id!)
-      .gte('data_hora', inicio.toISOString())
-      .lte('data_hora', fim.toISOString())
-      .order('data_hora')
+  const inicio = getInicioSemana(dataBase)
+  const fim = new Date(inicio)
+  fim.setDate(fim.getDate() + 60)
 
-    setAgendamentos(ags || [])
+  const { data: ags, error } = await supabase
+    .from('agendamentos')
+    .select(`
+      *,
+      clientes(nome, telefone),
+      servicos(nome, preco),
+      profiles!agendamentos_profissional_id_fkey(nome)
+    `)
+    .eq('salao_id', profile.salao_id)
+    .gte('data_hora', inicio.toISOString())
+    .lte('data_hora', fim.toISOString())
+    .order('data_hora')
+
+  if (error) {
+    console.error('Erro ao carregar agendamentos:', error)
+    setAgendamentos([])
+    return
   }
 
-  useEffect(() => {
-    if (profile?.salao_id) carregarAgendamentos()
-  }, [dataBase])
+  const lista = ags || []
+
+  const idsProfissionais = Array.from(
+    new Set(
+      lista.flatMap((ag: any) => {
+        const ids = Array.isArray(ag.profissionais_ids)
+          ? ag.profissionais_ids
+          : []
+
+        return [
+          ...ids,
+          ...(ag.profissional_id ? [ag.profissional_id] : [])
+        ].filter(Boolean)
+      })
+    )
+  )
+
+  let nomesPorId: Record<string, string> = {}
+
+  if (idsProfissionais.length > 0) {
+    const { data: profissionais, error: erroProfissionais } =
+      await supabase
+        .from('profiles')
+        .select('id, nome')
+        .in('id', idsProfissionais)
+
+    if (erroProfissionais) {
+      console.error(
+        'Erro ao carregar nomes dos profissionais:',
+        erroProfissionais
+      )
+    } else {
+      nomesPorId = Object.fromEntries(
+        (profissionais || []).map((p: any) => [p.id, p.nome])
+      )
+    }
+  }
+
+  const agendamentosComProfissionais = lista.map((ag: any) => {
+    const ids = Array.isArray(ag.profissionais_ids)
+      ? ag.profissionais_ids
+      : []
+
+    const idsCompletos = Array.from(
+      new Set([
+        ...ids,
+        ...(ag.profissional_id ? [ag.profissional_id] : [])
+      ])
+    )
+
+    const profissionaisNomes = idsCompletos
+      .map(id => nomesPorId[id])
+      .filter(Boolean)
+
+    // Compatibilidade com agendamentos antigos que têm somente um profissional.
+    if (
+      profissionaisNomes.length === 0 &&
+      ag.profiles?.nome
+    ) {
+      profissionaisNomes.push(ag.profiles.nome)
+    }
+
+    return {
+      ...ag,
+      profissionais_nomes: profissionaisNomes
+    }
+  })
+
+  setAgendamentos(agendamentosComProfissionais)
+}
 
   function getInicioSemana(d: Date) {
     const dia = new Date(d)
@@ -215,9 +301,24 @@ export default function AgendaPage() {
                 <Clock size={12} />
                 <p className="text-xs">{horaInicio} – {horaFim}</p>
               </div>
-              {ag.profiles?.nome && (
-                <p className="text-xs text-gray-400">Prof: {ag.profiles.nome}</p>
-              )}
+{ag.profissionais_nomes && ag.profissionais_nomes.length > 0 && (
+  <div className="flex flex-wrap items-center gap-1 mt-1">
+    <span className="text-xs text-gray-400">
+      {ag.profissionais_nomes.length > 1
+        ? 'Participantes:'
+        : 'Profissional:'}
+    </span>
+
+    {ag.profissionais_nomes.map((nome, index) => (
+      <span
+        key={`${nome}-${index}`}
+        className="text-xs text-gray-500"
+      >
+        {nome}{index < ag.profissionais_nomes!.length - 1 ? ',' : ''}
+      </span>
+    ))}
+  </div>
+)}
             </div>
 
             {precoTotal > 0 && (
