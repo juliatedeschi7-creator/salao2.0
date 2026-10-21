@@ -846,14 +846,14 @@ function formatarPeriodoPreferido(solicitacao: any) {
       if (quantidadeRestante <= 0) {
         continue
       }
-      let pacoteSelecionado =
-        cobertura.clientePacoteIdSelecionado
-          ? pacotes.find(
-              (p: any) =>
-                p.id ===
-                cobertura.clientePacoteIdSelecionado
-            )
-          : null
+let pacoteSelecionado =
+  cobertura.clientePacoteIdSelecionado &&
+  cobertura.clientePacoteIdSelecionado !== 'sem_pacote'
+    ? pacotes.find(
+        (p: any) =>
+          p.id === cobertura.clientePacoteIdSelecionado
+      ) || null
+    : null
       // A escolha da profissional é respeitada. Sem seleção explícita,
       // este serviço não gera baixa em pacote.
       if (!pacoteSelecionado) continue
