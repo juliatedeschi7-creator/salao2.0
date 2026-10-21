@@ -3052,49 +3052,100 @@ este agendamento.
                                 {cobertura.servicoNome}
                               </p>
                               <div className="mt-3 space-y-2">
-                                {cobertura.pacotesDisponiveis.map((pacote: PacoteOpcao) => {
-                                  const selecionado = cobertura.clientePacoteIdSelecionado === pacote.clientePacoteId
-                                  return (
-                                    <button
-                                      key={pacote.clientePacoteId}
-                                      type="button"
-                                      disabled={salvando}
-                                      onClick={() => selecionarPacote(index, pacote.clientePacoteId)}
-                                      className={`w-full min-h-14 rounded-xl border-2 px-3 py-3 text-left transition ${
-                                        selecionado
-                                          ? 'border-[var(--cor-salao)] bg-[#fff5fb]'
-                                          : 'border-[#e6e6e6] bg-white'
-                                      }`}
-                                    >
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-semibold text-gray-800">
-                                            {pacote.nome}
-                                          </p>
-                                          <p className="text-xs text-gray-500 mt-0.5">
-                                            {pacote.sessoesRestantes} sessão(ões) restante(s)
-                                          </p>
-                                        </div>
-                                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                          selecionado
-                                            ? 'border-[var(--cor-salao)] bg-[var(--cor-salao)] text-white'
-                                            : 'border-gray-300'
-                                        }`}>
-                                          {selecionado && <Check size={14} />}
-                                        </div>
-                                      </div>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+<div className="mt-3 space-y-2">
+  {cobertura.pacotesDisponiveis.map((pacote: PacoteOpcao) => {
+    const selecionado =
+      cobertura.clientePacoteIdSelecionado === pacote.clientePacoteId
+
+    return (
+      <button
+        key={pacote.clientePacoteId}
+        type="button"
+        disabled={salvando}
+        onClick={() =>
+          selecionarPacote(index, pacote.clientePacoteId)
+        }
+        className={`w-full min-h-14 rounded-xl border-2 px-3 py-3 text-left transition ${
+          selecionado
+            ? 'border-[var(--cor-salao)] bg-[#fff5fb]'
+            : 'border-[#e6e6e6] bg-white'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-800">
+              {pacote.nome}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {pacote.sessoesRestantes} sessão(ões) restante(s)
+            </p>
+          </div>
+
+          <div
+            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+              selecionado
+                ? 'border-[var(--cor-salao)] bg-[var(--cor-salao)] text-white'
+                : 'border-gray-300'
+            }`}
+          >
+            {selecionado && <Check size={14} />}
+          </div>
+        </div>
+      </button>
+    )
+  })}
+
+  {/* Opção para confirmar este serviço sem utilizar pacote */}
+  {(() => {
+    const semPacoteSelecionado =
+      cobertura.clientePacoteIdSelecionado === 'sem_pacote'
+
+    return (
+      <button
+        type="button"
+        disabled={salvando}
+        onClick={() => selecionarPacote(index, 'sem_pacote')}
+        className={`w-full min-h-14 rounded-xl border-2 px-3 py-3 text-left transition ${
+          semPacoteSelecionado
+            ? 'border-[var(--cor-salao)] bg-[#fff5fb]'
+            : 'border-[#e6e6e6] bg-white'
+        }`}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-800">
+              Sem pacote — serviço avulso
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Confirmar sem descontar sessões
+            </p>
+          </div>
+
+          <div
+            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+              semPacoteSelecionado
+                ? 'border-[var(--cor-salao)] bg-[var(--cor-salao)] text-white'
+                : 'border-gray-300'
+            }`}
+          >
+            {semPacoteSelecionado && <Check size={14} />}
+          </div>
+        </div>
+      </button>
+    )
+  })()}
+</div>
+     )}
                       <div className="mt-5 grid grid-cols-1 gap-3">
                         <button
                           type="button"
-                          disabled={salvando || coberturas.length === 0 || coberturas.some((c: CoberturaServico) => !c.clientePacoteIdSelecionado)}
+disabled={
+  salvando ||
+  coberturas.length === 0 ||
+  coberturas.some(
+    (c: CoberturaServico) => !c.clientePacoteIdSelecionado
+  )
+}
                           onClick={onConfirmar}
                           className="w-full min-h-14 rounded-2xl bg-[var(--cor-salao)] text-white font-semibold text-sm disabled:opacity-50"
                         >
