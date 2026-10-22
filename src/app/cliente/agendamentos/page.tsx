@@ -478,33 +478,6 @@ export default function ClienteAgendamentosPage() {
     )
   }
 
-  function adicionarHorarioRemarcacao(dataIndex: number) {
-    setPreferenciasRemarcacao(prev =>
-      prev.map((item, i) =>
-        i === dataIndex
-          ? { ...item, horarios: [...item.horarios, ''] }
-          : item
-      )
-    )
-  }
-
-  function removerHorarioRemarcacao(dataIndex: number, horarioIndex: number) {
-    setPreferenciasRemarcacao(prev =>
-      prev.map((item, i) => {
-        if (i !== dataIndex) return item
-
-        const horarios = item.horarios.filter(
-          (_, hi) => hi !== horarioIndex
-        )
-
-        return {
-          ...item,
-          horarios: horarios.length > 0 ? horarios : [''],
-        }
-      })
-    )
-  }
-
   function adicionarDataRemarcacao() {
     setPreferenciasRemarcacao(prev => [
       ...prev,
