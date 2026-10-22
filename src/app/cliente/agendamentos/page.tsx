@@ -1759,48 +1759,30 @@ export default function ClienteAgendamentosPage() {
 
                 {/* PERÍODO */}
                 <div className="flex flex-col gap-2">
-
                   <p className="text-xs font-semibold text-gray-400 uppercase">
                     Período de preferência
                   </p>
 
                   <div className="grid grid-cols-4 gap-1.5">
-
                     {[
-                      {
-                        valor: 'qualquer',
-                        label: 'Qualquer',
-                      },
-                      {
-                        valor: 'manha',
-                        label: 'Manhã',
-                      },
-                      {
-                        valor: 'tarde',
-                        label: 'Tarde',
-                      },
-                      {
-                        valor: 'noite',
-                        label: 'Noite',
-                      },
+                      { valor: 'qualquer', label: 'Qualquer' },
+                      { valor: 'manha', label: 'Manhã' },
+                      { valor: 'tarde', label: 'Tarde' },
+                      { valor: 'noite', label: 'Noite' },
                     ].map(periodo => (
                       <button
                         key={periodo.valor}
                         type="button"
                         onClick={() =>
-                          setPeriodoRemarcacao(
-                            periodo.valor
-                          )
+                          setPeriodoRemarcacao(periodo.valor)
                         }
                         className={`py-2 rounded-xl text-xs font-semibold border transition-all ${
-                          periodoRemarcacao ===
-                          periodo.valor
+                          periodoRemarcacao === periodo.valor
                             ? 'text-white'
                             : 'bg-white text-gray-500 border-gray-200'
                         }`}
                         style={
-                          periodoRemarcacao ===
-                          periodo.valor
+                          periodoRemarcacao === periodo.valor
                             ? {
                                 backgroundColor: cor,
                                 borderColor: cor,
@@ -1809,58 +1791,6 @@ export default function ClienteAgendamentosPage() {
                         }
                       >
                         {periodo.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                    {[
-                      {
-                        valor: 'qualquer',
-                        label: 'Qualquer',
-                      },
-                      {
-                        valor: 'manha',
-                        label: 'Manhã',
-                      },
-                      {
-                        valor: 'tarde',
-                        label: 'Tarde',
-                      },
-                      {
-                        valor: 'noite',
-                        label: 'Noite',
-                      },
-                    ].map(p => (
-                      <button
-                        key={p.valor}
-                        type="button"
-                        onClick={() =>
-                          setPeriodoRemarcacao(
-                            p.valor
-                          )
-                        }
-                        className="py-2.5 rounded-xl text-xs font-medium border transition-all"
-                        style={
-                          periodoRemarcacao ===
-                          p.valor
-                            ? {
-                                backgroundColor:
-                                  cor,
-                                color: 'white',
-                                borderColor:
-                                  cor,
-                              }
-                            : {
-                                backgroundColor:
-                                  '#f3f4f6',
-                                color:
-                                  '#6b7280',
-                                borderColor:
-                                  'transparent',
-                              }
-                        }
-                      >
-                        {p.label}
                       </button>
                     ))}
                   </div>
