@@ -3046,11 +3046,77 @@ este agendamento.
                         </div>
                       ) : (
                         <div className="mt-4 space-y-3">
-                          {coberturas.map((cobertura: CoberturaServico, index: number) => (
-                            <div key={cobertura.servicoId} className="rounded-2xl border border-[#e6e6e6] p-4">
-                              <p className="text-xs uppercase tracking-wide text-gray-400">
-                                {cobertura.servicoNome}
-                              </p>
+                          {coberturas.map(
+                            (
+                              cobertura: CoberturaServico,
+                              index: number
+                            ) => (
+                              <div
+                                key={cobertura.servicoId}
+                                className="rounded-2xl border border-[#e6e6e6] p-4"
+                              >
+                                <p className="text-xs uppercase tracking-wide text-gray-400">
+                                  {cobertura.servicoNome}
+                                </p>
+
+                                <div className="mt-3 space-y-2">
+                                  {cobertura.pacotesDisponiveis.map(
+                                    (pacote: PacoteOpcao) => {
+                                      const selecionado =
+                                        cobertura.clientePacoteIdSelecionado ===
+                                        pacote.clientePacoteId
+
+                                      return (
+                                        <button
+                                          key={pacote.clientePacoteId}
+                                          type="button"
+                                          disabled={salvando}
+                                          onClick={() =>
+                                            selecionarPacote(
+                                              index,
+                                              pacote.clientePacoteId
+                                            )
+                                          }
+                                          className={`w-full min-h-14 rounded-xl border-2 px-3 py-3 text-left transition ${
+                                            selecionado
+                                              ? 'border-[var(--cor-salao)] bg-[#fff5fb]'
+                                              : 'border-[#e6e6e6] bg-white'
+                                          }`}
+                                        >
+                                          <div className="flex items-center justify-between gap-3">
+                                            <div className="min-w-0">
+                                              <p className="text-sm font-semibold text-gray-800">
+                                                {pacote.nome}
+                                              </p>
+
+                                              <p className="text-xs text-gray-500 mt-0.5">
+                                                {pacote.sessoesRestantes}{' '}
+                                                sessão(ões) restante(s)
+                                              </p>
+                                            </div>
+
+                                            <div
+                                              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                                selecionado
+                                                  ? 'border-[var(--cor-salao)] bg-[var(--cor-salao)] text-white'
+                                                  : 'border-gray-300'
+                                              }`}
+                                            >
+                                              {selecionado && (
+                                                <Check size={14} />
+                                              )}
+                                            </div>
+                                          </div>
+                                        </button>
+                                      )
+                                    }
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
                       <div className="mt-5 grid grid-cols-1 gap-3">
                         <button
                           type="button"
