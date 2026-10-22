@@ -477,9 +477,6 @@ export default function ClienteAgendamentosPage() {
       )
     )
   }
-      })
-    )
-  }
 
   function adicionarHorarioRemarcacao(dataIndex: number) {
     setPreferenciasRemarcacao(prev =>
