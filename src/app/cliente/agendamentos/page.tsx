@@ -907,17 +907,19 @@ export default function ClienteAgendamentosPage() {
                   >
                     {ag.status?.toUpperCase()}
                   </span>
-                </div>
-                  <p
-                    className="text-sm font-bold mt-1"
-                    style={{ color: cor }}
-                  >
-                    R${' '}
-                    {ag.valor
-                      .toFixed(2)
-                      .replace('.', ',')}
-                  </p>
-                )}
+                             </div>
+
+                  {ag.valor != null && (
+                    <p
+                      className="text-sm font-bold mt-1"
+                      style={{ color: cor }}
+                    >
+                      R${' '}
+                      {Number(ag.valor)
+                        .toFixed(2)
+                        .replace('.', ',')}
+                    </p>
+                  )}
 
                 {/* =================================================
                     RESPOSTA JÁ REGISTRADA
