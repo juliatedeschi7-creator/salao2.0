@@ -15,10 +15,16 @@ import {
   Trash2,
   Clock,
   X,
-  Check,
   Calendar,
   MessageCircle,
 } from 'lucide-react'
+
+type Servico = {
+  id: string
+  nome: string
+  preco: number
+  duracao_minutos?: number
+}
 
 type Agendamento = {
   id: string
@@ -36,27 +42,9 @@ type Agendamento = {
   clientes?: { nome: string; telefone?: string }
   servicos?: { nome: string; preco: number }
   profiles?: { nome: string }
-  servicos_detalhes?: {
-    id: string
-    nome: string
-    preco: number
-    duracao_minutos: number
-  }[]
-}
-
-function formatarDuracao(min: number) {
-  if (!min) return ''
-
-  if (min < 60) return `${min}min`
-
-  const h = Math.floor(min / 60)
-  const m = min % 60
-
-  return m === 0 ? `${h}h` : `${h}h${m}min`
 }
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
-
 const DIAS_COMPLETOS = [
   'Domingo',
   'Segunda',
@@ -66,20 +54,9 @@ const DIAS_COMPLETOS = [
   'Sexta',
   'Sábado',
 ]
-
 const MESES = [
-  'Jan',
-  'Fev',
-  'Mar',
-  'Abr',
-  'Mai',
-  'Jun',
-  'Jul',
-  'Ago',
-  'Set',
-  'Out',
-  'Nov',
-  'Dez',
+  'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ]
 
 export default function AgendaPage() {
@@ -88,20 +65,16 @@ export default function AgendaPage() {
 
   const [salao, setSalao] = useState<any>(null)
   const [agendamentos, setAgendamentos] = useState<Agendamento[]>([])
-  const [todosServicos, setTodosServicos] = useState<any[]>([])
-
+  const [todosServicos, setTodosServicos] = useState<Servico[]>([])
   const [view, setView] = useState<'semana' | 'mes'>('semana')
   const [dataBase, setDataBase] = useState(new Date())
-
   const [carregando, setCarregando] = useState(true)
   const [modalEditar, setModalEditar] = useState<Agendamento | null>(null)
-
   const [formEditar, setFormEditar] = useState({
     status: '',
     observacoes: '',
     valor: '',
   })
-
   const [salvando, setSalvando] = useState(false)
   const [diaSelecionado, setDiaSelecionado] = useState<Date | null>(null)
 
@@ -110,46 +83,23 @@ export default function AgendaPage() {
 
     if (!profile) {
       router.push('/login')
+      setCarregando(false)
       return
     }
 
-    if (profile.salao_id) {
-      carregarDados()
+    if (!profile.salao_id) {
+      setCarregando(false)
+      return
     }
+
+    void carregarDados()
   }, [loading, profile])
 
-  async function carregarDados() {
-    if (!profile?.salao_id) return
-
-    const { data: sal } = await supabase
-      .from('saloes')
-      .select('*')
-      .eq('id', profile.salao_id)
-      .single()
-
-    setSalao(sal)
-
-    const { data: srvs } = await supabase
-      .from('servicos')
-      .select('id, nome, preco, duracao_minutos')
-      .eq('salao_id', profile.salao_id)
-      .eq('ativo', true)
-
-    setTodosServicos(srvs || [])
-
-    await carregarAgendamentos()
-
-    setCarregando(false)
-  }
-
   function getInicioSemana(d: Date) {
-    const dia = new Date(d)
-    const dow = dia.getDay()
-
-    dia.setDate(dia.getDate() - dow)
-    dia.setHours(0, 0, 0, 0)
-
-    return dia
+    const inicio = new Date(d)
+    inicio.setDate(inicio.getDate() - inicio.getDay())
+    inicio.setHours(0, 0, 0, 0)
+    return inicio
   }
 
   function getIntervaloConsulta() {
@@ -158,24 +108,53 @@ export default function AgendaPage() {
 
     if (view === 'semana') {
       inicio = getInicioSemana(dataBase)
-
       fim = new Date(inicio)
       fim.setDate(fim.getDate() + 7)
     } else {
-      inicio = new Date(
-        dataBase.getFullYear(),
-        dataBase.getMonth(),
-        1,
-      )
-
-      fim = new Date(
-        dataBase.getFullYear(),
-        dataBase.getMonth() + 1,
-        1,
-      )
+      inicio = new Date(dataBase.getFullYear(), dataBase.getMonth(), 1)
+      fim = new Date(dataBase.getFullYear(), dataBase.getMonth() + 1, 1)
     }
 
     return { inicio, fim }
+  }
+
+  async function carregarDados() {
+    if (!profile?.salao_id) return
+
+    setCarregando(true)
+
+    try {
+      const { data: sal, error: erroSalao } = await supabase
+        .from('saloes')
+        .select('*')
+        .eq('id', profile.salao_id)
+        .single()
+
+      if (erroSalao) {
+        console.error('Erro ao carregar salão:', erroSalao)
+      } else {
+        setSalao(sal)
+      }
+
+      const { data: srvs, error: erroServicos } = await supabase
+        .from('servicos')
+        .select('id, nome, preco, duracao_minutos')
+        .eq('salao_id', profile.salao_id)
+        .eq('ativo', true)
+
+      if (erroServicos) {
+        console.error('Erro ao carregar serviços:', erroServicos)
+      } else {
+        setTodosServicos(srvs || [])
+      }
+
+      await carregarAgendamentos()
+    } catch (erro) {
+      console.error('Erro ao carregar dados da agenda:', erro)
+      notificar('Não foi possível carregar os dados da agenda.')
+    } finally {
+      setCarregando(false)
+    }
   }
 
   async function carregarAgendamentos() {
@@ -194,16 +173,17 @@ export default function AgendaPage() {
       .eq('salao_id', profile.salao_id)
       .gte('data_hora', inicio.toISOString())
       .lt('data_hora', fim.toISOString())
-      .order('data_hora')
+      .order('data_hora', { ascending: true })
 
     if (error) {
       console.error('Erro ao carregar agendamentos:', error)
-      setAgendamentos([])
+      notificar('Não foi possível carregar os agendamentos.')
       return
     }
 
     const lista = ags || []
 
+    // Busca os nomes de todos os profissionais associados ao agendamento.
     const idsProfissionais = Array.from(
       new Set(
         lista.flatMap((ag: any) => {
@@ -222,13 +202,11 @@ export default function AgendaPage() {
     let nomesPorId: Record<string, string> = {}
 
     if (idsProfissionais.length > 0) {
-      const {
-        data: profissionais,
-        error: erroProfissionais,
-      } = await supabase
-        .from('profiles')
-        .select('id, nome')
-        .in('id', idsProfissionais)
+      const { data: profissionais, error: erroProfissionais } =
+        await supabase
+          .from('profiles')
+          .select('id, nome')
+          .in('id', idsProfissionais)
 
       if (erroProfissionais) {
         console.error(
@@ -258,11 +236,8 @@ export default function AgendaPage() {
         .map(id => nomesPorId[id])
         .filter(Boolean)
 
-      // Compatibilidade com agendamentos antigos que têm somente um profissional.
-      if (
-        profissionaisNomes.length === 0 &&
-        ag.profiles?.nome
-      ) {
+      // Mantém compatibilidade com agendamentos antigos de um profissional.
+      if (profissionaisNomes.length === 0 && ag.profiles?.nome) {
         profissionaisNomes.push(ag.profiles.nome)
       }
 
@@ -275,69 +250,63 @@ export default function AgendaPage() {
     setAgendamentos(agendamentosComProfissionais)
   }
 
-  // Recarrega os dados quando o usuário muda a semana, o mês
-  // ou alterna entre as visualizações.
+  // Atualiza a lista ao mudar de semana, mês ou visualização.
   useEffect(() => {
     if (loading || !profile?.salao_id || carregando) return
-
-    carregarAgendamentos()
+    void carregarAgendamentos()
   }, [dataBase, view])
 
   function getDiasSemana() {
     const inicio = getInicioSemana(dataBase)
 
     return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(inicio)
-
-      d.setDate(d.getDate() + i)
-
-      return d
+      const dia = new Date(inicio)
+      dia.setDate(dia.getDate() + i)
+      return dia
     })
   }
 
   function getDiasMes() {
     const ano = dataBase.getFullYear()
     const mes = dataBase.getMonth()
+    const ultimoDia = new Date(ano, mes + 1, 0).getDate()
 
-    const primeiro = new Date(ano, mes, 1)
-    const ultimo = new Date(ano, mes + 1, 0)
-
-    const dias: Date[] = []
-
-    for (
-      let d = new Date(primeiro);
-      d <= ultimo;
-      d.setDate(d.getDate() + 1)
-    ) {
-      dias.push(new Date(d))
-    }
-
-    return dias
+    return Array.from({ length: ultimoDia }, (_, i) =>
+      new Date(ano, mes, i + 1),
+    )
   }
 
   function agendamentosDoDia(dia: Date) {
     return agendamentos.filter(ag => {
-      const d = new Date(ag.data_hora)
+      const data = new Date(ag.data_hora)
 
       return (
-        d.getFullYear() === dia.getFullYear() &&
-        d.getMonth() === dia.getMonth() &&
-        d.getDate() === dia.getDate()
+        data.getFullYear() === dia.getFullYear() &&
+        data.getMonth() === dia.getMonth() &&
+        data.getDate() === dia.getDate()
       )
     })
   }
 
   function getServicosDetalhados(ag: Agendamento) {
-    if (ag.servicos_ids && ag.servicos_ids.length > 1) {
-      return todosServicos.filter(s =>
+    if (ag.servicos_ids?.length) {
+      const encontrados = todosServicos.filter(s =>
         ag.servicos_ids!.includes(s.id),
       )
+
+      if (encontrados.length > 0) return encontrados
     }
 
     return ag.servicos ? [ag.servicos] : []
   }
 
   async function excluirAgendamento(id: string) {
+    const confirmar = window.confirm(
+      'Tem certeza de que deseja excluir este agendamento?',
+    )
+
+    if (!confirmar) return
+
     const { error } = await supabase
       .from('agendamentos')
       .delete()
@@ -345,10 +314,11 @@ export default function AgendaPage() {
 
     if (error) {
       console.error('Erro ao excluir agendamento:', error)
-      notificar('Não foi possível excluir o agendamento.', 'erro')
+      notificar('Não foi possível excluir o agendamento.')
       return
     }
 
+    notificar('Agendamento excluído.')
     await carregarAgendamentos()
   }
 
@@ -362,87 +332,66 @@ export default function AgendaPage() {
       .update({
         status: formEditar.status,
         observacoes: formEditar.observacoes || null,
-        valor: formEditar.valor
-          ? parseFloat(formEditar.valor)
+        valor: formEditar.valor.trim()
+          ? Number.parseFloat(formEditar.valor)
           : null,
       })
       .eq('id', modalEditar.id)
 
     if (error) {
       console.error('Erro ao salvar agendamento:', error)
-      notificar('Não foi possível salvar as alterações.', 'erro')
+      notificar('Não foi possível salvar as alterações.')
       setSalvando(false)
       return
     }
 
     setModalEditar(null)
     setSalvando(false)
-
+    notificar('Agendamento atualizado.')
     await carregarAgendamentos()
   }
 
   function enviarWhatsAppConfirmacao(ag: Agendamento) {
-    const telefoneCliente = ag.clientes?.telefone || ''
-    const telefoneLimpo = telefoneCliente.replace(/\D/g, '')
+    const telefone = (ag.clientes?.telefone || '').replace(/\D/g, '')
+    if (!telefone) {
+      notificar('Este cliente não possui telefone cadastrado.')
+      return
+    }
 
     const nomeCliente = ag.clientes?.nome || 'Cliente'
-
     const inicio = new Date(ag.data_hora)
-
     const dataFormatada = inicio.toLocaleDateString('pt-BR')
-
     const horaFormatada = inicio.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
     })
 
-    const servicosDetalhados = getServicosDetalhados(ag)
-
+    const servicos = getServicosDetalhados(ag)
     const nomeServico =
-      servicosDetalhados.map(s => s.nome).join(', ') ||
+      servicos.map(s => s.nome).join(', ') ||
       ag.servicos?.nome ||
       'Serviço'
 
-    const modeloModelo =
+    const modelo =
       salao?.mensagem_confirmacao ||
-      'Olá *{cliente}*, passando para confirmar o seu agendamento de *{servico}* para o dia *{data}* às *{hora}*. Podemos confirmar?'
+      'Olá *{cliente}*, passando para confirmar seu agendamento de *{servico}* para o dia *{data}* às *{hora}*. Podemos confirmar?'
 
-    const mensagemPronta = modeloModelo
+    const mensagem = modelo
       .replace(/{cliente}/g, nomeCliente)
       .replace(/{servico}/g, nomeServico)
       .replace(/{data}/g, dataFormatada)
       .replace(/{hora}/g, horaFormatada)
       .replace(/{salao}/g, salao?.nome || 'Salão')
 
-    const url = `https://api.whatsapp.com/send?phone=${telefoneLimpo}&text=${encodeURIComponent(mensagemPronta)}`
-
-    window.open(url, '_blank')
+    const url = `https://api.whatsapp.com/send?phone=${telefone}&text=${encodeURIComponent(mensagem)}`
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  const statusConfig: Record<
-    string,
-    { label: string; cor: string; bg: string }
-  > = {
-    confirmado: {
-      label: 'Confirmado',
-      cor: '#16a34a',
-      bg: '#f0fdf4',
-    },
-    pendente: {
-      label: 'Pendente',
-      cor: '#d97706',
-      bg: '#fffbeb',
-    },
-    concluido: {
-      label: 'Concluído',
-      cor: '#6b7280',
-      bg: '#f9fafb',
-    },
-    cancelado: {
-      label: 'Cancelado',
-      cor: '#dc2626',
-      bg: '#fef2f2',
-    },
+  const statusConfig: Record<string, { label: string; cor: string; bg: string }> = {
+    confirmado: { label: 'Confirmado', cor: '#16a34a', bg: '#f0fdf4' },
+    pendente: { label: 'Pendente', cor: '#d97706', bg: '#fffbeb' },
+    concluido: { label: 'Concluído', cor: '#6b7280', bg: '#f9fafb' },
+    cancelado: { label: 'Cancelado', cor: '#dc2626', bg: '#fef2f2' },
     aguardando_confirmacao: {
       label: 'Aguardando',
       cor: '#2563eb',
@@ -452,15 +401,12 @@ export default function AgendaPage() {
 
   const cor = salao?.cor_primaria || '#E91E8C'
   const hoje = new Date()
-
   const diasSemana = getDiasSemana()
   const diasMes = getDiasMes()
 
   function CardAgendamento({ ag }: { ag: Agendamento }) {
     const st = statusConfig[ag.status] || statusConfig.pendente
-
     const inicio = new Date(ag.data_hora)
-
     const fim = new Date(
       inicio.getTime() + (ag.duracao_minutos || 60) * 60000,
     )
@@ -469,90 +415,66 @@ export default function AgendaPage() {
       hour: '2-digit',
       minute: '2-digit',
     })
-
     const horaFim = fim.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
     })
 
-    const servicosDetalhados = getServicosDetalhados(ag)
-
-    const temMultiplos = servicosDetalhados.length > 1
-
+    const servicos = getServicosDetalhados(ag)
     const precoTotal =
-      ag.valor ||
-      servicosDetalhados.reduce(
-        (acc, s) => acc + (s.preco || 0),
-        0,
-      )
+      ag.valor ??
+      servicos.reduce((total, servico) => total + (servico.preco || 0), 0)
 
     return (
       <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="font-bold text-gray-900 leading-tight">
-              {ag.clientes?.nome}
+              {ag.clientes?.nome || 'Cliente'}
             </p>
 
-            {temMultiplos ? (
+            {servicos.length > 1 ? (
               <div className="mt-1 flex flex-col gap-0.5">
-                {servicosDetalhados.map((s, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-1.5"
-                  >
+                {servicos.map((servico, i) => (
+                  <div key={`${servico.id || servico.nome}-${i}`} className="flex items-center gap-1.5">
                     <div
                       className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: cor }}
                     />
-                    <p className="text-sm text-gray-500">{s.nome}</p>
+                    <p className="text-sm text-gray-500">{servico.nome}</p>
                   </div>
                 ))}
               </div>
             ) : (
               <p className="text-sm text-gray-500 mt-0.5">
-                {ag.servicos?.nome}
+                {servicos[0]?.nome || ag.servicos?.nome || 'Serviço'}
               </p>
             )}
 
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               <div className="flex items-center gap-1 text-gray-400">
                 <Clock size={12} />
-                <p className="text-xs">
-                  {horaInicio} – {horaFim}
-                </p>
+                <p className="text-xs">{horaInicio} – {horaFim}</p>
               </div>
-
-              {ag.profissionais_nomes &&
-                ag.profissionais_nomes.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1 mt-1">
-                    <span className="text-xs text-gray-400">
-                      {ag.profissionais_nomes.length > 1
-                        ? 'Participantes:'
-                        : 'Profissional:'}
-                    </span>
-
-                    {ag.profissionais_nomes.map((nome, index) => (
-                      <span
-                        key={`${nome}-${index}`}
-                        className="text-xs text-gray-500"
-                      >
-                        {nome}
-                        {index <
-                        ag.profissionais_nomes!.length - 1
-                          ? ','
-                          : ''}
-                      </span>
-                    ))}
-                  </div>
-                )}
             </div>
 
+            {!!ag.profissionais_nomes?.length && (
+              <div className="flex flex-wrap items-center gap-x-1 mt-1">
+                <span className="text-xs text-gray-400">
+                  {ag.profissionais_nomes.length > 1
+                    ? 'Participantes:'
+                    : 'Profissional:'}
+                </span>
+                {ag.profissionais_nomes.map((nome, index) => (
+                  <span key={`${nome}-${index}`} className="text-xs text-gray-500">
+                    {nome}{index < ag.profissionais_nomes!.length - 1 ? ',' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+
             {precoTotal > 0 && (
-              <p
-                className="text-sm font-bold mt-1"
-                style={{ color: cor }}
-              >
+              <p className="text-sm font-bold mt-1" style={{ color: cor }}>
                 R$ {precoTotal.toFixed(2).replace('.', ',')}
               </p>
             )}
@@ -561,10 +483,7 @@ export default function AgendaPage() {
           <div className="flex flex-col items-end gap-2 shrink-0">
             <span
               className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{
-                color: st.cor,
-                backgroundColor: st.bg,
-              }}
+              style={{ color: st.cor, backgroundColor: st.bg }}
             >
               {st.label.toUpperCase()}
             </span>
@@ -575,16 +494,12 @@ export default function AgendaPage() {
                 className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center"
                 title="Enviar confirmação pelo WhatsApp"
               >
-                <MessageCircle
-                  size={13}
-                  className="text-green-600"
-                />
+                <MessageCircle size={13} className="text-green-600" />
               </button>
 
               <button
                 onClick={() => {
                   setModalEditar(ag)
-
                   setFormEditar({
                     status: ag.status,
                     observacoes: ag.observacoes || '',
@@ -592,21 +507,17 @@ export default function AgendaPage() {
                   })
                 }}
                 className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                title="Editar agendamento"
               >
-                <Edit2
-                  size={13}
-                  className="text-gray-500"
-                />
+                <Edit2 size={13} className="text-gray-500" />
               </button>
 
               <button
-                onClick={() => excluirAgendamento(ag.id)}
+                onClick={() => void excluirAgendamento(ag.id)}
                 className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center"
+                title="Excluir agendamento"
               >
-                <Trash2
-                  size={13}
-                  className="text-red-400"
-                />
+                <Trash2 size={13} className="text-red-400" />
               </button>
             </div>
           </div>
@@ -632,21 +543,37 @@ export default function AgendaPage() {
     )
   }
 
+  if (!profile?.salao_id) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 p-6">
+        <p className="text-gray-600 text-center">
+          Não foi possível identificar o salão desta conta.
+        </p>
+        <button
+          onClick={() => router.push('/login')}
+          className="px-4 py-2 rounded-xl text-white"
+          style={{ backgroundColor: cor }}
+        >
+          Voltar ao login
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-24">
       <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm">
-        <button onClick={() => router.back()}>
+        <button onClick={() => router.back()} aria-label="Voltar">
           <ArrowLeft size={22} className="text-gray-700" />
         </button>
 
-        <h1 className="font-bold text-gray-900 text-lg flex-1">
-          Agenda
-        </h1>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">Agenda</h1>
 
         <button
           onClick={() => router.push('/salao/agenda/novo')}
           className="w-9 h-9 rounded-full flex items-center justify-center text-white"
           style={{ backgroundColor: cor }}
+          aria-label="Novo agendamento"
         >
           <Plus size={18} />
         </button>
@@ -682,6 +609,7 @@ export default function AgendaPage() {
                 setDiaSelecionado(null)
               }}
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+              aria-label="Semana anterior"
             >
               <ChevronLeft size={16} className="text-gray-600" />
             </button>
@@ -700,6 +628,7 @@ export default function AgendaPage() {
                 setDiaSelecionado(null)
               }}
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+              aria-label="Próxima semana"
             >
               <ChevronRight size={16} className="text-gray-600" />
             </button>
@@ -708,24 +637,17 @@ export default function AgendaPage() {
           <div className="flex bg-white border-b border-gray-100 overflow-x-auto">
             {diasSemana.map((dia, i) => {
               const ehHoje = dia.toDateString() === hoje.toDateString()
-
               const selecionado =
                 diaSelecionado?.toDateString() === dia.toDateString()
-
               const count = agendamentosDoDia(dia).length
 
               return (
                 <button
                   key={i}
-                  onClick={() =>
-                    setDiaSelecionado(selecionado ? null : dia)
-                  }
+                  onClick={() => setDiaSelecionado(selecionado ? null : dia)}
                   className="flex-1 flex flex-col items-center py-2 gap-0.5 relative"
                 >
-                  <p className="text-xs text-gray-400">
-                    {DIAS[dia.getDay()]}
-                  </p>
-
+                  <p className="text-xs text-gray-400">{DIAS[dia.getDay()]}</p>
                   <div
                     className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
                     style={
@@ -736,12 +658,8 @@ export default function AgendaPage() {
                   >
                     {dia.getDate()}
                   </div>
-
                   {count > 0 && (
-                    <div
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: cor }}
-                    />
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
                   )}
                 </button>
               )
@@ -756,11 +674,13 @@ export default function AgendaPage() {
             <button
               onClick={() => {
                 const d = new Date(dataBase)
+                d.setDate(1)
                 d.setMonth(d.getMonth() - 1)
                 setDataBase(d)
                 setDiaSelecionado(null)
               }}
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+              aria-label="Mês anterior"
             >
               <ChevronLeft size={16} className="text-gray-600" />
             </button>
@@ -772,11 +692,13 @@ export default function AgendaPage() {
             <button
               onClick={() => {
                 const d = new Date(dataBase)
+                d.setDate(1)
                 d.setMonth(d.getMonth() + 1)
                 setDataBase(d)
                 setDiaSelecionado(null)
               }}
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+              aria-label="Próximo mês"
             >
               <ChevronRight size={16} className="text-gray-600" />
             </button>
@@ -785,10 +707,7 @@ export default function AgendaPage() {
           <div className="bg-white border-b border-gray-100 px-2 pb-2">
             <div className="grid grid-cols-7 mb-1">
               {DIAS.map(d => (
-                <p
-                  key={d}
-                  className="text-center text-xs text-gray-400 py-1"
-                >
+                <p key={d} className="text-center text-xs text-gray-400 py-1">
                   {d}
                 </p>
               ))}
@@ -801,24 +720,18 @@ export default function AgendaPage() {
                   dataBase.getMonth(),
                   1,
                 ).getDay(),
-              }).map((_, i) => (
-                <div key={i} />
-              ))}
+              }).map((_, i) => <div key={`vazio-${i}`} />)}
 
               {diasMes.map((dia, i) => {
                 const ehHoje = dia.toDateString() === hoje.toDateString()
-
                 const selecionado =
                   diaSelecionado?.toDateString() === dia.toDateString()
-
                 const count = agendamentosDoDia(dia).length
 
                 return (
                   <button
                     key={i}
-                    onClick={() =>
-                      setDiaSelecionado(selecionado ? null : dia)
-                    }
+                    onClick={() => setDiaSelecionado(selecionado ? null : dia)}
                     className="flex flex-col items-center py-1 gap-0.5"
                   >
                     <div
@@ -831,12 +744,8 @@ export default function AgendaPage() {
                     >
                       {dia.getDate()}
                     </div>
-
                     {count > 0 && (
-                      <div
-                        className="w-1 h-1 rounded-full"
-                        style={{ backgroundColor: cor }}
-                      />
+                      <div className="w-1 h-1 rounded-full" style={{ backgroundColor: cor }} />
                     )}
                   </button>
                 )
@@ -861,27 +770,19 @@ export default function AgendaPage() {
             ? [diaSelecionado]
             : view === 'semana'
               ? diasSemana
-              : diasMes.filter(
-                  d => agendamentosDoDia(d).length > 0,
-                )
+              : diasMes.filter(d => agendamentosDoDia(d).length > 0)
 
           const temAlgum = diasParaMostrar.some(
-            d => agendamentosDoDia(d).length > 0,
+            dia => agendamentosDoDia(dia).length > 0,
           )
 
           if (!temAlgum) {
             return (
               <div className="card text-center py-10 flex flex-col items-center gap-3">
                 <Calendar size={36} className="text-gray-300" />
-
-                <p className="text-gray-400">
-                  Nenhum agendamento
-                </p>
-
+                <p className="text-gray-400">Nenhum agendamento</p>
                 <button
-                  onClick={() =>
-                    router.push('/salao/agenda/novo')
-                  }
+                  onClick={() => router.push('/salao/agenda/novo')}
                   className="px-4 py-2 rounded-full text-sm font-medium text-white"
                   style={{ backgroundColor: cor }}
                 >
@@ -893,7 +794,6 @@ export default function AgendaPage() {
 
           return diasParaMostrar.map(dia => {
             const ags = agendamentosDoDia(dia)
-
             if (ags.length === 0) return null
 
             return (
@@ -914,12 +814,8 @@ export default function AgendaPage() {
                   <p className="text-sm font-semibold text-gray-700">
                     {DIAS_COMPLETOS[dia.getDay()]}, {dia.getDate()} de{' '}
                     {MESES[dia.getMonth()]}
-
                     {dia.toDateString() === hoje.toDateString() && (
-                      <span
-                        className="ml-2 text-xs font-normal"
-                        style={{ color: cor }}
-                      >
+                      <span className="ml-2 text-xs font-normal" style={{ color: cor }}>
                         (hoje)
                       </span>
                     )}
@@ -927,12 +823,7 @@ export default function AgendaPage() {
                 </div>
 
                 <div className="flex flex-col gap-2 ml-10">
-                  {ags.map(ag => (
-                    <CardAgendamento
-                      key={ag.id}
-                      ag={ag}
-                    />
-                  ))}
+                  {ags.map(ag => <CardAgendamento key={ag.id} ag={ag} />)}
                 </div>
               </div>
             )
@@ -947,8 +838,7 @@ export default function AgendaPage() {
               <h3 className="font-bold text-gray-900 text-lg">
                 Editar agendamento
               </h3>
-
-              <button onClick={() => setModalEditar(null)}>
+              <button onClick={() => setModalEditar(null)} aria-label="Fechar">
                 <X size={20} className="text-gray-400" />
               </button>
             </div>
@@ -959,23 +849,11 @@ export default function AgendaPage() {
 
             {getServicosDetalhados(modalEditar).length > 1 && (
               <div className="bg-gray-50 rounded-xl p-3 flex flex-col gap-1">
-                <p className="text-xs font-medium text-gray-500 mb-1">
-                  Serviços:
-                </p>
-
-                {getServicosDetalhados(modalEditar).map((s, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-1.5"
-                  >
-                    <div
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: cor }}
-                    />
-
-                    <p className="text-sm text-gray-700">
-                      {s.nome}
-                    </p>
+                <p className="text-xs font-medium text-gray-500 mb-1">Serviços:</p>
+                {getServicosDetalhados(modalEditar).map((servico, i) => (
+                  <div key={`${servico.nome}-${i}`} className="flex items-center gap-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
+                    <p className="text-sm text-gray-700">{servico.nome}</p>
                   </div>
                 ))}
               </div>
@@ -985,21 +863,16 @@ export default function AgendaPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Status
               </label>
-
               <select
                 className="input-field"
                 value={formEditar.status}
-                onChange={e =>
-                  setFormEditar(p => ({
-                    ...p,
-                    status: e.target.value,
-                  }))
-                }
+                onChange={e => setFormEditar(p => ({ ...p, status: e.target.value }))}
               >
                 <option value="confirmado">Confirmado</option>
                 <option value="pendente">Pendente</option>
                 <option value="concluido">Concluído</option>
                 <option value="cancelado">Cancelado</option>
+                <option value="aguardando_confirmacao">Aguardando confirmação</option>
               </select>
             </div>
 
@@ -1007,18 +880,14 @@ export default function AgendaPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Valor cobrado (R$)
               </label>
-
               <input
                 className="input-field"
                 type="number"
+                min="0"
+                step="0.01"
                 placeholder="0,00"
                 value={formEditar.valor}
-                onChange={e =>
-                  setFormEditar(p => ({
-                    ...p,
-                    valor: e.target.value,
-                  }))
-                }
+                onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))}
               />
             </div>
 
@@ -1026,17 +895,11 @@ export default function AgendaPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Observações
               </label>
-
               <textarea
                 className="input-field resize-none"
                 rows={2}
                 value={formEditar.observacoes}
-                onChange={e =>
-                  setFormEditar(p => ({
-                    ...p,
-                    observacoes: e.target.value,
-                  }))
-                }
+                onChange={e => setFormEditar(p => ({ ...p, observacoes: e.target.value }))}
               />
             </div>
 
@@ -1047,9 +910,8 @@ export default function AgendaPage() {
               >
                 Cancelar
               </button>
-
               <button
-                onClick={salvarEdicao}
+                onClick={() => void salvarEdicao()}
                 disabled={salvando}
                 className="flex-1 py-3 rounded-2xl text-white font-medium disabled:opacity-50"
                 style={{ backgroundColor: cor }}
