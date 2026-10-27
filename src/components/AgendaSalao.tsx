@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRouter } from 'next/navigation'
-import { notificar } from '@/lib/notificar'
 import {
   ArrowLeft,
   Plus,
@@ -151,7 +150,7 @@ export default function AgendaPage() {
       await carregarAgendamentos()
     } catch (erro) {
       console.error('Erro ao carregar dados da agenda:', erro)
-      notificar('Não foi possível carregar os dados da agenda.')
+      window.alert('Não foi possível carregar os dados da agenda.')
     } finally {
       setCarregando(false)
     }
@@ -177,7 +176,7 @@ export default function AgendaPage() {
 
     if (error) {
       console.error('Erro ao carregar agendamentos:', error)
-      notificar('Não foi possível carregar os agendamentos.')
+      window.alert('Não foi possível carregar os agendamentos.')
       return
     }
 
@@ -314,11 +313,11 @@ export default function AgendaPage() {
 
     if (error) {
       console.error('Erro ao excluir agendamento:', error)
-      notificar('Não foi possível excluir o agendamento.')
+      window.alert('Não foi possível excluir o agendamento.')
       return
     }
 
-    notificar('Agendamento excluído.')
+    window.alert('Agendamento excluído.')
     await carregarAgendamentos()
   }
 
@@ -340,21 +339,22 @@ export default function AgendaPage() {
 
     if (error) {
       console.error('Erro ao salvar agendamento:', error)
-      notificar('Não foi possível salvar as alterações.')
+      window.alert('Não foi possível salvar as alterações.')
       setSalvando(false)
       return
     }
 
     setModalEditar(null)
     setSalvando(false)
-    notificar('Agendamento atualizado.')
+    window.alert('Agendamento atualizado.')
     await carregarAgendamentos()
   }
 
   function enviarWhatsAppConfirmacao(ag: Agendamento) {
     const telefone = (ag.clientes?.telefone || '').replace(/\D/g, '')
+
     if (!telefone) {
-      notificar('Este cliente não possui telefone cadastrado.')
+      window.alert('Este cliente não possui telefone cadastrado.')
       return
     }
 
@@ -436,7 +436,10 @@ export default function AgendaPage() {
             {servicos.length > 1 ? (
               <div className="mt-1 flex flex-col gap-0.5">
                 {servicos.map((servico, i) => (
-                  <div key={`${servico.id || servico.nome}-${i}`} className="flex items-center gap-1.5">
+                  <div
+                    key={`${(servico as any).id || servico.nome}-${i}`}
+                    className="flex items-center gap-1.5"
+                  >
                     <div
                       className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: cor }}
@@ -454,7 +457,9 @@ export default function AgendaPage() {
             <div className="flex items-center gap-3 mt-1.5 flex-wrap">
               <div className="flex items-center gap-1 text-gray-400">
                 <Clock size={12} />
-                <p className="text-xs">{horaInicio} – {horaFim}</p>
+                <p className="text-xs">
+                  {horaInicio} – {horaFim}
+                </p>
               </div>
             </div>
 
@@ -466,8 +471,12 @@ export default function AgendaPage() {
                     : 'Profissional:'}
                 </span>
                 {ag.profissionais_nomes.map((nome, index) => (
-                  <span key={`${nome}-${index}`} className="text-xs text-gray-500">
-                    {nome}{index < ag.profissionais_nomes!.length - 1 ? ',' : ''}
+                  <span
+                    key={`${nome}-${index}`}
+                    className="text-xs text-gray-500"
+                  >
+                    {nome}
+                    {index < ag.profissionais_nomes!.length - 1 ? ',' : ''}
                   </span>
                 ))}
               </div>
@@ -659,7 +668,10 @@ export default function AgendaPage() {
                     {dia.getDate()}
                   </div>
                   {count > 0 && (
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
+                    <div
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: cor }}
+                    />
                   )}
                 </button>
               )
@@ -720,7 +732,9 @@ export default function AgendaPage() {
                   dataBase.getMonth(),
                   1,
                 ).getDay(),
-              }).map((_, i) => <div key={`vazio-${i}`} />)}
+              }).map((_, i) => (
+                <div key={`vazio-${i}`} />
+              ))}
 
               {diasMes.map((dia, i) => {
                 const ehHoje = dia.toDateString() === hoje.toDateString()
@@ -745,7 +759,10 @@ export default function AgendaPage() {
                       {dia.getDate()}
                     </div>
                     {count > 0 && (
-                      <div className="w-1 h-1 rounded-full" style={{ backgroundColor: cor }} />
+                      <div
+                        className="w-1 h-1 rounded-full"
+                        style={{ backgroundColor: cor }}
+                      />
                     )}
                   </button>
                 )
@@ -815,7 +832,10 @@ export default function AgendaPage() {
                     {DIAS_COMPLETOS[dia.getDay()]}, {dia.getDate()} de{' '}
                     {MESES[dia.getMonth()]}
                     {dia.toDateString() === hoje.toDateString() && (
-                      <span className="ml-2 text-xs font-normal" style={{ color: cor }}>
+                      <span
+                        className="ml-2 text-xs font-normal"
+                        style={{ color: cor }}
+                      >
                         (hoje)
                       </span>
                     )}
@@ -823,7 +843,9 @@ export default function AgendaPage() {
                 </div>
 
                 <div className="flex flex-col gap-2 ml-10">
-                  {ags.map(ag => <CardAgendamento key={ag.id} ag={ag} />)}
+                  {ags.map(ag => (
+                    <CardAgendamento key={ag.id} ag={ag} />
+                  ))}
                 </div>
               </div>
             )
@@ -838,7 +860,10 @@ export default function AgendaPage() {
               <h3 className="font-bold text-gray-900 text-lg">
                 Editar agendamento
               </h3>
-              <button onClick={() => setModalEditar(null)} aria-label="Fechar">
+              <button
+                onClick={() => setModalEditar(null)}
+                aria-label="Fechar"
+              >
                 <X size={20} className="text-gray-400" />
               </button>
             </div>
@@ -849,10 +874,18 @@ export default function AgendaPage() {
 
             {getServicosDetalhados(modalEditar).length > 1 && (
               <div className="bg-gray-50 rounded-xl p-3 flex flex-col gap-1">
-                <p className="text-xs font-medium text-gray-500 mb-1">Serviços:</p>
+                <p className="text-xs font-medium text-gray-500 mb-1">
+                  Serviços:
+                </p>
                 {getServicosDetalhados(modalEditar).map((servico, i) => (
-                  <div key={`${servico.nome}-${i}`} className="flex items-center gap-1.5">
-                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: cor }} />
+                  <div
+                    key={`${servico.nome}-${i}`}
+                    className="flex items-center gap-1.5"
+                  >
+                    <div
+                      className="w-1.5 h-1.5 rounded-full"
+                      style={{ backgroundColor: cor }}
+                    />
                     <p className="text-sm text-gray-700">{servico.nome}</p>
                   </div>
                 ))}
@@ -866,13 +899,17 @@ export default function AgendaPage() {
               <select
                 className="input-field"
                 value={formEditar.status}
-                onChange={e => setFormEditar(p => ({ ...p, status: e.target.value }))}
+                onChange={e =>
+                  setFormEditar(p => ({ ...p, status: e.target.value }))
+                }
               >
                 <option value="confirmado">Confirmado</option>
                 <option value="pendente">Pendente</option>
                 <option value="concluido">Concluído</option>
                 <option value="cancelado">Cancelado</option>
-                <option value="aguardando_confirmacao">Aguardando confirmação</option>
+                <option value="aguardando_confirmacao">
+                  Aguardando confirmação
+                </option>
               </select>
             </div>
 
@@ -887,7 +924,9 @@ export default function AgendaPage() {
                 step="0.01"
                 placeholder="0,00"
                 value={formEditar.valor}
-                onChange={e => setFormEditar(p => ({ ...p, valor: e.target.value }))}
+                onChange={e =>
+                  setFormEditar(p => ({ ...p, valor: e.target.value }))
+                }
               />
             </div>
 
@@ -899,7 +938,12 @@ export default function AgendaPage() {
                 className="input-field resize-none"
                 rows={2}
                 value={formEditar.observacoes}
-                onChange={e => setFormEditar(p => ({ ...p, observacoes: e.target.value }))}
+                onChange={e =>
+                  setFormEditar(p => ({
+                    ...p,
+                    observacoes: e.target.value,
+                  }))
+                }
               />
             </div>
 
