@@ -16,6 +16,7 @@ import {
   X,
   Calendar,
   MessageCircle,
+  Search,
 } from 'lucide-react'
 
 type Servico = {
@@ -44,6 +45,7 @@ type Agendamento = {
 }
 
 const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
+
 const DIAS_COMPLETOS = [
   'Domingo',
   'Segunda',
@@ -53,6 +55,7 @@ const DIAS_COMPLETOS = [
   'Sexta',
   'Sábado',
 ]
+
 const MESES = [
   'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
@@ -76,6 +79,7 @@ export default function AgendaPage() {
   })
   const [salvando, setSalvando] = useState(false)
   const [diaSelecionado, setDiaSelecionado] = useState<Date | null>(null)
+  const [termoBusca, setTermoBusca] = useState('')
 
   useEffect(() => {
     if (loading) return
@@ -156,33 +160,71 @@ export default function AgendaPage() {
     }
   }
 
-  async function carregarAgendamentos() {
+  async function carregarAgendamentos(
+    buscaCompleta = termoBusca.trim().length > 0,
+  ) {
     if (!profile?.salao_id) return
 
     const { inicio, fim } = getIntervaloConsulta()
+    let lista: any[] = []
 
-    const { data: ags, error } = await supabase
-      .from('agendamentos')
-      .select(`
-        *,
-        clientes(nome, telefone),
-        servicos(nome, preco),
-        profiles!agendamentos_profissional_id_fkey(nome)
-      `)
-      .eq('salao_id', profile.salao_id)
-      .gte('data_hora', inicio.toISOString())
-      .lt('data_hora', fim.toISOString())
-      .order('data_hora', { ascending: true })
+    if (buscaCompleta) {
+      // Busca agendamentos de todas as datas.
+      // A paginação permite consultar mais de 1.000 registros.
+      const tamanhoPagina = 500
+      let inicioPagina = 0
+      let continuar = true
 
-    if (error) {
-      console.error('Erro ao carregar agendamentos:', error)
-      window.alert('Não foi possível carregar os agendamentos.')
-      return
+      while (continuar) {
+        const { data: pagina, error } = await supabase
+          .from('agendamentos')
+          .select(`
+            *,
+            clientes(nome, telefone),
+            servicos(nome, preco),
+            profiles!agendamentos_profissional_id_fkey(nome)
+          `)
+          .eq('salao_id', profile.salao_id)
+          .order('data_hora', { ascending: false })
+          .range(inicioPagina, inicioPagina + tamanhoPagina - 1)
+
+        if (error) {
+          console.error('Erro ao pesquisar agendamentos:', error)
+          window.alert('Não foi possível pesquisar os agendamentos.')
+          return
+        }
+
+        const resultados = pagina || []
+        lista = lista.concat(resultados)
+
+        continuar = resultados.length === tamanhoPagina
+        inicioPagina += tamanhoPagina
+      }
+    } else {
+      // Sem pesquisa, mantém a consulta normal da semana ou do mês.
+      const { data: ags, error } = await supabase
+        .from('agendamentos')
+        .select(`
+          *,
+          clientes(nome, telefone),
+          servicos(nome, preco),
+          profiles!agendamentos_profissional_id_fkey(nome)
+        `)
+        .eq('salao_id', profile.salao_id)
+        .gte('data_hora', inicio.toISOString())
+        .lt('data_hora', fim.toISOString())
+        .order('data_hora', { ascending: true })
+
+      if (error) {
+        console.error('Erro ao carregar agendamentos:', error)
+        window.alert('Não foi possível carregar os agendamentos.')
+        return
+      }
+
+      lista = ags || []
     }
 
-    const lista = ags || []
-
-    // Busca os nomes de todos os profissionais associados ao agendamento.
+    // Busca os nomes de todos os profissionais associados.
     const idsProfissionais = Array.from(
       new Set(
         lista.flatMap((ag: any) => {
@@ -235,7 +277,7 @@ export default function AgendaPage() {
         .map(id => nomesPorId[id])
         .filter(Boolean)
 
-      // Mantém compatibilidade com agendamentos antigos de um profissional.
+      // Compatibilidade com agendamentos antigos de um profissional.
       if (profissionaisNomes.length === 0 && ag.profiles?.nome) {
         profissionaisNomes.push(ag.profiles.nome)
       }
@@ -249,11 +291,24 @@ export default function AgendaPage() {
     setAgendamentos(agendamentosComProfissionais)
   }
 
-  // Atualiza a lista ao mudar de semana, mês ou visualização.
+  // Atualiza os dados ao mudar de semana ou mês.
   useEffect(() => {
     if (loading || !profile?.salao_id || carregando) return
-    void carregarAgendamentos()
+
+    void carregarAgendamentos(termoBusca.trim().length > 0)
   }, [dataBase, view])
+
+  // Ao pesquisar, consulta o histórico completo.
+  // O pequeno intervalo evita uma consulta a cada tecla digitada.
+  useEffect(() => {
+    if (loading || !profile?.salao_id || carregando) return
+
+    const temporizador = setTimeout(() => {
+      void carregarAgendamentos(termoBusca.trim().length > 0)
+    }, 300)
+
+    return () => clearTimeout(temporizador)
+  }, [termoBusca])
 
   function getDiasSemana() {
     const inicio = getInicioSemana(dataBase)
@@ -387,11 +442,30 @@ export default function AgendaPage() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  const statusConfig: Record<string, { label: string; cor: string; bg: string }> = {
-    confirmado: { label: 'Confirmado', cor: '#16a34a', bg: '#f0fdf4' },
-    pendente: { label: 'Pendente', cor: '#d97706', bg: '#fffbeb' },
-    concluido: { label: 'Concluído', cor: '#6b7280', bg: '#f9fafb' },
-    cancelado: { label: 'Cancelado', cor: '#dc2626', bg: '#fef2f2' },
+  const statusConfig: Record<
+    string,
+    { label: string; cor: string; bg: string }
+  > = {
+    confirmado: {
+      label: 'Confirmado',
+      cor: '#16a34a',
+      bg: '#f0fdf4',
+    },
+    pendente: {
+      label: 'Pendente',
+      cor: '#d97706',
+      bg: '#fffbeb',
+    },
+    concluido: {
+      label: 'Concluído',
+      cor: '#6b7280',
+      bg: '#f9fafb',
+    },
+    cancelado: {
+      label: 'Cancelado',
+      cor: '#dc2626',
+      bg: '#fef2f2',
+    },
     aguardando_confirmacao: {
       label: 'Aguardando',
       cor: '#2563eb',
@@ -404,9 +478,53 @@ export default function AgendaPage() {
   const diasSemana = getDiasSemana()
   const diasMes = getDiasMes()
 
+  const termoNormalizado = termoBusca.trim().toLocaleLowerCase('pt-BR')
+
+  const agendamentosFiltrados = termoNormalizado
+    ? agendamentos
+        .filter(ag => {
+          const servicos = getServicosDetalhados(ag)
+            .map(s => s.nome)
+            .join(' ')
+
+          const profissionais = (ag.profissionais_nomes || []).join(' ')
+          const data = new Date(ag.data_hora)
+
+          const dataTexto = data.toLocaleDateString('pt-BR')
+          const horaTexto = data.toLocaleTimeString('pt-BR', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+
+          const statusTexto =
+            statusConfig[ag.status]?.label || ag.status
+
+          const campos = [
+            ag.clientes?.nome || '',
+            servicos,
+            ag.servicos?.nome || '',
+            profissionais,
+            dataTexto,
+            horaTexto,
+            statusTexto,
+            ag.observacoes || '',
+          ]
+            .join(' ')
+            .toLocaleLowerCase('pt-BR')
+
+          return campos.includes(termoNormalizado)
+        })
+        .sort(
+          (a, b) =>
+            new Date(b.data_hora).getTime() -
+            new Date(a.data_hora).getTime(),
+        )
+    : []
+
   function CardAgendamento({ ag }: { ag: Agendamento }) {
     const st = statusConfig[ag.status] || statusConfig.pendente
     const inicio = new Date(ag.data_hora)
+
     const fim = new Date(
       inicio.getTime() + (ag.duracao_minutos || 60) * 60000,
     )
@@ -415,15 +533,20 @@ export default function AgendaPage() {
       hour: '2-digit',
       minute: '2-digit',
     })
+
     const horaFim = fim.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
     })
 
     const servicos = getServicosDetalhados(ag)
+
     const precoTotal =
       ag.valor ??
-      servicos.reduce((total, servico) => total + (servico.preco || 0), 0)
+      servicos.reduce(
+        (total, servico) => total + (servico.preco || 0),
+        0,
+      )
 
     return (
       <div className="bg-white rounded-2xl p-4 shadow-sm flex flex-col gap-2">
@@ -444,7 +567,9 @@ export default function AgendaPage() {
                       className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ backgroundColor: cor }}
                     />
-                    <p className="text-sm text-gray-500">{servico.nome}</p>
+                    <p className="text-sm text-gray-500">
+                      {servico.nome}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -470,13 +595,16 @@ export default function AgendaPage() {
                     ? 'Participantes:'
                     : 'Profissional:'}
                 </span>
+
                 {ag.profissionais_nomes.map((nome, index) => (
                   <span
                     key={`${nome}-${index}`}
                     className="text-xs text-gray-500"
                   >
                     {nome}
-                    {index < ag.profissionais_nomes!.length - 1 ? ',' : ''}
+                    {index < ag.profissionais_nomes!.length - 1
+                      ? ','
+                      : ''}
                   </span>
                 ))}
               </div>
@@ -492,7 +620,10 @@ export default function AgendaPage() {
           <div className="flex flex-col items-end gap-2 shrink-0">
             <span
               className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{ color: st.cor, backgroundColor: st.bg }}
+              style={{
+                color: st.cor,
+                backgroundColor: st.bg,
+              }}
             >
               {st.label.toUpperCase()}
             </span>
@@ -546,7 +677,9 @@ export default function AgendaPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div
           className="w-8 h-8 border-4 border-t-transparent rounded-full animate-spin"
-          style={{ borderColor: cor }}
+          style={{
+            borderColor: cor,
+          }}
         />
       </div>
     )
@@ -558,6 +691,7 @@ export default function AgendaPage() {
         <p className="text-gray-600 text-center">
           Não foi possível identificar o salão desta conta.
         </p>
+
         <button
           onClick={() => router.push('/login')}
           className="px-4 py-2 rounded-xl text-white"
@@ -576,7 +710,9 @@ export default function AgendaPage() {
           <ArrowLeft size={22} className="text-gray-700" />
         </button>
 
-        <h1 className="font-bold text-gray-900 text-lg flex-1">Agenda</h1>
+        <h1 className="font-bold text-gray-900 text-lg flex-1">
+          Agenda
+        </h1>
 
         <button
           onClick={() => router.push('/salao/agenda/novo')}
@@ -588,26 +724,64 @@ export default function AgendaPage() {
         </button>
       </div>
 
+      {/* Busca global: inclui agendamentos antigos e futuros. */}
       <div className="px-4 py-3 bg-white border-b border-gray-100">
-        <div className="flex bg-gray-100 rounded-2xl p-1">
-          {(['semana', 'mes'] as const).map(v => (
+        <label className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50 px-3 py-3">
+          <Search size={19} className="text-gray-400 shrink-0" />
+
+          <input
+            type="search"
+            value={termoBusca}
+            onChange={e => {
+              setTermoBusca(e.target.value)
+              setDiaSelecionado(null)
+            }}
+            placeholder="Buscar cliente, serviço, profissional..."
+            className="w-full bg-transparent outline-none text-sm text-gray-800 placeholder:text-gray-400"
+            aria-label="Buscar em todos os agendamentos"
+          />
+
+          {termoBusca && (
             <button
-              key={v}
-              onClick={() => setView(v)}
-              className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
-              style={
-                view === v
-                  ? { backgroundColor: cor, color: 'white' }
-                  : { color: '#6b7280' }
-              }
+              type="button"
+              onClick={() => setTermoBusca('')}
+              className="text-gray-400 p-1"
+              aria-label="Limpar busca"
             >
-              {v === 'semana' ? 'Semana' : 'Mês'}
+              <X size={17} />
             </button>
-          ))}
-        </div>
+          )}
+        </label>
+
+        {termoBusca.trim() && (
+          <p className="text-xs text-gray-500 mt-2">
+            Pesquisando em agendamentos antigos e futuros
+          </p>
+        )}
       </div>
 
-      {view === 'semana' && (
+      {!termoBusca.trim() && (
+        <div className="px-4 py-3 bg-white border-b border-gray-100">
+          <div className="flex bg-gray-100 rounded-2xl p-1">
+            {(['semana', 'mes'] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all"
+                style={
+                  view === v
+                    ? { backgroundColor: cor, color: 'white' }
+                    : { color: '#6b7280' }
+                }
+              >
+                {v === 'semana' ? 'Semana' : 'Mês'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!termoBusca.trim() && view === 'semana' && (
         <>
           <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
             <button
@@ -656,7 +830,10 @@ export default function AgendaPage() {
                   onClick={() => setDiaSelecionado(selecionado ? null : dia)}
                   className="flex-1 flex flex-col items-center py-2 gap-0.5 relative"
                 >
-                  <p className="text-xs text-gray-400">{DIAS[dia.getDay()]}</p>
+                  <p className="text-xs text-gray-400">
+                    {DIAS[dia.getDay()]}
+                  </p>
+
                   <div
                     className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold"
                     style={
@@ -667,6 +844,7 @@ export default function AgendaPage() {
                   >
                     {dia.getDate()}
                   </div>
+
                   {count > 0 && (
                     <div
                       className="w-1.5 h-1.5 rounded-full"
@@ -680,7 +858,7 @@ export default function AgendaPage() {
         </>
       )}
 
-      {view === 'mes' && (
+      {!termoBusca.trim() && view === 'mes' && (
         <>
           <div className="px-4 py-3 bg-white border-b border-gray-100 flex items-center justify-between">
             <button
@@ -719,7 +897,10 @@ export default function AgendaPage() {
           <div className="bg-white border-b border-gray-100 px-2 pb-2">
             <div className="grid grid-cols-7 mb-1">
               {DIAS.map(d => (
-                <p key={d} className="text-center text-xs text-gray-400 py-1">
+                <p
+                  key={d}
+                  className="text-center text-xs text-gray-400 py-1"
+                >
                   {d}
                 </p>
               ))}
@@ -758,6 +939,7 @@ export default function AgendaPage() {
                     >
                       {dia.getDate()}
                     </div>
+
                     {count > 0 && (
                       <div
                         className="w-1 h-1 rounded-full"
@@ -773,84 +955,135 @@ export default function AgendaPage() {
       )}
 
       <div className="px-4 py-4 flex flex-col gap-3">
-        <button
-          onClick={() => router.push('/salao/horarios-vagos')}
-          className="w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold"
-          style={{ borderColor: cor, color: cor }}
-        >
-          <Plus size={16} />
-          Liberar horário para clientes
-        </button>
+        {!termoBusca.trim() && (
+          <button
+            onClick={() => router.push('/salao/horarios-vagos')}
+            className="w-full py-3 rounded-2xl border-2 border-dashed flex items-center justify-center gap-2 text-sm font-semibold"
+            style={{ borderColor: cor, color: cor }}
+          >
+            <Plus size={16} />
+            Liberar horário para clientes
+          </button>
+        )}
 
-        {(() => {
-          const diasParaMostrar = diaSelecionado
-            ? [diaSelecionado]
-            : view === 'semana'
-              ? diasSemana
-              : diasMes.filter(d => agendamentosDoDia(d).length > 0)
+        {termoBusca.trim() ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-gray-500">
+              {agendamentosFiltrados.length}{' '}
+              {agendamentosFiltrados.length === 1
+                ? 'resultado encontrado'
+                : 'resultados encontrados'}
+            </p>
 
-          const temAlgum = diasParaMostrar.some(
-            dia => agendamentosDoDia(dia).length > 0,
-          )
-
-          if (!temAlgum) {
-            return (
+            {agendamentosFiltrados.length === 0 ? (
               <div className="card text-center py-10 flex flex-col items-center gap-3">
-                <Calendar size={36} className="text-gray-300" />
-                <p className="text-gray-400">Nenhum agendamento</p>
-                <button
-                  onClick={() => router.push('/salao/agenda/novo')}
-                  className="px-4 py-2 rounded-full text-sm font-medium text-white"
-                  style={{ backgroundColor: cor }}
-                >
-                  + Novo agendamento
-                </button>
+                <Search size={34} className="text-gray-300" />
+
+                <p className="font-semibold text-gray-700">
+                  Nenhum agendamento encontrado
+                </p>
+
+                <p className="text-sm text-gray-400">
+                  Tente buscar por outro nome, serviço ou profissional.
+                </p>
               </div>
+            ) : (
+              agendamentosFiltrados.map(ag => {
+                const data = new Date(ag.data_hora)
+
+                return (
+                  <div key={ag.id} className="flex flex-col gap-2">
+                    <p className="text-xs font-semibold text-gray-500">
+                      {data.toLocaleDateString('pt-BR', {
+                        weekday: 'long',
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </p>
+
+                    <CardAgendamento ag={ag} />
+                  </div>
+                )
+              })
+            )}
+          </div>
+        ) : (
+          (() => {
+            const diasParaMostrar = diaSelecionado
+              ? [diaSelecionado]
+              : view === 'semana'
+                ? diasSemana
+                : diasMes.filter(
+                    d => agendamentosDoDia(d).length > 0,
+                  )
+
+            const temAlgum = diasParaMostrar.some(
+              dia => agendamentosDoDia(dia).length > 0,
             )
-          }
 
-          return diasParaMostrar.map(dia => {
-            const ags = agendamentosDoDia(dia)
-            if (ags.length === 0) return null
+            if (!temAlgum) {
+              return (
+                <div className="card text-center py-10 flex flex-col items-center gap-3">
+                  <Calendar size={36} className="text-gray-300" />
 
-            return (
-              <div key={dia.toISOString()}>
-                <div className="flex items-center gap-2 mb-2">
-                  <div
-                    className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-white shrink-0"
-                    style={{
-                      backgroundColor:
-                        dia.toDateString() === hoje.toDateString()
-                          ? cor
-                          : '#9ca3af',
-                    }}
+                  <p className="text-gray-400">Nenhum agendamento</p>
+
+                  <button
+                    onClick={() => router.push('/salao/agenda/novo')}
+                    className="px-4 py-2 rounded-full text-sm font-medium text-white"
+                    style={{ backgroundColor: cor }}
                   >
-                    {dia.getDate()}
+                    + Novo agendamento
+                  </button>
+                </div>
+              )
+            }
+
+            return diasParaMostrar.map(dia => {
+              const ags = agendamentosDoDia(dia)
+              if (ags.length === 0) return null
+
+              return (
+                <div key={dia.toISOString()}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div
+                      className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-white shrink-0"
+                      style={{
+                        backgroundColor:
+                          dia.toDateString() === hoje.toDateString()
+                            ? cor
+                            : '#9ca3af',
+                      }}
+                    >
+                      {dia.getDate()}
+                    </div>
+
+                    <p className="text-sm font-semibold text-gray-700">
+                      {DIAS_COMPLETOS[dia.getDay()]},{' '}
+                      {dia.getDate()} de {MESES[dia.getMonth()]}
+
+                      {dia.toDateString() === hoje.toDateString() && (
+                        <span
+                          className="ml-2 text-xs font-normal"
+                          style={{ color: cor }}
+                        >
+                          (hoje)
+                        </span>
+                      )}
+                    </p>
                   </div>
 
-                  <p className="text-sm font-semibold text-gray-700">
-                    {DIAS_COMPLETOS[dia.getDay()]}, {dia.getDate()} de{' '}
-                    {MESES[dia.getMonth()]}
-                    {dia.toDateString() === hoje.toDateString() && (
-                      <span
-                        className="ml-2 text-xs font-normal"
-                        style={{ color: cor }}
-                      >
-                        (hoje)
-                      </span>
-                    )}
-                  </p>
+                  <div className="flex flex-col gap-2 ml-10">
+                    {ags.map(ag => (
+                      <CardAgendamento key={ag.id} ag={ag} />
+                    ))}
+                  </div>
                 </div>
-
-                <div className="flex flex-col gap-2 ml-10">
-                  {ags.map(ag => (
-                    <CardAgendamento key={ag.id} ag={ag} />
-                  ))}
-                </div>
-              </div>
-            )
-          })
-        })()}
+              )
+            })
+          })()
+        )}
       </div>
 
       {modalEditar && (
@@ -860,6 +1093,7 @@ export default function AgendaPage() {
               <h3 className="font-bold text-gray-900 text-lg">
                 Editar agendamento
               </h3>
+
               <button
                 onClick={() => setModalEditar(null)}
                 aria-label="Fechar"
@@ -877,6 +1111,7 @@ export default function AgendaPage() {
                 <p className="text-xs font-medium text-gray-500 mb-1">
                   Serviços:
                 </p>
+
                 {getServicosDetalhados(modalEditar).map((servico, i) => (
                   <div
                     key={`${servico.nome}-${i}`}
@@ -886,7 +1121,10 @@ export default function AgendaPage() {
                       className="w-1.5 h-1.5 rounded-full"
                       style={{ backgroundColor: cor }}
                     />
-                    <p className="text-sm text-gray-700">{servico.nome}</p>
+
+                    <p className="text-sm text-gray-700">
+                      {servico.nome}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -896,11 +1134,15 @@ export default function AgendaPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Status
               </label>
+
               <select
                 className="input-field"
                 value={formEditar.status}
                 onChange={e =>
-                  setFormEditar(p => ({ ...p, status: e.target.value }))
+                  setFormEditar(p => ({
+                    ...p,
+                    status: e.target.value,
+                  }))
                 }
               >
                 <option value="confirmado">Confirmado</option>
@@ -917,6 +1159,7 @@ export default function AgendaPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Valor cobrado (R$)
               </label>
+
               <input
                 className="input-field"
                 type="number"
@@ -925,7 +1168,10 @@ export default function AgendaPage() {
                 placeholder="0,00"
                 value={formEditar.valor}
                 onChange={e =>
-                  setFormEditar(p => ({ ...p, valor: e.target.value }))
+                  setFormEditar(p => ({
+                    ...p,
+                    valor: e.target.value,
+                  }))
                 }
               />
             </div>
@@ -934,6 +1180,7 @@ export default function AgendaPage() {
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Observações
               </label>
+
               <textarea
                 className="input-field resize-none"
                 rows={2}
@@ -954,6 +1201,7 @@ export default function AgendaPage() {
               >
                 Cancelar
               </button>
+
               <button
                 onClick={() => void salvarEdicao()}
                 disabled={salvando}
