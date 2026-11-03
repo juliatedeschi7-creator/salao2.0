@@ -3216,6 +3216,39 @@ este agendamento.
                                       )
                                     }
                                   )}
+<button
+  type="button"
+  disabled={salvando}
+  onClick={() => selecionarPacote(index, 'sem_pacote')}
+  className={`w-full min-h-14 rounded-xl border-2 px-3 py-3 text-left transition ${
+    cobertura.clientePacoteIdSelecionado === 'sem_pacote'
+      ? 'border-[var(--cor-salao)] bg-[#fff5fb]'
+      : 'border-[#e6e6e6] bg-white'
+  }`}
+>
+  <div className="flex items-center justify-between gap-3">
+    <div>
+      <p className="text-sm font-semibold text-gray-800">
+        Não utilizar pacote neste serviço
+      </p>
+      <p className="text-xs text-gray-500 mt-0.5">
+        Serviço avulso — não descontar nenhuma sessão.
+      </p>
+    </div>
+
+    <div
+      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+        cobertura.clientePacoteIdSelecionado === 'sem_pacote'
+          ? 'border-[var(--cor-salao)] bg-[var(--cor-salao)] text-white'
+          : 'border-gray-300'
+      }`}
+    >
+      {cobertura.clientePacoteIdSelecionado === 'sem_pacote' && (
+        <Check size={14} />
+      )}
+    </div>
+  </div>
+</button>
                                 </div>
                               </div>
                             )
@@ -3229,7 +3262,8 @@ disabled={
   salvando ||
   coberturas.length === 0 ||
   coberturas.some(
-    (c: CoberturaServico) => !c.clientePacoteIdSelecionado
+    (c: CoberturaServico) =>
+      !c.clientePacoteIdSelecionado
   )
 }
                           onClick={onConfirmar}
