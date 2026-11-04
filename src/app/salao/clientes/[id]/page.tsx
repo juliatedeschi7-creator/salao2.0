@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -12,11 +13,15 @@ import {
   ClipboardList,
   Check,
   X,
-  Lock
+  Lock,
+  Eye,
+  EyeOff,
+  KeyRound,
+  ShieldCheck
 } from 'lucide-react'
 
 export default function ClientePerfilPage() {
-  const { profile, loading } = useAuth()
+  const { profile, loading, temAcessoTotal } = useAuth()
   const router = useRouter()
   const params = useParams()
 
@@ -37,6 +42,12 @@ export default function ClientePerfilPage() {
   const [editandoObs, setEditandoObs] = useState(false)
   const [obsText, setObsText] = useState('')
   const [salvandoObs, setSalvandoObs] = useState(false)
+
+  const [senhaTemporaria, setSenhaTemporaria] = useState('')
+  const [mostrarSenha, setMostrarSenha] = useState(false)
+  const [redefinindoSenha, setRedefinindoSenha] = useState(false)
+  const [mensagemSenha, setMensagemSenha] = useState('')
+  const [erroSenha, setErroSenha] = useState(false)
 
   useEffect(() => {
     if (loading) return
@@ -68,6 +79,7 @@ export default function ClientePerfilPage() {
         .from('clientes')
         .select('*')
         .eq('id', clienteId)
+        .eq('salao_id', profile!.salao_id!)
         .single()
 
       if (erroCli || !cli) {
@@ -78,10 +90,6 @@ export default function ClientePerfilPage() {
       setCliente(cli)
       setObsText(cli?.observacoes_internas || '')
 
-      // ============================================================
-      // AGENDAMENTOS
-      // ============================================================
-
       const { data: ags } = await supabase
         .from('agendamentos')
         .select(
@@ -91,15 +99,6 @@ export default function ClientePerfilPage() {
         .order('data_hora', { ascending: false })
 
       setAgendamentos(ags || [])
-
-      // ============================================================
-      // PACOTES
-      //
-      // A estrutura atual usada pelo sistema é:
-      // pacotes_clientes_resumo
-      //
-      // O vínculo atual é pelo nome do cliente.
-      // ============================================================
 
       const {
         data: pacs,
@@ -119,10 +118,6 @@ export default function ClientePerfilPage() {
       } else {
         setPacotes(pacs || [])
       }
-
-      // ============================================================
-      // ANAMNESES
-      // ============================================================
 
       const { data: ans } = await supabase
         .from('respostas_anamnese')
@@ -151,6 +146,7 @@ export default function ClientePerfilPage() {
         observacoes_internas: obsText
       })
       .eq('id', clienteId)
+      .eq('salao_id', profile!.salao_id!)
 
     if (error) {
       console.error(
@@ -170,13 +166,78 @@ export default function ClientePerfilPage() {
     setEditandoObs(false)
   }
 
+  async function redefinirSenha() {
+    setMensagemSenha('')
+    setErroSenha(false)
+
+    if (!cliente?.profile_id) {
+      setErroSenha(true)
+      setMensagemSenha(
+        'Esta cliente ainda não possui uma conta vinculada.'
+      )
+      return
+    }
+
+    if (senhaTemporaria.length < 8) {
+      setErroSenha(true)
+      setMensagemSenha(
+        'A senha deve ter pelo menos 8 caracteres.'
+      )
+      return
+    }
+
+    const confirmar = window.confirm(
+      `Deseja realmente definir uma nova senha temporária para ${cliente.nome}? A senha atual deixará de funcionar.`
+    )
+
+    if (!confirmar) return
+
+    setRedefinindoSenha(true)
+
+    try {
+      const resposta = await fetch(
+        `/api/salao/clientes/${clienteId}/redefinir-senha`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            senha: senhaTemporaria
+          })
+        }
+      )
+
+      const resultado = await resposta.json()
+
+      if (!resposta.ok) {
+        throw new Error(
+          resultado?.error ||
+          'Não foi possível redefinir a senha.'
+        )
+      }
+
+      setSenhaTemporaria('')
+      setMostrarSenha(false)
+      setErroSenha(false)
+      setMensagemSenha(
+        'Senha temporária definida com sucesso! Informe a nova senha à cliente por um canal privado.'
+      )
+
+    } catch (error: any) {
+      setErroSenha(true)
+      setMensagemSenha(
+        error?.message ||
+        'Ocorreu um erro ao redefinir a senha.'
+      )
+    } finally {
+      setRedefinindoSenha(false)
+    }
+  }
+
   const cor =
     salao?.cor_primaria ||
     '#E91E8C'
-
-  // ============================================================
-  // ESTATÍSTICAS DOS PACOTES
-  // ============================================================
 
   const pacotesAtivos =
     pacotes.filter(
@@ -194,14 +255,10 @@ export default function ClientePerfilPage() {
     pacotesAtivos.length
 
   const statusCor: Record<string, string> = {
-    confirmado:
-      'bg-green-50 text-green-600',
-    pendente:
-      'bg-yellow-50 text-yellow-600',
-    concluido:
-      'bg-gray-100 text-gray-500',
-    cancelado:
-      'bg-red-50 text-red-400',
+    confirmado: 'bg-green-50 text-green-600',
+    pendente: 'bg-yellow-50 text-yellow-600',
+    concluido: 'bg-gray-100 text-gray-500',
+    cancelado: 'bg-red-50 text-red-400',
   }
 
   if (loading || carregando) {
@@ -240,10 +297,6 @@ export default function ClientePerfilPage() {
   return (
     <div className="min-h-screen bg-[#f8f9fa] pb-8">
 
-      {/* ====================================================== */}
-      {/* HEADER */}
-      {/* ====================================================== */}
-
       <div
         className="relative overflow-hidden px-4 pt-12 pb-20"
         style={{
@@ -251,7 +304,6 @@ export default function ClientePerfilPage() {
             `linear-gradient(135deg, ${cor}, ${cor}bb)`
         }}
       >
-
         <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-10 bg-white" />
         <div className="absolute top-16 -left-8 w-24 h-24 rounded-full opacity-10 bg-white" />
 
@@ -266,111 +318,73 @@ export default function ClientePerfilPage() {
         </button>
 
         <div className="relative flex items-center gap-4">
-
           <div className="w-16 h-16 rounded-2xl bg-white/20 border-2 border-white/30 flex items-center justify-center text-white font-bold text-2xl shrink-0">
-            {cliente?.nome
-              ?.charAt(0)
-              .toUpperCase()}
+            {cliente?.nome?.charAt(0).toUpperCase()}
           </div>
 
           <div className="flex-1">
-
             <h1 className="text-white font-bold text-xl leading-tight">
               {cliente?.nome}
             </h1>
 
             {cliente?.email && (
               <div className="flex items-center gap-1.5 mt-1">
-
                 <Mail
                   size={12}
                   className="text-white/70"
                 />
-
                 <p className="text-white/70 text-xs">
                   {cliente.email}
                 </p>
-
               </div>
             )}
-
           </div>
-
         </div>
-
       </div>
 
-      {/* ====================================================== */}
-      {/* RESUMO */}
-      {/* ====================================================== */}
-
       <div className="px-4 -mt-10 relative z-10 mb-4">
-
         <div className="bg-white rounded-2xl shadow-md grid grid-cols-3 divide-x divide-gray-100">
-
           <div className="flex flex-col items-center py-4 gap-0.5">
-
             <p className="text-2xl font-bold text-gray-900">
               {agendamentos.length}
             </p>
-
             <p className="text-xs text-gray-400">
               Atendimentos
             </p>
-
           </div>
 
           <div className="flex flex-col items-center py-4 gap-0.5">
-
             <p
               className="text-2xl font-bold"
-              style={{
-                color: cor
-              }}
+              style={{ color: cor }}
             >
               {totalPacotesAtivos}
             </p>
-
             <p className="text-xs text-gray-400">
               Pacotes ativos
             </p>
-
           </div>
 
           <div className="flex flex-col items-center py-4 gap-0.5">
-
             <p className="text-2xl font-bold text-gray-900">
               {totalSessoes}
             </p>
-
             <p className="text-xs text-gray-400 text-center leading-tight">
               Sessões restantes
             </p>
-
           </div>
-
         </div>
-
       </div>
 
-      {/* ====================================================== */}
-      {/* WHATSAPP */}
-      {/* ====================================================== */}
-
       {cliente?.telefone && (
-
         <div className="px-4 mb-4">
-
           <a
             href={`https://wa.me/55${cliente.telefone.replace(/\D/g, '')}`}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-white font-medium text-sm"
-            style={{
-              backgroundColor: '#25D366'
-            }}
+            style={{ backgroundColor: '#25D366' }}
           >
-
             <svg
               width="16"
               height="16"
@@ -379,42 +393,19 @@ export default function ClientePerfilPage() {
             >
               <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.198-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
             </svg>
-
             Enviar mensagem no WhatsApp
-
           </a>
-
         </div>
-
       )}
 
-      {/* ====================================================== */}
-      {/* ABAS */}
-      {/* ====================================================== */}
-
       <div className="px-4 mb-4">
-
         <div className="flex gap-1.5 bg-white rounded-2xl p-1 shadow-sm overflow-x-auto">
-
           {([
-            {
-              key: 'resumo',
-              label: 'Resumo'
-            },
-            {
-              key: 'historico',
-              label: 'Histórico'
-            },
-            {
-              key: 'pacotes',
-              label: 'Pacotes'
-            },
-            {
-              key: 'anamnese',
-              label: 'Anamnese'
-            }
+            { key: 'resumo', label: 'Resumo' },
+            { key: 'historico', label: 'Histórico' },
+            { key: 'pacotes', label: 'Pacotes' },
+            { key: 'anamnese', label: 'Anamnese' }
           ] as const).map(t => (
-
             <button
               key={t.key}
               onClick={() => setAba(t.key)}
@@ -432,69 +423,42 @@ export default function ClientePerfilPage() {
             >
               {t.label}
             </button>
-
           ))}
-
         </div>
-
       </div>
 
       <div className="px-4 flex flex-col gap-3">
 
-        {/* ====================================================== */}
-        {/* RESUMO */}
-        {/* ====================================================== */}
-
         {aba === 'resumo' && (
           <>
-
             <div className="card flex flex-col gap-2">
-
               <div className="flex items-center justify-between">
-
                 <div className="flex items-center gap-2">
-
-                  <Lock
-                    size={14}
-                    style={{
-                      color: cor
-                    }}
-                  />
-
+                  <Lock size={14} style={{ color: cor }} />
                   <p className="text-sm font-semibold text-gray-700">
                     Observações internas
                   </p>
-
                 </div>
-
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">
                   Gestão
                 </span>
-
               </div>
 
               {editandoObs ? (
-
                 <div className="flex flex-col gap-2">
-
                   <textarea
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none resize-none"
                     rows={5}
                     placeholder="Ex: Tintura 7.1, alérgica a amônia..."
                     value={obsText}
-                    onChange={e =>
-                      setObsText(e.target.value)
-                    }
+                    onChange={e => setObsText(e.target.value)}
                     autoFocus
                   />
 
                   <div className="flex gap-2">
-
                     <button
                       onClick={() => {
-                        setObsText(
-                          cliente?.observacoes_internas || ''
-                        )
+                        setObsText(cliente?.observacoes_internas || '')
                         setEditandoObs(false)
                       }}
                       className="flex-1 py-2 rounded-xl border border-gray-200 text-gray-500 text-sm font-medium flex items-center justify-center gap-1"
@@ -507,140 +471,169 @@ export default function ClientePerfilPage() {
                       onClick={salvarObservacoes}
                       disabled={salvandoObs}
                       className="flex-1 py-2 rounded-xl text-white text-sm font-medium flex items-center justify-center gap-1"
-                      style={{
-                        backgroundColor: cor
-                      }}
+                      style={{ backgroundColor: cor }}
                     >
-                      {salvandoObs
-                        ? '...'
-                        : (
-                          <>
-                            <Check size={14} />
-                            Salvar
-                          </>
-                        )}
+                      {salvandoObs ? '...' : (
+                        <>
+                          <Check size={14} />
+                          Salvar
+                        </>
+                      )}
                     </button>
-
                   </div>
-
                 </div>
-
               ) : (
-
                 <button
-                  onClick={() =>
-                    setEditandoObs(true)
-                  }
+                  onClick={() => setEditandoObs(true)}
                   className="text-left w-full"
                 >
-
                   {cliente?.observacoes_internas ? (
-
                     <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
                       {cliente.observacoes_internas}
                     </p>
-
                   ) : (
-
                     <p className="text-sm text-gray-300 italic">
                       Toque para adicionar observações...
                     </p>
-
                   )}
-
                 </button>
-
               )}
-
             </div>
 
-            <div className="card flex flex-col gap-2">
+            {temAcessoTotal && (
+              <div className="card flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <KeyRound
+                    size={17}
+                    style={{ color: cor }}
+                  />
+                  <p className="text-sm font-semibold text-gray-700">
+                    Acesso à conta
+                  </p>
+                </div>
 
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Defina uma senha temporária para esta cliente caso ela não consiga acessar a conta.
+                </p>
+
+                {!cliente?.profile_id ? (
+                  <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3">
+                    <p className="text-xs text-yellow-700">
+                      Esta cliente ainda não possui uma conta vinculada ao aplicativo.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <input
+                        type={mostrarSenha ? 'text' : 'password'}
+                        value={senhaTemporaria}
+                        onChange={e => {
+                          setSenhaTemporaria(e.target.value)
+                          setMensagemSenha('')
+                        }}
+                        placeholder="Digite a senha temporária"
+                        autoComplete="new-password"
+                        maxLength={128}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 pr-12 text-sm outline-none focus:border-pink-300"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setMostrarSenha(!mostrarSenha)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                      >
+                        {mostrarSenha ? (
+                          <EyeOff size={18} />
+                        ) : (
+                          <Eye size={18} />
+                        )}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-gray-400">
+                      Utilize pelo menos 8 caracteres.
+                    </p>
+
+                    <button
+                      onClick={redefinirSenha}
+                      disabled={
+                        redefinindoSenha ||
+                        senhaTemporaria.length < 8
+                      }
+                      className="w-full py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                      style={{ backgroundColor: cor }}
+                    >
+                      <ShieldCheck size={16} />
+                      {redefinindoSenha
+                        ? 'Redefinindo senha...'
+                        : 'Definir senha temporária'}
+                    </button>
+                  </>
+                )}
+
+                {mensagemSenha && (
+                  <div
+                    className={`rounded-xl p-3 text-xs leading-relaxed ${
+                      erroSenha
+                        ? 'bg-red-50 text-red-600'
+                        : 'bg-green-50 text-green-700'
+                    }`}
+                  >
+                    {mensagemSenha}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="card flex flex-col gap-2">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                 Dados pessoais
               </p>
 
               {cliente?.email && (
-
                 <div className="flex items-center gap-2">
-
-                  <Mail
-                    size={14}
-                    className="text-gray-400 shrink-0"
-                  />
-
+                  <Mail size={14} className="text-gray-400 shrink-0" />
                   <p className="text-sm text-gray-700">
                     {cliente.email}
                   </p>
-
                 </div>
-
               )}
 
               {cliente?.data_nascimento && (
-
                 <div className="flex items-center gap-2">
-
-                  <Calendar
-                    size={14}
-                    className="text-gray-400 shrink-0"
-                  />
-
+                  <Calendar size={14} className="text-gray-400 shrink-0" />
                   <p className="text-sm text-gray-700">
                     Nasc:{' '}
                     {new Date(
-                      cliente.data_nascimento +
-                      'T12:00'
-                    ).toLocaleDateString(
-                      'pt-BR'
-                    )}
+                      cliente.data_nascimento + 'T12:00'
+                    ).toLocaleDateString('pt-BR')}
                   </p>
-
                 </div>
-
               )}
-
             </div>
-
           </>
         )}
 
-        {/* ====================================================== */}
-        {/* HISTÓRICO */}
-        {/* ====================================================== */}
-
         {aba === 'historico' && (
-
           agendamentos.length === 0 ? (
-
             <div className="card text-center py-8">
-
-              <Calendar
-                size={32}
-                className="text-gray-300 mx-auto mb-2"
-              />
-
+              <Calendar size={32} className="text-gray-300 mx-auto mb-2" />
               <p className="text-gray-400">
                 Nenhum atendimento
               </p>
-
             </div>
-
           ) : (
-
             agendamentos.map(ag => (
-
               <div
                 key={ag.id}
                 className="card flex flex-col gap-1"
               >
-
                 <div className="flex items-start justify-between">
-
                   <p className="font-semibold text-gray-900">
                     {ag.servicos?.nome}
                   </p>
-
                   <span
                     className={
                       'text-xs px-2 py-0.5 rounded-full ' +
@@ -652,13 +645,10 @@ export default function ClientePerfilPage() {
                   >
                     {ag.status}
                   </span>
-
                 </div>
 
                 <p className="text-xs text-gray-400">
-                  {new Date(
-                    ag.data_hora
-                  ).toLocaleDateString(
+                  {new Date(ag.data_hora).toLocaleDateString(
                     'pt-BR',
                     {
                       weekday: 'short',
@@ -670,313 +660,181 @@ export default function ClientePerfilPage() {
                     }
                   )}
                 </p>
-
               </div>
-
             ))
-
           )
-
         )}
 
-        {/* ====================================================== */}
-        {/* PACOTES */}
-        {/* ====================================================== */}
-
         {aba === 'pacotes' && (
-
           pacotes.length === 0 ? (
-
             <div className="card text-center py-8">
-
-              <Package
-                size={32}
-                className="text-gray-300 mx-auto mb-2"
-              />
-
+              <Package size={32} className="text-gray-300 mx-auto mb-2" />
               <p className="text-gray-400">
                 Nenhum pacote
               </p>
-
             </div>
-
           ) : (
-
             pacotes.map(p => {
+              const sessoesTotal = Number(p.sessoes_total || 0)
+              const sessoesRestantes = Number(p.sessoes_restantes || 0)
+              const sessoesUsadas = Math.max(0, sessoesTotal - sessoesRestantes)
 
-              const sessoesTotal =
-                Number(
-                  p.sessoes_total || 0
-                )
+              const percentual = sessoesTotal > 0
+                ? Math.min(
+                    100,
+                    Math.round((sessoesUsadas / sessoesTotal) * 100)
+                  )
+                : 0
 
-              const sessoesRestantes =
-                Number(
-                  p.sessoes_restantes || 0
-                )
-
-              const sessoesUsadas =
-                Math.max(
-                  0,
-                  sessoesTotal -
-                    sessoesRestantes
-                )
-
-              const percentual =
-                sessoesTotal > 0
-                  ? Math.min(
-                      100,
-                      Math.round(
-                        (sessoesUsadas /
-                          sessoesTotal) *
-                          100
-                      )
-                    )
-                  : 0
-
-              const historicoSessoes =
-                Array.isArray(
-                  p.historico_sessoes
-                )
-                  ? p.historico_sessoes
-                  : []
+              const historicoSessoes = Array.isArray(p.historico_sessoes)
+                ? p.historico_sessoes
+                : []
 
               return (
-
                 <div
                   key={p.id}
                   className="card flex flex-col gap-3"
                 >
-
                   <div className="flex items-start justify-between gap-3">
-
                     <div>
-
                       <p className="font-bold text-gray-900">
-                        {p.servico ||
-                          'Pacote'}
+                        {p.servico || 'Pacote'}
                       </p>
-
                       <p className="text-xs text-gray-400 mt-0.5">
                         {p.status === 'ativo'
                           ? 'Pacote ativo'
                           : 'Pacote concluído'}
                       </p>
-
                     </div>
 
                     <span
                       className="text-xs px-2 py-1 rounded-full font-medium"
                       style={{
-                        backgroundColor:
-                          p.status === 'ativo'
-                            ? `${cor}15`
-                            : '#f3f4f6',
-                        color:
-                          p.status === 'ativo'
-                            ? cor
-                            : '#9ca3af'
+                        backgroundColor: p.status === 'ativo'
+                          ? `${cor}15`
+                          : '#f3f4f6',
+                        color: p.status === 'ativo'
+                          ? cor
+                          : '#9ca3af'
                       }}
                     >
-                      {p.status === 'ativo'
-                        ? 'Ativo'
-                        : 'Concluído'}
+                      {p.status === 'ativo' ? 'Ativo' : 'Concluído'}
                     </span>
-
                   </div>
 
                   <div className="grid grid-cols-3 gap-2">
-
                     <div className="bg-gray-50 rounded-xl p-2.5 text-center">
-
                       <p className="text-lg font-bold text-gray-900">
                         {sessoesTotal}
                       </p>
-
                       <p className="text-[10px] text-gray-400">
                         Total
                       </p>
-
                     </div>
 
                     <div className="bg-gray-50 rounded-xl p-2.5 text-center">
-
                       <p className="text-lg font-bold text-gray-900">
                         {sessoesUsadas}
                       </p>
-
                       <p className="text-[10px] text-gray-400">
                         Usadas
                       </p>
-
                     </div>
 
                     <div
                       className="rounded-xl p-2.5 text-center"
-                      style={{
-                        backgroundColor:
-                          `${cor}10`
-                      }}
+                      style={{ backgroundColor: `${cor}10` }}
                     >
-
                       <p
                         className="text-lg font-bold"
-                        style={{
-                          color: cor
-                        }}
+                        style={{ color: cor }}
                       >
                         {sessoesRestantes}
                       </p>
-
                       <p className="text-[10px] text-gray-400">
                         Restantes
                       </p>
-
                     </div>
-
                   </div>
 
                   <div>
-
                     <div className="flex justify-between text-[10px] text-gray-400 mb-1">
-
-                      <span>
-                        Utilização
-                      </span>
-
-                      <span>
-                        {percentual}%
-                      </span>
-
+                      <span>Utilização</span>
+                      <span>{percentual}%</span>
                     </div>
 
                     <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-
                       <div
                         className="h-full rounded-full transition-all"
                         style={{
-                          width:
-                            `${percentual}%`,
-                          backgroundColor:
-                            cor
+                          width: `${percentual}%`,
+                          backgroundColor: cor
                         }}
                       />
-
                     </div>
-
                   </div>
 
                   {historicoSessoes.length > 0 && (
-
                     <div className="border-t border-gray-100 pt-3">
-
                       <p className="text-xs font-semibold text-gray-500 mb-2">
                         Sessões realizadas
                       </p>
 
                       <div className="flex flex-col gap-1.5">
-
                         {historicoSessoes
                           .slice()
                           .reverse()
                           .slice(0, 5)
-                          .map(
-                            (
-                              sessao: any,
-                              index: number
-                            ) => (
+                          .map((sessao: any, index: number) => (
+                            <div
+                              key={sessao.id || index}
+                              className="flex items-center justify-between text-xs"
+                            >
+                              <span className="text-gray-500">
+                                {sessao.data
+                                  ? new Date(sessao.data).toLocaleDateString('pt-BR')
+                                  : `Sessão ${index + 1}`}
+                              </span>
 
-                              <div
-                                key={
-                                  sessao.id ||
-                                  index
-                                }
-                                className="flex items-center justify-between text-xs"
-                              >
-
-                                <span className="text-gray-500">
-                                  {sessao.data
-                                    ? new Date(
-                                        sessao.data
-                                      ).toLocaleDateString(
-                                        'pt-BR'
-                                      )
-                                    : `Sessão ${
-                                        index + 1
-                                      }`}
+                              {sessao.servico && (
+                                <span className="text-gray-400">
+                                  {sessao.servico}
                                 </span>
-
-                                {sessao.servico && (
-
-                                  <span className="text-gray-400">
-                                    {sessao.servico}
-                                  </span>
-
-                                )}
-
-                              </div>
-
-                            )
-                          )}
-
+                              )}
+                            </div>
+                          ))}
                       </div>
-
                     </div>
-
                   )}
-
                 </div>
-
               )
             })
-
           )
-
         )}
 
-        {/* ====================================================== */}
-        {/* ANAMNESE */}
-        {/* ====================================================== */}
-
         {aba === 'anamnese' && (
-
           anamneses.length === 0 ? (
-
             <div className="card text-center py-8">
-
-              <ClipboardList
-                size={32}
-                className="text-gray-300 mx-auto mb-2"
-              />
-
+              <ClipboardList size={32} className="text-gray-300 mx-auto mb-2" />
               <p className="text-gray-400">
                 Nenhuma anamnese respondida
               </p>
-
             </div>
-
           ) : (
-
             anamneses.map(a => (
-
               <div
                 key={a.id}
                 className="card flex flex-col gap-2"
               >
-
                 <p className="font-semibold text-gray-900">
                   {a.fichas_anamnese?.titulo}
                 </p>
-
               </div>
-
             ))
-
           )
-
         )}
 
       </div>
-
     </div>
   )
 }
