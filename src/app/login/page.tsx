@@ -1,4 +1,6 @@
+
 'use client'
+
 import { useState, Suspense, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Eye, EyeOff, Bell, KeyRound } from 'lucide-react'
@@ -23,14 +25,19 @@ function LoginForm() {
 
   useEffect(() => {
     async function carregarIdentidade() {
-      const slugSalvo = typeof window !== 'undefined' ? localStorage.getItem('ultimo_salao_slug') : null
+      const slugSalvo = typeof window !== 'undefined'
+        ? localStorage.getItem('ultimo_salao_slug')
+        : null
       const slugEfetivo = salaoSlug || slugSalvo
 
       if (salaoSlug && typeof window !== 'undefined') {
         localStorage.setItem('ultimo_salao_slug', salaoSlug)
       }
 
-      if (!slugEfetivo) { setCarregando(false); return }
+      if (!slugEfetivo) {
+        setCarregando(false)
+        return
+      }
 
       const { data } = await supabase
         .from('saloes')
@@ -44,164 +51,294 @@ function LoginForm() {
           localStorage.setItem('ultimo_salao_slug', data.slug)
         }
       }
+
       setCarregando(false)
     }
+
     carregarIdentidade()
   }, [salaoSlug])
 
   async function handleLogin(e?: React.FormEvent) {
     if (e) e.preventDefault()
-    
-    if (!email || !senha) { setErro('Preencha email e senha.'); return }
-    setLoading(true); setErro('')
+
+    if (!email || !senha) {
+      setErro('Preencha email e senha.')
+      return
+    }
+
+    setLoading(true)
+    setErro('')
 
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(), password: senha
+      email: email.trim().toLowerCase(),
+      password: senha,
     })
 
-    if (error) { setErro('Email ou senha incorretos.'); setLoading(false); return }
-    if (!data.session) { setErro('Erro ao iniciar sessão.'); setLoading(false); return }
+    if (error) {
+      setErro('Email ou senha incorretos.')
+      setLoading(false)
+      return
+    }
 
-    // Busca o perfil do usuário logado
+    if (!data.session) {
+      setErro('Erro ao iniciar sessão.')
+      setLoading(false)
+      return
+    }
+
     const { data: prof, error: errProf } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', data.user.id)
       .single()
 
-    // Se não achar o perfil, manda para cliente por segurança
     if (errProf || !prof) {
       window.location.href = '/cliente'
       return
     }
 
-    // Se estiver desativado, barra
-    if (prof.ativo === false) { 
+    if (prof.ativo === false) {
       await supabase.auth.signOut()
       setErro('Esta conta está desativada.')
-      setLoading(false) 
-      return 
+      setLoading(false)
+      return
     }
 
     let destino = '/cliente'
 
-    // Direcionamento limpo e direto por role
     if (prof.role === 'admin_geral') {
       destino = '/admin'
     } else if (prof.role === 'dono_salao') {
       destino = prof.salao_id ? '/salao' : '/criar-salao'
     } else if (prof.role === 'funcionario') {
       destino = '/funcionario'
-    } else {
-      destino = '/cliente'
     }
 
     if (lembrarEReceber) {
       try {
         const { registrarPush } = await import('@/lib/push-client')
         registrarPush(data.user.id).catch(() => {})
-      } catch { }
+      } catch {}
     }
 
     window.location.href = destino
   }
 
   async function handleEsqueciSenha() {
-    if (!email) { setErroEsqueci('Digite seu e-mail no campo acima.'); return }
-    setLoadingEsqueci(true); setErroEsqueci(''); setSucessoEsqueci('')
+    const emailLimpo = email.trim().toLowerCase()
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://organiza-salao.xyz'
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-      redirectTo: `${origin}/redefinir-senha`,
-    })
+    if (!emailLimpo) {
+      setErroEsqueci('Digite seu e-mail no campo acima.')
+      return
+    }
+
+    setLoadingEsqueci(true)
+    setErroEsqueci('')
+    setSucessoEsqueci('')
+
+    const { error } = await supabase.auth.resetPasswordForEmail(emailLimpo)
+
     setLoadingEsqueci(false)
-    if (error) setErroEsqueci('Erro ao enviar e-mail: ' + error.message)
-    else setSucessoEsqueci('✅ E-mail enviado! Verifique sua caixa de entrada e o spam.')
+
+    if (error) {
+      console.error('Erro ao solicitar recuperação:', error)
+      setErroEsqueci(
+        'Não foi possível enviar o código. Tente novamente em alguns minutos.'
+      )
+      return
+    }
+
+    setSucessoEsqueci(
+      'Código enviado! Verifique sua caixa de entrada e também a pasta de spam.'
+    )
+  }
+
+  function irParaCodigo() {
+    const emailLimpo = email.trim().toLowerCase()
+
+    if (!emailLimpo) return
+
+    window.location.href =
+      '/redefinir-senha?email=' + encodeURIComponent(emailLimpo)
   }
 
   const isCliente = !!salaoInfo || !!salaoSlug
-  const cor = (isCliente && salaoInfo?.cor_primaria) ? salaoInfo.cor_primaria : '#111827'
-  const corSec = (isCliente && salaoInfo?.cor_secundaria) ? salaoInfo.cor_secundaria : '#f3f4f6'
+  const cor = (isCliente && salaoInfo?.cor_primaria)
+    ? salaoInfo.cor_primaria
+    : '#111827'
+  const corSec = (isCliente && salaoInfo?.cor_secundaria)
+    ? salaoInfo.cor_secundaria
+    : '#f3f4f6'
   const partes = salaoInfo?.nome?.split(' - ')
   const nomePrincipal = partes?.[0]
   const nomeSecundario = partes?.[1]
   const slugCadastro = salaoInfo?.slug || salaoSlug
 
-  if (carregando) return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  if (carregando) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <>
-      {isCliente && <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap" rel="stylesheet" />}
-      <div className="min-h-screen flex flex-col items-center px-6 py-10"
-        style={{ background: isCliente ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)` : '#ffffff' }}>
+      {isCliente && (
+        <link
+          href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&display=swap"
+          rel="stylesheet"
+        />
+      )}
 
+      <div
+        className="min-h-screen flex flex-col items-center px-6 py-10"
+        style={{
+          background: isCliente
+            ? `linear-gradient(to bottom, ${corSec} 0%, #ffffff 340px)`
+            : '#ffffff',
+        }}
+      >
         <div className="w-full max-w-sm flex flex-col items-center gap-1 mb-6 mt-6">
           {isCliente ? (
             <div className="text-center">
-              <div className="w-28 h-28 mb-1 mx-auto" style={{
-                backgroundColor: cor,
-                WebkitMaskImage: 'url(/logo.png)', maskImage: 'url(/logo.png)',
-                WebkitMaskSize: 'contain', maskSize: 'contain',
-                WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                WebkitMaskPosition: 'center', maskPosition: 'center'
-              }} />
-              <h1 style={{ fontFamily: "'Dancing Script', cursive", fontSize: '2.2rem', fontWeight: 700, color: cor, lineHeight: 1.2 }}>
+              <div
+                className="w-28 h-28 mb-1 mx-auto"
+                style={{
+                  backgroundColor: cor,
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                }}
+              />
+              <h1
+                style={{
+                  fontFamily: "'Dancing Script', cursive",
+                  fontSize: '2.2rem',
+                  fontWeight: 700,
+                  color: cor,
+                  lineHeight: 1.2,
+                }}
+              >
                 {nomePrincipal || 'Entrar'}
               </h1>
-              {nomeSecundario && <p className="text-sm font-bold text-gray-900 mt-1">{nomeSecundario}</p>}
-              <p className="text-gray-400 text-sm mt-2">Entre na sua conta para continuar</p>
+              {nomeSecundario && (
+                <p className="text-sm font-bold text-gray-900 mt-1">
+                  {nomeSecundario}
+                </p>
+              )}
+              <p className="text-gray-400 text-sm mt-2">
+                Entre na sua conta para continuar
+              </p>
             </div>
           ) : (
             <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 mb-4" style={{
-                backgroundColor: '#111827',
-                WebkitMaskImage: 'url(/logo.png)', maskImage: 'url(/logo.png)',
-                WebkitMaskSize: 'contain', maskSize: 'contain',
-                WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat',
-                WebkitMaskPosition: 'center', maskPosition: 'center'
-              }} />
-              <h1 className="text-2xl font-bold text-gray-900">Organiza Salão</h1>
-              <p className="text-gray-400 text-sm mt-1">Toda a gestão do seu espaço na palma da mão.</p>
+              <div
+                className="w-20 h-20 mb-4"
+                style={{
+                  backgroundColor: '#111827',
+                  WebkitMaskImage: 'url(/logo.png)',
+                  maskImage: 'url(/logo.png)',
+                  WebkitMaskSize: 'contain',
+                  maskSize: 'contain',
+                  WebkitMaskRepeat: 'no-repeat',
+                  maskRepeat: 'no-repeat',
+                  WebkitMaskPosition: 'center',
+                  maskPosition: 'center',
+                }}
+              />
+              <h1 className="text-2xl font-bold text-gray-900">
+                Organiza Salão
+              </h1>
+              <p className="text-gray-400 text-sm mt-1">
+                Toda a gestão do seu espaço na palma da mão.
+              </p>
             </div>
           )}
         </div>
 
-        <form onSubmit={handleLogin} className="w-full max-w-sm flex flex-col gap-4">
+        <form
+          onSubmit={handleLogin}
+          className="w-full max-w-sm flex flex-col gap-4"
+        >
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-gray-900">Email</label>
-            <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
-              type="email" placeholder="seuemail@exemplo.com"
-              value={email} onChange={e => setEmail(e.target.value)} />
+            <label className="text-xs font-semibold text-gray-900">
+              Email
+            </label>
+            <input
+              className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 text-base outline-none placeholder-gray-400"
+              type="email"
+              placeholder="seuemail@exemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-gray-900">Senha</label>
-              <button type="button" onClick={() => { setModalEsqueci(true); setErroEsqueci(''); setSucessoEsqueci('') }}
-                className="text-xs font-bold hover:underline transition-all" style={{ color: cor }}>
+              <label className="text-xs font-semibold text-gray-900">
+                Senha
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalEsqueci(true)
+                  setErroEsqueci('')
+                  setSucessoEsqueci('')
+                }}
+                className="text-xs font-bold hover:underline transition-all"
+                style={{ color: cor }}
+              >
                 Esqueceu a senha?
               </button>
             </div>
+
             <div className="relative">
-              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
-                type={mostrarSenha ? 'text' : 'password'} placeholder="Digite sua senha"
-                value={senha} onChange={e => setSenha(e.target.value)} />
-              <button type="button" className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400" onClick={() => setMostrarSenha(!mostrarSenha)}>
-                {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+              <input
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-4 px-4 pr-12 text-base outline-none placeholder-gray-400"
+                type={mostrarSenha ? 'text' : 'password'}
+                placeholder="Digite sua senha"
+                value={senha}
+                onChange={(e) => setSenha(e.target.value)}
+              />
+              <button
+                type="button"
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                onClick={() => setMostrarSenha(!mostrarSenha)}
+              >
+                {mostrarSenha
+                  ? <EyeOff size={20} />
+                  : <Eye size={20} />}
               </button>
             </div>
           </div>
 
-          <button type="button" onClick={() => setLembrarEReceber(v => !v)} className="flex items-center gap-3 text-left">
-            <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors"
-              style={{ borderColor: lembrarEReceber ? cor : '#d1d5db', backgroundColor: lembrarEReceber ? cor : 'transparent' }}>
+          <button
+            type="button"
+            onClick={() => setLembrarEReceber((v) => !v)}
+            className="flex items-center gap-3 text-left"
+          >
+            <div
+              className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors"
+              style={{
+                borderColor: lembrarEReceber ? cor : '#d1d5db',
+                backgroundColor: lembrarEReceber ? cor : 'transparent',
+              }}
+            >
               {lembrarEReceber && (
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 6L4.5 8.5L10 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path
+                    d="M2 6L4.5 8.5L10 3"
+                    stroke="white"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               )}
             </div>
@@ -217,9 +354,15 @@ function LoginForm() {
             </div>
           )}
 
-          <button type="submit" className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
-            style={{ backgroundColor: cor }} disabled={loading}>
-            {loading ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Entrar'}
+          <button
+            type="submit"
+            className="w-full text-white rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all mt-1"
+            style={{ backgroundColor: cor }}
+            disabled={loading}
+          >
+            {loading
+              ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              : 'Entrar'}
           </button>
 
           {!isCliente && (
@@ -231,18 +374,29 @@ function LoginForm() {
               </div>
               <p className="text-center text-gray-500 text-sm">
                 Não tem conta?{' '}
-                <a href="/cadastro" className="text-gray-900 font-bold">Criar conta</a>
+                <a href="/cadastro" className="text-gray-900 font-bold">
+                  Criar conta
+                </a>
               </p>
-              <a href="/cadastro?tipo=salao"
-                className="w-full border-2 border-gray-900 text-gray-900 rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all">
+              <a
+                href="/cadastro?tipo=salao"
+                className="w-full border-2 border-gray-900 text-gray-900 rounded-2xl py-4 font-semibold text-base flex items-center justify-center active:scale-95 transition-all"
+              >
                 Cadastrar meu salão
               </a>
             </>
           )}
+
           {isCliente && (
             <p className="text-center text-gray-900 text-sm">
               Não tem conta?{' '}
-              <a href={'/cadastro?salao=' + slugCadastro} className="font-bold" style={{ color: cor }}>Criar conta</a>
+              <a
+                href={'/cadastro?salao=' + slugCadastro}
+                className="font-bold"
+                style={{ color: cor }}
+              >
+                Criar conta
+              </a>
             </p>
           )}
         </form>
@@ -252,33 +406,98 @@ function LoginForm() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
-                style={{ backgroundColor: `${cor}15`, color: cor }}>
+              <div
+                className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: `${cor}15`,
+                  color: cor,
+                }}
+              >
                 <KeyRound size={20} />
               </div>
               <div>
-                <h3 className="text-base font-bold text-gray-900">Recuperar Senha</h3>
-                <p className="text-xs text-gray-500">Enviaremos um link para criar nova senha.</p>
+                <h3 className="text-base font-bold text-gray-900">
+                  Recuperar senha
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Enviaremos um código para seu e-mail.
+                </p>
               </div>
             </div>
+
             <div className="flex flex-col gap-1.5 pt-2">
-              <label className="text-xs font-semibold text-gray-900">E-mail cadastrado</label>
-              <input className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none placeholder-gray-400"
-                type="email" placeholder="seuemail@exemplo.com"
-                value={email} onChange={e => setEmail(e.target.value)} />
+              <label className="text-xs font-semibold text-gray-900">
+                E-mail cadastrado
+              </label>
+              <input
+                className="w-full bg-gray-50 border border-gray-200 rounded-2xl py-3.5 px-4 text-base outline-none placeholder-gray-400"
+                type="email"
+                placeholder="seuemail@exemplo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
-            {erroEsqueci && <div className="bg-red-50 border border-red-200 rounded-xl p-3"><p className="text-red-600 text-xs text-center">{erroEsqueci}</p></div>}
-            {sucessoEsqueci && <div className="bg-green-50 border border-green-200 rounded-xl p-3"><p className="text-green-700 text-xs text-center font-medium">{sucessoEsqueci}</p></div>}
-            <div className="flex gap-2 pt-2">
-              <button type="button" onClick={() => setModalEsqueci(false)}
-                className="flex-1 border border-gray-200 text-gray-700 py-3.5 rounded-2xl text-sm font-semibold hover:bg-gray-50 transition">
-                Cancelar
-              </button>
-              <button type="button" onClick={handleEsqueciSenha} disabled={loadingEsqueci}
-                className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold flex items-center justify-center active:scale-95 transition"
-                style={{ backgroundColor: cor }}>
-                {loadingEsqueci ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : 'Enviar Link'}
-              </button>
+
+            {erroEsqueci && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                <p className="text-red-600 text-xs text-center">
+                  {erroEsqueci}
+                </p>
+              </div>
+            )}
+
+            {sucessoEsqueci && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3">
+                <p className="text-green-700 text-xs text-center font-medium">
+                  {sucessoEsqueci}
+                </p>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 pt-2">
+              {!sucessoEsqueci ? (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalEsqueci(false)}
+                    className="flex-1 border border-gray-200 text-gray-700 py-3.5 rounded-2xl text-sm font-semibold hover:bg-gray-50 transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleEsqueciSenha}
+                    disabled={loadingEsqueci}
+                    className="flex-1 text-white py-3.5 rounded-2xl text-sm font-semibold flex items-center justify-center active:scale-95 transition disabled:opacity-60"
+                    style={{ backgroundColor: cor }}
+                  >
+                    {loadingEsqueci
+                      ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      : 'Enviar código'}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={irParaCodigo}
+                    className="w-full text-white py-3.5 rounded-2xl text-sm font-semibold"
+                    style={{ backgroundColor: cor }}
+                  >
+                    Já recebi o código
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalEsqueci(false)
+                      setSucessoEsqueci('')
+                    }}
+                    className="w-full border border-gray-200 text-gray-700 py-3 rounded-2xl text-sm font-semibold"
+                  >
+                    Voltar ao login
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -289,11 +508,13 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-white">
+          <div className="w-8 h-8 border-4 border-gray-900 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
       <LoginForm />
     </Suspense>
   )
