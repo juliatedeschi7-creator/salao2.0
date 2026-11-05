@@ -56,8 +56,8 @@ export default function RedefinirSenhaPage() {
       return
     }
 
-    if (!/^\d{6}$/.test(codigoLimpo)) {
-      setErro('Digite o código de seis números recebido por e-mail.')
+    if (!/^\d{8}$/.test(codigoLimpo)) {
+      setErro('Digite o código de oito números recebido por e-mail.')
       return
     }
 
@@ -171,7 +171,7 @@ export default function RedefinirSenhaPage() {
             {sucesso
               ? 'Sua senha foi atualizada com sucesso.'
               : etapa === 'codigo'
-                ? 'Digite o código recebido no seu e-mail para confirmar sua identidade.'
+                ? 'Digite o código de oito números recebido no seu e-mail para confirmar sua identidade.'
                 : 'Agora você já pode cadastrar uma nova senha para sua conta.'}
           </p>
 
@@ -225,17 +225,17 @@ export default function RedefinirSenhaPage() {
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
-                  maxLength={6}
+                  maxLength={8}
                   value={codigo}
                   onChange={(e) =>
-                    setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))
+                    setCodigo(e.target.value.replace(/\D/g, '').slice(0, 8))
                   }
-                  placeholder="000000"
+                  placeholder="00000000"
                   className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-center text-2xl tracking-[0.5em] font-semibold text-gray-800 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
                   required
                 />
                 <p className="text-xs text-gray-400 mt-2">
-                  O código é enviado pelo Supabase para o e-mail cadastrado.
+                  O código de oito dígitos é enviado pelo Supabase para o e-mail cadastrado.
                 </p>
               </div>
 
