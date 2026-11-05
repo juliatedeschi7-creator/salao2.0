@@ -495,36 +495,121 @@ export default function PacotesClientesPage() {
     }
   }
 
-  // EXCLUIR SESSÃO DO HISTÓRICO
-  async function excluirSessaoHistorico(indexSessao: number, pacoteObj: any) {
+  // EXCLUIR UMA SESSÃO DO HISTÓRICO E DEVOLVER O CRÉDITO
+  async function excluirSessaoHistorico(
+    indexSessao: number,
+    pacoteObj: any,
+    sessaoObj: any
+  ) {
+    if (!pacoteObj?.id) {
+      alert('Não foi possível identificar o pacote.')
+      return
+    }
+
     if (!confirm('Deseja excluir esta sessão e devolver 1 crédito ao pacote?')) {
       return
     }
 
-    const historicoAtual = Array.isArray(pacoteObj.historico_sessoes)
-      ? [...pacoteObj.historico_sessoes]
-      : []
+    try {
+      setSalvando(true)
 
-    historicoAtual.splice(indexSessao, 1)
+      // Busca a versão mais recente do pacote no banco.
+      const { data: pacoteAtual, error: erroBusca } = await supabase
+        .from('pacotes_clientes_resumo')
+        .select('*')
+        .eq('id', pacoteObj.id)
+        .maybeSingle()
 
-    const novasRestantes = Number(pacoteObj.sessoes_restantes || 0) + 1
+      if (erroBusca) throw erroBusca
 
-    const { error } = await supabase
-      .from('pacotes_clientes_resumo')
-      .update({
-        sessoes_restantes: novasRestantes,
-        status: 'ativo',
-        historico_sessoes: historicoAtual
-      })
-      .eq('id', pacoteObj.id)
+      if (!pacoteAtual) {
+        throw new Error('O pacote não foi encontrado ou você não tem permissão para acessá-lo.')
+      }
 
-    if (error) {
-      alert('Erro ao excluir sessão: ' + error.message)
-      return
-    }
+      const historicoAtual = Array.isArray(pacoteAtual.historico_sessoes)
+        ? [...pacoteAtual.historico_sessoes]
+        : []
 
-    if (clienteSelecionado) {
-      await carregarPacotesDoCliente(clienteSelecionado.nome)
+      // Localiza pelo ID único da sessão.
+      // Usa o índice somente para sessões antigas sem identificador.
+      let indiceReal = -1
+
+      if (sessaoObj?.id) {
+        indiceReal = historicoAtual.findIndex(
+          (sessao: any) =>
+            String(sessao?.id) === String(sessaoObj.id)
+        )
+      } else {
+        const sessaoPeloIndice = historicoAtual[indexSessao]
+
+        if (
+          sessaoPeloIndice &&
+          !sessaoPeloIndice.id
+        ) {
+          indiceReal = indexSessao
+        }
+      }
+
+      if (indiceReal < 0) {
+        throw new Error(
+          'Esta sessão não foi encontrada no histórico atualizado. Atualize a página e tente novamente.'
+        )
+      }
+
+      // Remove somente a sessão selecionada.
+      historicoAtual.splice(indiceReal, 1)
+
+      const total = Number(pacoteAtual.sessoes_total || 0)
+      const restantesAtuais = Number(pacoteAtual.sessoes_restantes || 0)
+
+      // Devolve um crédito, sem ultrapassar o total contratado.
+      const novasRestantes = total > 0
+        ? Math.min(total, restantesAtuais + 1)
+        : restantesAtuais + 1
+
+      const novoStatus = novasRestantes > 0
+        ? 'ativo'
+        : 'concluido'
+
+      const { data: pacoteAtualizado, error: erroAtualizacao } = await supabase
+        .from('pacotes_clientes_resumo')
+        .update({
+          sessoes_restantes: novasRestantes,
+          status: novoStatus,
+          historico_sessoes: historicoAtual
+        })
+        .eq('id', pacoteAtual.id)
+        .select('*')
+        .maybeSingle()
+
+      if (erroAtualizacao) throw erroAtualizacao
+
+      if (!pacoteAtualizado) {
+        throw new Error(
+          'O Supabase não confirmou a atualização. Verifique as permissões de UPDATE da tabela pacotes_clientes_resumo.'
+        )
+      }
+
+      // Atualiza a tela imediatamente com os dados confirmados pelo banco.
+      setPacotesCliente(pacotesAtuais =>
+        pacotesAtuais.map(pc =>
+          pc.id === pacoteAtualizado.id
+            ? pacoteAtualizado
+            : pc
+        )
+      )
+
+      alert('Sessão excluída e crédito devolvido ao pacote!')
+
+    } catch (err: any) {
+      console.error('Erro ao excluir sessão:', err)
+
+      alert(
+        'Não foi possível excluir a sessão: ' +
+        (err.message || 'Erro desconhecido.')
+      )
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -801,14 +886,15 @@ export default function PacotesClientesPage() {
                                     </span>
                                   </div>
 
-                                  <button
-                                    onClick={() => excluirSessaoHistorico(idx, pc)}
-                                    className="text-gray-300 hover:text-red-500 p-1 transition shrink-0"
-                                    title="Excluir sessão"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
+<button
+  type="button"
+  disabled={salvando}
+  onClick={() => excluirSessaoHistorico(idx, pc, sessao)}
+  className="text-gray-300 hover:text-red-500 p-1 transition shrink-0 disabled:opacity-40"
+  title="Excluir somente esta sessão"
+>
+  <X size={14} />
+</button>
                               )
                             })}
                           </div>
