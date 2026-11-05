@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -10,16 +11,22 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Mail,
+  KeyRound,
 } from 'lucide-react'
+
+type Etapa = 'codigo' | 'senha'
 
 export default function RedefinirSenhaPage() {
   const router = useRouter()
 
+  const [email, setEmail] = useState('')
+  const [codigo, setCodigo] = useState('')
   const [novaSenha, setNovaSenha] = useState('')
   const [confirmarSenha, setConfirmarSenha] = useState('')
 
-  const [temSessao, setTemSessao] = useState(false)
-  const [verificando, setVerificando] = useState(true)
+  const [etapa, setEtapa] = useState<Etapa>('codigo')
+  const [verificandoCodigo, setVerificandoCodigo] = useState(false)
   const [salvando, setSalvando] = useState(false)
 
   const [erro, setErro] = useState('')
@@ -29,129 +36,63 @@ export default function RedefinirSenhaPage() {
   const [mostrarConfirmacao, setMostrarConfirmacao] = useState(false)
 
   useEffect(() => {
-    let montado = true
-    let recuperacaoConfirmada = false
+    const parametros = new URLSearchParams(window.location.search)
+    const emailUrl = parametros.get('email')
 
-    const mostrarErroLink = (mensagem: string) => {
-      if (!montado) return
-
-      setTemSessao(false)
-      setErro(mensagem)
-      setVerificando(false)
-    }
-
-    const verificarRecuperacao = async () => {
-      try {
-        setVerificando(true)
-        setErro('')
-
-        const url = new URL(window.location.href)
-        const params = url.searchParams
-        const hashParams = new URLSearchParams(
-          url.hash.startsWith('#') ? url.hash.slice(1) : url.hash
-        )
-
-        // O Supabase pode devolver erros na query ou no fragmento.
-        const erroUrl =
-          params.get('error_description') ||
-          hashParams.get('error_description')
-
-        const codigoErro =
-          params.get('error_code') ||
-          hashParams.get('error_code')
-
-        if (erroUrl || params.has('error') || hashParams.has('error')) {
-          const mensagem =
-            codigoErro === 'otp_expired'
-              ? 'Este link de recuperação expirou ou já foi utilizado. Solicite um novo e-mail e abra o link mais recente.'
-              : 'Não foi possível validar este link de recuperação. Solicite um novo e-mail.'
-
-          mostrarErroLink(mensagem)
-          return
-        }
-
-        // Guardamos a indicação de que esta página foi aberta
-        // pelo fluxo de recuperação antes de consultar a sessão.
-        const temCodigoPKCE = params.has('code')
-        const tipoHash = hashParams.get('type')
-        const temTokenRecuperacao =
-          tipoHash === 'recovery' &&
-          !!hashParams.get('access_token')
-
-        const {
-          data: { subscription },
-        } = supabase.auth.onAuthStateChange((event, session) => {
-          if (!montado) return
-
-          if (event === 'PASSWORD_RECOVERY' && session) {
-            recuperacaoConfirmada = true
-            setTemSessao(true)
-            setErro('')
-            setVerificando(false)
-          }
-        })
-
-        // O cliente Supabase pode processar o código da URL
-        // automaticamente. Não chamamos exchangeCodeForSession
-        // novamente, pois isso pode consumir o mesmo código duas vezes.
-        const { data, error } = await supabase.auth.getSession()
-
-        if (!montado) {
-          subscription.unsubscribe()
-          return
-        }
-
-        if (error) {
-          mostrarErroLink(
-            'Não foi possível validar o link. Solicite um novo e-mail de recuperação.'
-          )
-          subscription.unsubscribe()
-          return
-        }
-
-        if (data.session && (temCodigoPKCE || temTokenRecuperacao)) {
-          recuperacaoConfirmada = true
-          setTemSessao(true)
-          setErro('')
-          setVerificando(false)
-          return () => subscription.unsubscribe()
-        }
-
-        // Não aceitamos uma sessão antiga ou um login comum
-        // como autorização para alterar a senha.
-        if (!recuperacaoConfirmada) {
-          mostrarErroLink(
-            'Não encontramos uma sessão de recuperação válida. Solicite um novo link pelo e-mail e abra-o sem utilizar links antigos.'
-          )
-        }
-      } catch (err) {
-        console.error('Erro ao validar recuperação de senha:', err)
-
-        mostrarErroLink(
-          'Ocorreu um erro ao validar o link. Solicite um novo e-mail de recuperação.'
-        )
-      } finally {
-        if (montado) setVerificando(false)
-      }
-    }
-
-    verificarRecuperacao()
-
-    return () => {
-      montado = false
+    if (emailUrl) {
+      setEmail(emailUrl.trim().toLowerCase())
     }
   }, [])
 
-  const salvarSenha = async () => {
+  async function validarCodigo(e?: React.FormEvent) {
+    e?.preventDefault()
     setErro('')
-    setSucesso(false)
 
-    if (!temSessao) {
-      setErro(
-        'A sessão de recuperação não está disponível. Solicite um novo link pelo e-mail.'
-      )
+    const emailLimpo = email.trim().toLowerCase()
+    const codigoLimpo = codigo.replace(/\D/g, '')
+
+    if (!emailLimpo) {
+      setErro('Informe o e-mail cadastrado.')
       return
     }
+
+    if (!/^\d{6}$/.test(codigoLimpo)) {
+      setErro('Digite o código de seis números recebido por e-mail.')
+      return
+    }
+
+    setVerificandoCodigo(true)
+
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: emailLimpo,
+        token: codigoLimpo,
+        type: 'recovery',
+      })
+
+      if (error || !data.session) {
+        console.error('Erro ao validar código de recuperação:', error)
+
+        setErro(
+          'Código inválido ou expirado. Confira os números e, se necessário, solicite um novo código.'
+        )
+        return
+      }
+
+      setEtapa('senha')
+      setErro('')
+    } catch (err) {
+      console.error('Erro inesperado ao validar código:', err)
+      setErro('Não foi possível validar o código. Tente novamente.')
+    } finally {
+      setVerificandoCodigo(false)
+    }
+  }
+
+  async function salvarSenha(e?: React.FormEvent) {
+    e?.preventDefault()
+    setErro('')
+    setSucesso(false)
 
     if (novaSenha.length < 6) {
       setErro('A senha deve ter pelo menos 6 caracteres.')
@@ -166,88 +107,42 @@ export default function RedefinirSenhaPage() {
     setSalvando(true)
 
     try {
+      const {
+        data: { session },
+        error: erroSessao,
+      } = await supabase.auth.getSession()
+
+      if (erroSessao || !session) {
+        setEtapa('codigo')
+        setErro(
+          'Sua sessão de recuperação expirou. Solicite um novo código pelo e-mail.'
+        )
+        return
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: novaSenha,
       })
 
       if (error) {
         console.error('Erro ao atualizar senha:', error)
-        setErro(
-          'Não foi possível atualizar a senha: ' + error.message
-        )
+        setErro('Não foi possível atualizar a senha: ' + error.message)
         return
       }
 
       setSucesso(true)
 
-      // Encerra a sessão de recuperação depois da alteração.
       await supabase.auth.signOut()
 
       setTimeout(() => {
         router.replace('/login')
-      }, 1800)
+      }, 2000)
     } catch (err) {
       console.error('Erro inesperado ao salvar senha:', err)
-
-      setErro(
-        'Não foi possível alterar sua senha. Tente novamente.'
-      )
+      setErro('Não foi possível alterar sua senha. Tente novamente.')
     } finally {
       setSalvando(false)
     }
-  }
-
-  if (verificando) {
-    return (
-      <main className="min-h-screen bg-[#faf7f8] flex items-center justify-center px-6">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-pink-50 flex items-center justify-center mx-auto mb-5">
-              <Loader2 className="w-7 h-7 text-pink-500 animate-spin" />
-            </div>
-
-            <h1 className="text-xl font-semibold text-gray-800 mb-2">
-              Validando seu acesso
-            </h1>
-
-            <p className="text-sm text-gray-500">
-              Aguarde enquanto verificamos seu link de recuperação.
-            </p>
-          </div>
-        </div>
-      </main>
-    )
-  }
-
-  if (!temSessao) {
-    return (
-      <main className="min-h-screen bg-[#faf7f8] flex items-center justify-center px-6">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
-            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-5">
-              <AlertCircle className="w-8 h-8 text-red-500" />
-            </div>
-
-            <h1 className="text-2xl font-semibold text-gray-800 text-center mb-3">
-              Link indisponível
-            </h1>
-
-            <p className="text-sm text-gray-500 text-center leading-relaxed">
-              {erro ||
-                'O link de recuperação é inválido ou expirou. Solicite um novo link pelo e-mail.'}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => router.replace('/login')}
-              className="w-full mt-7 rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] text-white py-3.5 font-medium transition"
-            >
-              Voltar para o login
-            </button>
-          </div>
-        </div>
-      </main>
-    )
   }
 
   return (
@@ -255,15 +150,29 @@ export default function RedefinirSenhaPage() {
       <div className="w-full max-w-md">
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-7 sm:p-8">
           <div className="w-16 h-16 rounded-full bg-pink-50 flex items-center justify-center mx-auto mb-5">
-            <Lock className="w-7 h-7 text-pink-500" />
+            {sucesso ? (
+              <CheckCircle2 className="w-8 h-8 text-green-500" />
+            ) : etapa === 'codigo' ? (
+              <Mail className="w-7 h-7 text-pink-500" />
+            ) : (
+              <Lock className="w-7 h-7 text-pink-500" />
+            )}
           </div>
 
           <h1 className="text-2xl font-semibold text-gray-800 text-center">
-            Criar nova senha
+            {sucesso
+              ? 'Senha alterada!'
+              : etapa === 'codigo'
+                ? 'Confirmar código'
+                : 'Criar nova senha'}
           </h1>
 
           <p className="text-sm text-gray-500 text-center mt-2 mb-7">
-            Digite sua nova senha para acessar sua conta novamente.
+            {sucesso
+              ? 'Sua senha foi atualizada com sucesso.'
+              : etapa === 'codigo'
+                ? 'Digite o código recebido no seu e-mail para confirmar sua identidade.'
+                : 'Agora você já pode cadastrar uma nova senha para sua conta.'}
           </p>
 
           {erro && (
@@ -277,24 +186,87 @@ export default function RedefinirSenhaPage() {
 
           {sucesso ? (
             <div className="text-center py-5">
-              <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 className="w-8 h-8 text-green-500" />
-              </div>
-
-              <h2 className="text-xl font-semibold text-gray-800">
-                Senha alterada!
-              </h2>
-
-              <p className="text-sm text-gray-500 mt-2">
-                Sua senha foi atualizada com sucesso.
+              <p className="text-sm text-gray-500">
+                Você já pode entrar com sua nova senha.
               </p>
-
               <p className="text-xs text-gray-400 mt-4">
                 Redirecionando para o login...
               </p>
+              <button
+                type="button"
+                onClick={() => router.replace('/login')}
+                className="w-full mt-5 rounded-2xl bg-[#d98fa5] text-white py-3.5 font-medium"
+              >
+                Ir para o login
+              </button>
             </div>
+          ) : etapa === 'codigo' ? (
+            <form onSubmit={validarCodigo} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  E-mail cadastrado
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="seuemail@exemplo.com"
+                  autoComplete="email"
+                  className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 text-gray-800 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Código recebido por e-mail
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={codigo}
+                  onChange={(e) =>
+                    setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
+                  placeholder="000000"
+                  className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-4 text-center text-2xl tracking-[0.5em] font-semibold text-gray-800 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                  required
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  O código é enviado pelo Supabase para o e-mail cadastrado.
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={verificandoCodigo}
+                className="w-full rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] disabled:opacity-60 disabled:cursor-not-allowed text-white py-3.5 font-medium transition flex items-center justify-center gap-2"
+              >
+                {verificandoCodigo ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Verificando código...
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-5 h-5" />
+                    Confirmar código
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => router.replace('/login')}
+                className="w-full text-sm text-gray-500 hover:text-gray-700 py-2"
+              >
+                Voltar para o login
+              </button>
+            </form>
           ) : (
-            <div className="space-y-5">
+            <form onSubmit={salvarSenha} className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Nova senha
@@ -308,21 +280,18 @@ export default function RedefinirSenhaPage() {
                     placeholder="Digite sua nova senha"
                     autoComplete="new-password"
                     className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 pr-12 text-gray-800 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                    required
                   />
 
                   <button
                     type="button"
                     onClick={() => setMostrarSenha((valor) => !valor)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    aria-label={
-                      mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'
-                    }
+                    aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
                   >
-                    {mostrarSenha ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
+                    {mostrarSenha
+                      ? <EyeOff className="w-5 h-5" />
+                      : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
 
@@ -344,6 +313,7 @@ export default function RedefinirSenhaPage() {
                     placeholder="Digite a senha novamente"
                     autoComplete="new-password"
                     className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3.5 pr-12 text-gray-800 outline-none focus:border-pink-300 focus:ring-2 focus:ring-pink-100"
+                    required
                   />
 
                   <button
@@ -358,18 +328,15 @@ export default function RedefinirSenhaPage() {
                         : 'Mostrar senha'
                     }
                   >
-                    {mostrarConfirmacao ? (
-                      <EyeOff className="w-5 h-5" />
-                    ) : (
-                      <Eye className="w-5 h-5" />
-                    )}
+                    {mostrarConfirmacao
+                      ? <EyeOff className="w-5 h-5" />
+                      : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
 
               <button
-                type="button"
-                onClick={salvarSenha}
+                type="submit"
                 disabled={salvando}
                 className="w-full rounded-2xl bg-[#d98fa5] hover:bg-[#cc7f97] disabled:opacity-60 disabled:cursor-not-allowed text-white py-3.5 font-medium transition flex items-center justify-center gap-2"
               >
@@ -385,12 +352,17 @@ export default function RedefinirSenhaPage() {
 
               <button
                 type="button"
-                onClick={() => router.replace('/login')}
+                onClick={() => {
+                  setEtapa('codigo')
+                  setNovaSenha('')
+                  setConfirmarSenha('')
+                  setErro('')
+                }}
                 className="w-full text-sm text-gray-500 hover:text-gray-700 py-2"
               >
-                Voltar para o login
+                Voltar
               </button>
-            </div>
+            </form>
           )}
         </div>
       </div>
