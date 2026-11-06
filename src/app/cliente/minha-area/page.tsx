@@ -32,7 +32,7 @@ function formatarTelefone(valor: string) {
 
 function telefoneValido(valor: string) {
   const n = valor.replace(/\D/g, '')
-  return n.length === 10 || n.length === 11
+  return n.length === 11
 }
 
 const nomesCampos: Record<string, string> = {
@@ -61,6 +61,9 @@ export default function MinhaAreaPage() {
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
   const [respondendo, setRespondendo] = useState<string | null>(null)
+
+  const [editandoSolicitacaoTelefone, setEditandoSolicitacaoTelefone] = useState<string | null>(null)
+  const [telefoneSolicitacao, setTelefoneSolicitacao] = useState('')
 
   const carregarDados = useCallback(async () => {
     if (!profile?.id) return
@@ -168,7 +171,7 @@ export default function MinhaAreaPage() {
     }
 
     if (!telefoneValido(telefone)) {
-      setErro('Informe um telefone válido com DDD.')
+      setErro('Informe um celular válido com DDD, contendo 11 números. Exemplo: (16) 99999-9999.')
       return
     }
 
@@ -267,7 +270,8 @@ export default function MinhaAreaPage() {
 
   async function responderSolicitacao(
     solicitacao: any,
-    aceitar: boolean
+    aceitar: boolean,
+    telefoneInformado = ''
   ) {
     if (!profile?.id || !cliente?.id) return
 
@@ -281,13 +285,10 @@ export default function MinhaAreaPage() {
     let respostaCliente = ''
 
     if (aceitar) {
-      telefoneCorrigido = window.prompt(
-        'Digite o telefone correto com DDD:',
-        telefone
-      ) || ''
+      telefoneCorrigido = telefoneInformado
 
       if (!telefoneValido(telefoneCorrigido)) {
-        setErro('Para aceitar, informe um telefone válido com DDD.')
+        setErro('Informe um celular válido com DDD, contendo 11 números.')
         return
       }
     } else {
@@ -355,6 +356,9 @@ export default function MinhaAreaPage() {
           'O telefone foi atualizado, mas a solicitação não pôde ser confirmada. Atualize a página e confira o cadastro.'
         )
       }
+
+      setEditandoSolicitacaoTelefone(null)
+      setTelefoneSolicitacao('')
 
       setSucesso(
         aceitar
@@ -493,29 +497,93 @@ export default function MinhaAreaPage() {
                   </p>
                 )}
 
-                <div className="flex flex-col gap-2 mt-4">
-                  <button
-                    disabled={respondendo === s.id}
-                    onClick={() => void responderSolicitacao(s, true)}
-                    className="w-full rounded-lg py-3 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    style={{ backgroundColor: cor }}
-                  >
-                    {respondendo === s.id ? (
-                      <RefreshCw size={16} className="animate-spin" />
-                    ) : (
-                      <Phone size={16} />
+                {editandoSolicitacaoTelefone === s.id ? (
+                  <div className="mt-4 flex flex-col gap-3">
+                    {!telefoneSolicitacao && (
+                      <p className="text-xs text-gray-600">
+                        Digite o DDD entre parênteses, seguido do número do celular.
+                      </p>
                     )}
-                    Informar telefone correto
-                  </button>
 
-                  <button
-                    disabled={respondendo === s.id}
-                    onClick={() => void responderSolicitacao(s, false)}
-                    className="w-full rounded-lg px-3 py-3 border border-gray-200 bg-white text-gray-600 text-sm font-semibold disabled:opacity-50"
-                  >
-                    Não posso atualizar agora
-                  </button>
-                </div>
+                    <label className="flex flex-col gap-2">
+                      <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        <Phone size={15} />
+                        Seu celular / WhatsApp
+                      </span>
+
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        autoComplete="tel"
+                        value={telefoneSolicitacao}
+                        onChange={e =>
+                          setTelefoneSolicitacao(formatarTelefone(e.target.value))
+                        }
+                        placeholder="(16) 99999-9999"
+                        maxLength={16}
+                        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm text-gray-900 outline-none focus:ring-2"
+                        style={{ ['--tw-ring-color' as any]: cor }}
+                      />
+                    </label>
+
+                    <button
+                      disabled={
+                        respondendo === s.id ||
+                        !telefoneValido(telefoneSolicitacao)
+                      }
+                      onClick={() =>
+                        void responderSolicitacao(s, true, telefoneSolicitacao)
+                      }
+                      className="w-full rounded-lg py-3 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ backgroundColor: cor }}
+                    >
+                      {respondendo === s.id ? (
+                        <RefreshCw size={16} className="animate-spin" />
+                      ) : (
+                        <CheckCircle size={16} />
+                      )}
+                      {respondendo === s.id ? 'Atualizando...' : 'Confirmar celular'}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={respondendo === s.id}
+                      onClick={() => {
+                        setEditandoSolicitacaoTelefone(null)
+                        setTelefoneSolicitacao('')
+                        setErro('')
+                      }}
+                      className="w-full rounded-lg px-3 py-3 border border-gray-200 bg-white text-gray-600 text-sm font-semibold disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 mt-4">
+                    <button
+                      disabled={respondendo === s.id}
+                      onClick={() => {
+                        setTelefoneSolicitacao('')
+                        setEditandoSolicitacaoTelefone(s.id)
+                        setErro('')
+                        setSucesso('')
+                      }}
+                      className="w-full rounded-lg py-3 text-white text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                      style={{ backgroundColor: cor }}
+                    >
+                      <Phone size={16} />
+                      Informar telefone correto
+                    </button>
+
+                    <button
+                      disabled={respondendo === s.id}
+                      onClick={() => void responderSolicitacao(s, false)}
+                      className="w-full rounded-lg px-3 py-3 border border-gray-200 bg-white text-gray-600 text-sm font-semibold disabled:opacity-50"
+                    >
+                      Não posso atualizar agora
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </section>
@@ -544,8 +612,14 @@ export default function MinhaAreaPage() {
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium text-gray-700 flex items-center gap-2">
                 <Phone size={15} />
-                Telefone com DDD
+                Celular / WhatsApp
               </span>
+
+              {!telefone && (
+                <p className="text-xs text-gray-500">
+                  Digite o DDD entre parênteses, seguido do número do celular.
+                </p>
+              )}
 
               <input
                 type="tel"
