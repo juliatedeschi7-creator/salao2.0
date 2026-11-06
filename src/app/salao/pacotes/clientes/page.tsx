@@ -886,15 +886,18 @@ export default function PacotesClientesPage() {
                                     </span>
                                   </div>
 
-<button
-  type="button"
-  disabled={salvando}
-  onClick={() => excluirSessaoHistorico(idx, pc, sessao)}
-  className="text-gray-300 hover:text-red-500 p-1 transition shrink-0 disabled:opacity-40"
-  title="Excluir somente esta sessão"
->
-  <X size={14} />
-</button>
+                                  <button
+                                    type="button"
+                                    disabled={salvando}
+                                    onClick={() =>
+                                      excluirSessaoHistorico(idx, pc, sessao)
+                                    }
+                                    className="text-gray-300 hover:text-red-500 p-1 transition shrink-0 disabled:opacity-40"
+                                    title="Excluir somente esta sessão"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
                               )
                             })}
                           </div>
