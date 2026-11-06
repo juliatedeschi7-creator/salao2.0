@@ -1,3 +1,4 @@
+
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -21,7 +22,8 @@ import {
   X,
   Phone,
   Save,
-  RefreshCw
+  RefreshCw,
+  UserRound
 } from 'lucide-react'
 
 import {
@@ -95,6 +97,8 @@ export default function ClientePage() {
   const [contratosCount, setContratosCount] = useState(0)
   const [contasCount, setContasCount] = useState(0)
 
+  const [solicitacoesTelefonePendentes, setSolicitacoesTelefonePendentes] = useState<any[]>([])
+
   const [modalPushLembrete, setModalPushLembrete] = useState(false)
   const [ativandoPush, setAtivandoPush] = useState(false)
   const [erroPush, setErroPush] = useState('')
@@ -112,7 +116,6 @@ export default function ClientePage() {
   const [erroTelefone, setErroTelefone] = useState('')
   const [sucessoTelefone, setSucessoTelefone] = useState(false)
 
-  // Identificadores impedem que operações antigas alterem uma sessão nova.
   const requisicaoDados = useRef(0)
   const requisicaoPush = useRef(0)
   const requisicaoTelefone = useRef(0)
@@ -151,19 +154,13 @@ export default function ClientePage() {
       if (profile.id !== idConta) return
 
       if (error) {
-        console.error(
-          '[CLIENTE] Erro ao atualizar contador:',
-          error
-        )
+        console.error('[CLIENTE] Erro ao atualizar contador:', error)
         return
       }
 
       setNotifCount(count || 0)
     } catch (error) {
-      console.error(
-        '[CLIENTE] Erro ao carregar contador:',
-        error
-      )
+      console.error('[CLIENTE] Erro ao carregar contador:', error)
     }
   }, [profile?.id])
 
@@ -197,7 +194,6 @@ export default function ClientePage() {
 
   // ============================================================
   // CARREGAMENTO PRINCIPAL
-  // O painel NÃO espera a verificação do Push.
   // ============================================================
 
   const carregarDados = useCallback(async () => {
@@ -213,13 +209,13 @@ export default function ClientePage() {
     setCarregandoDados(true)
     setErroCarregamento('')
 
-    // Limpa os dados da sessão anterior.
     setCliente(null)
     setSalao(null)
     setAgendamentos([])
     setPacotesAtivos(0)
     setContratosCount(0)
     setContasCount(0)
+    setSolicitacoesTelefonePendentes([])
     setTelefone('')
     setErroTelefone('')
     setSucessoTelefone(false)
@@ -260,10 +256,7 @@ export default function ClientePage() {
         if (!requisicaoAtual()) return
 
         if (erroSalao) {
-          console.error(
-            '[CLIENTE] Erro ao buscar salão:',
-            erroSalao
-          )
+          console.error('[CLIENTE] Erro ao buscar salão:', erroSalao)
         } else {
           salaoEncontrado = sal
         }
@@ -273,8 +266,6 @@ export default function ClientePage() {
 
       setSalao(salaoEncontrado)
 
-      // Se ainda não existe registro em clientes, não presumimos
-      // que ele deva ser criado automaticamente.
       if (!cli?.id) {
         setErroCarregamento(
           'Não encontramos um cadastro de cliente vinculado a esta conta. Seus dados não foram alterados. Entre em contato com o salão para verificar seu cadastro.'
@@ -323,21 +314,35 @@ export default function ClientePage() {
             .select('*', { count: 'exact', head: true })
             .eq('destinatario_id', idConta)
             .eq('lida', false)
+        ),
+
+        comTempoLimite(
+          supabase
+            .from('clientes_solicitacoes_telefone')
+            .select('id, motivo, telefone_atual, criada_em')
+            .eq('cliente_id', cli.id)
+            .eq('status', 'pendente')
+            .order('criada_em', { ascending: false })
         )
       ])
 
       if (!requisicaoAtual()) return
 
-      const [ags, pacotes, contratos, contas, notificacoes] = tarefas
+      const [
+        ags,
+        pacotes,
+        contratos,
+        contas,
+        notificacoes,
+        solicitacoesTelefone
+      ] = tarefas
 
       if (ags.status === 'fulfilled' && !ags.value.error) {
         setAgendamentos(ags.value.data || [])
       } else {
         console.error(
           '[CLIENTE] Não foi possível carregar agendamentos:',
-          ags.status === 'rejected'
-            ? ags.reason
-            : ags.value.error
+          ags.status === 'rejected' ? ags.reason : ags.value.error
         )
         setAgendamentos([])
       }
@@ -351,17 +356,12 @@ export default function ClientePage() {
       } else {
         console.error(
           '[CLIENTE] Não foi possível carregar pacotes:',
-          pacotes.status === 'rejected'
-            ? pacotes.reason
-            : pacotes.value.error
+          pacotes.status === 'rejected' ? pacotes.reason : pacotes.value.error
         )
         setPacotesAtivos(0)
       }
 
-      if (
-        contratos.status === 'fulfilled' &&
-        !contratos.value.error
-      ) {
+      if (contratos.status === 'fulfilled' && !contratos.value.error) {
         setContratosCount(contratos.value.count || 0)
       } else {
         setContratosCount(0)
@@ -378,6 +378,23 @@ export default function ClientePage() {
         !notificacoes.value.error
       ) {
         setNotifCount(notificacoes.value.count || 0)
+      }
+
+      if (
+        solicitacoesTelefone.status === 'fulfilled' &&
+        !solicitacoesTelefone.value.error
+      ) {
+        setSolicitacoesTelefonePendentes(
+          solicitacoesTelefone.value.data || []
+        )
+      } else {
+        console.error(
+          '[CLIENTE] Não foi possível carregar solicitações de telefone:',
+          solicitacoesTelefone.status === 'rejected'
+            ? solicitacoesTelefone.reason
+            : solicitacoesTelefone.value.error
+        )
+        setSolicitacoesTelefonePendentes([])
       }
 
     } catch (error: any) {
@@ -402,7 +419,6 @@ export default function ClientePage() {
     void carregarDados()
 
     return () => {
-      // Invalida consultas iniciadas pela sessão anterior.
       requisicaoDados.current += 1
     }
   }, [loading, profile?.id, carregarDados])
@@ -529,7 +545,6 @@ export default function ClientePage() {
     void verificarStatusPush()
 
     return () => {
-      // Impede que uma verificação antiga altere a tela.
       requisicaoPush.current += 1
     }
   }, [loading, profile?.id, tentativaPush, verificarStatusPush])
@@ -833,6 +848,16 @@ export default function ClientePage() {
     hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite'
 
   const menuItems = [
+    {
+      icon: UserRound,
+      label: 'Minha Área',
+      sub: 'Seus dados e solicitações',
+      href: '/cliente/minha-area',
+      badge:
+        solicitacoesTelefonePendentes.length > 0
+          ? solicitacoesTelefonePendentes.length
+          : null
+    },
     {
       icon: Calendar,
       label: 'Agendamentos',
@@ -1236,6 +1261,41 @@ export default function ClientePage() {
               Verificando notificações em segundo plano...
             </p>
           </div>
+        </div>
+      )}
+
+      {/* AVISO DE SOLICITAÇÃO DE CORREÇÃO DE TELEFONE */}
+
+      {solicitacoesTelefonePendentes.length > 0 && (
+        <div className="px-4 relative z-10 mb-3">
+          <button
+            onClick={() => router.push('/cliente/minha-area')}
+            className="w-full bg-white rounded-2xl p-4 flex items-center gap-3 shadow-md border border-amber-200 text-left active:scale-[0.98] transition-all"
+          >
+            <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
+              <Phone size={21} className="text-amber-600" />
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-gray-900">
+                O salão precisa falar com você
+              </p>
+
+              <p className="text-xs text-gray-500 mt-1">
+                Existe{' '}
+                {solicitacoesTelefonePendentes.length === 1
+                  ? 'uma solicitação'
+                  : `${solicitacoesTelefonePendentes.length} solicitações`}{' '}
+                aguardando sua resposta sobre seu telefone.
+              </p>
+
+              <p className="text-xs font-bold text-amber-700 mt-2">
+                Conferir agora
+              </p>
+            </div>
+
+            <ChevronRight size={19} className="text-amber-500 shrink-0" />
+          </button>
         </div>
       )}
 
