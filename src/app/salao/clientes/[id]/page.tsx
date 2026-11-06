@@ -17,7 +17,10 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  ShieldCheck
+  ShieldCheck,
+  Phone,
+  MessageCircle,
+  Send
 } from 'lucide-react'
 
 export default function ClientePerfilPage() {
@@ -49,6 +52,14 @@ export default function ClientePerfilPage() {
   const [mensagemSenha, setMensagemSenha] = useState('')
   const [erroSenha, setErroSenha] = useState(false)
 
+  // Solicitação de correção do telefone
+  const [solicitacaoTelefone, setSolicitacaoTelefone] = useState<any>(null)
+  const [modalTelefone, setModalTelefone] = useState(false)
+  const [motivoTelefone, setMotivoTelefone] = useState('')
+  const [enviandoSolicitacaoTelefone, setEnviandoSolicitacaoTelefone] = useState(false)
+  const [mensagemTelefone, setMensagemTelefone] = useState('')
+  const [erroTelefone, setErroTelefone] = useState(false)
+
   useEffect(() => {
     if (loading) return
 
@@ -61,6 +72,29 @@ export default function ClientePerfilPage() {
       carregarDados()
     }
   }, [loading, profile, clienteId])
+
+  async function carregarSolicitacaoTelefone() {
+    if (!profile?.salao_id || !clienteId) return
+
+    const { data, error } = await supabase
+      .from('clientes_solicitacoes_telefone')
+      .select('*')
+      .eq('cliente_id', clienteId)
+      .eq('salao_id', profile.salao_id)
+      .order('criada_em', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error) {
+      console.error(
+        'Erro ao carregar solicitação de telefone:',
+        error
+      )
+      return
+    }
+
+    setSolicitacaoTelefone(data || null)
+  }
 
   async function carregarDados() {
     try {
@@ -89,6 +123,8 @@ export default function ClientePerfilPage() {
 
       setCliente(cli)
       setObsText(cli?.observacoes_internas || '')
+
+      await carregarSolicitacaoTelefone()
 
       const { data: ags } = await supabase
         .from('agendamentos')
@@ -134,6 +170,94 @@ export default function ClientePerfilPage() {
       )
     } finally {
       setCarregando(false)
+    }
+  }
+
+  async function solicitarCorrecaoTelefone() {
+    setMensagemTelefone('')
+    setErroTelefone(false)
+
+    if (!cliente || !profile?.salao_id) {
+      setErroTelefone(true)
+      setMensagemTelefone(
+        'Não foi possível identificar o salão ou a cliente.'
+      )
+      return
+    }
+
+    if (!motivoTelefone.trim()) {
+      setErroTelefone(true)
+      setMensagemTelefone(
+        'Informe o motivo da solicitação.'
+      )
+      return
+    }
+
+    if (
+      solicitacaoTelefone?.status === 'pendente'
+    ) {
+      setErroTelefone(true)
+      setMensagemTelefone(
+        'Já existe uma solicitação aguardando resposta desta cliente.'
+      )
+      return
+    }
+
+    setEnviandoSolicitacaoTelefone(true)
+
+    try {
+      const {
+        data: { user },
+        error: erroUsuario
+      } = await supabase.auth.getUser()
+
+      if (erroUsuario || !user) {
+        throw new Error(
+          'Não foi possível identificar o usuário que está fazendo a solicitação.'
+        )
+      }
+
+      const { data, error } = await supabase
+        .from('clientes_solicitacoes_telefone')
+        .insert({
+          cliente_id: clienteId,
+          salao_id: profile.salao_id,
+          solicitada_por: user.id,
+          telefone_atual: cliente.telefone || null,
+          motivo: motivoTelefone.trim(),
+          status: 'pendente'
+        })
+        .select()
+        .single()
+
+      if (error) {
+        console.error(
+          'Erro ao criar solicitação de telefone:',
+          error
+        )
+        throw new Error(
+          error.message ||
+          'Não foi possível registrar a solicitação.'
+        )
+      }
+
+      setSolicitacaoTelefone(data)
+      setMotivoTelefone('')
+      setModalTelefone(false)
+      setMensagemTelefone(
+        'Solicitação registrada. Ela ficará disponível para a cliente responder pela Minha Área.'
+      )
+      setErroTelefone(false)
+
+    } catch (error: any) {
+      console.error(error)
+      setErroTelefone(true)
+      setMensagemTelefone(
+        error?.message ||
+        'Ocorreu um erro ao enviar a solicitação.'
+      )
+    } finally {
+      setEnviandoSolicitacaoTelefone(false)
     }
   }
 
@@ -385,14 +509,7 @@ export default function ClientePerfilPage() {
             className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-white font-medium text-sm"
             style={{ backgroundColor: '#25D366' }}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="white"
-            >
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.198-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-            </svg>
+            <MessageCircle size={16} />
             Enviar mensagem no WhatsApp
           </a>
         </div>
@@ -587,10 +704,27 @@ export default function ClientePerfilPage() {
               </div>
             )}
 
-            <div className="card flex flex-col gap-2">
+            {/* Dados pessoais e solicitação de correção */}
+            <div className="card flex flex-col gap-3">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
                 Dados pessoais
               </p>
+
+              {cliente?.telefone ? (
+                <div className="flex items-center gap-2">
+                  <Phone size={14} className="text-gray-400 shrink-0" />
+                  <p className="text-sm text-gray-700">
+                    {cliente.telefone}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Phone size={14} className="text-gray-400 shrink-0" />
+                  <p className="text-sm text-red-500">
+                    Nenhum telefone cadastrado
+                  </p>
+                </div>
+              )}
 
               {cliente?.email && (
                 <div className="flex items-center gap-2">
@@ -612,6 +746,124 @@ export default function ClientePerfilPage() {
                   </p>
                 </div>
               )}
+
+              <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Phone size={15} style={{ color: cor }} />
+                  <p className="text-sm font-semibold text-gray-700">
+                    Conferência do telefone
+                  </p>
+                </div>
+
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  Se o número estiver incorreto ou não tiver WhatsApp, você pode pedir à cliente que confira e responda pela Minha Área.
+                </p>
+
+                {solicitacaoTelefone?.status === 'pendente' ? (
+                  <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-3 flex flex-col gap-1">
+                    <p className="text-xs font-semibold text-yellow-800">
+                      Solicitação aguardando resposta
+                    </p>
+                    <p className="text-xs text-yellow-700">
+                      Enviada em{' '}
+                      {solicitacaoTelefone.criada_em
+                        ? new Date(solicitacaoTelefone.criada_em).toLocaleDateString('pt-BR')
+                        : 'data não disponível'}
+                    </p>
+                    {solicitacaoTelefone.motivo && (
+                      <p className="text-xs text-yellow-700">
+                        Motivo: {solicitacaoTelefone.motivo}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMensagemTelefone('')
+                      setErroTelefone(false)
+                      setMotivoTelefone('')
+                      setModalTelefone(true)
+                    }}
+                    className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 border"
+                    style={{
+                      color: cor,
+                      borderColor: `${cor}55`,
+                      backgroundColor: `${cor}08`
+                    }}
+                  >
+                    <Send size={15} />
+                    Solicitar correção do telefone
+                  </button>
+                )}
+
+                {solicitacaoTelefone?.status === 'aceita' && (
+                  <div className="rounded-xl border border-green-200 bg-green-50 p-3">
+                    <p className="text-xs font-semibold text-green-700">
+                      A cliente respondeu à solicitação
+                    </p>
+                    {solicitacaoTelefone.telefone_corrigido && (
+                      <p className="text-xs text-green-700 mt-1">
+                        Telefone informado: {solicitacaoTelefone.telefone_corrigido}
+                      </p>
+                    )}
+                    {solicitacaoTelefone.resposta_cliente && (
+                      <p className="text-xs text-green-700 mt-1">
+                        Resposta: {solicitacaoTelefone.resposta_cliente}
+                      </p>
+                    )}
+                    <p className="text-[11px] text-green-600 mt-2">
+                      Confira a informação antes de atualizar o cadastro. O telefone não foi alterado automaticamente.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setModalTelefone(true)}
+                      className="text-xs font-semibold mt-2 underline"
+                      style={{ color: cor }}
+                    >
+                      Criar nova solicitação
+                    </button>
+                  </div>
+                )}
+
+                {solicitacaoTelefone?.status === 'recusada' && (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-700">
+                      A cliente recusou a solicitação
+                    </p>
+                    {solicitacaoTelefone.resposta_cliente && (
+                      <p className="text-xs text-gray-600 mt-1">
+                        Resposta: {solicitacaoTelefone.resposta_cliente}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMensagemTelefone('')
+                        setErroTelefone(false)
+                        setMotivoTelefone('')
+                        setModalTelefone(true)
+                      }}
+                      className="text-xs font-semibold mt-2 underline"
+                      style={{ color: cor }}
+                    >
+                      Criar nova solicitação
+                    </button>
+                  </div>
+                )}
+
+                {mensagemTelefone && (
+                  <div
+                    className={`rounded-xl p-3 text-xs leading-relaxed ${
+                      erroTelefone
+                        ? 'bg-red-50 text-red-600'
+                        : 'bg-green-50 text-green-700'
+                    }`}
+                  >
+                    {mensagemTelefone}
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -835,6 +1087,94 @@ export default function ClientePerfilPage() {
         )}
 
       </div>
+
+      {/* Modal para solicitar correção do telefone */}
+      {modalTelefone && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-5 shadow-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">
+                  Solicitar correção
+                </h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  A cliente receberá o pedido na Minha Área.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setModalTelefone(false)}
+                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="bg-gray-50 rounded-xl p-3 mb-4">
+              <p className="text-xs text-gray-400 mb-1">
+                Telefone atualmente cadastrado
+              </p>
+              <p className="text-sm font-semibold text-gray-700">
+                {cliente.telefone || 'Nenhum telefone cadastrado'}
+              </p>
+            </div>
+
+            <label className="text-sm font-semibold text-gray-700 block mb-2">
+              Por que está solicitando a conferência?
+            </label>
+
+            <textarea
+              value={motivoTelefone}
+              onChange={e => {
+                setMotivoTelefone(e.target.value)
+                setMensagemTelefone('')
+              }}
+              rows={4}
+              maxLength={500}
+              placeholder="Ex.: Este número parece estar incorreto ou não possui WhatsApp. Por favor, confira seus dados."
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-sm outline-none resize-none focus:border-pink-300"
+            />
+
+            <p className="text-[11px] text-gray-400 mt-1 mb-3">
+              A cliente poderá informar o número correto ou recusar a solicitação. O cadastro não será alterado sem conferência.
+            </p>
+
+            {mensagemTelefone && (
+              <div className="bg-red-50 text-red-600 rounded-xl p-3 text-xs mb-3">
+                {mensagemTelefone}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setModalTelefone(false)}
+                disabled={enviandoSolicitacaoTelefone}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={solicitarCorrecaoTelefone}
+                disabled={
+                  enviandoSolicitacaoTelefone ||
+                  !motivoTelefone.trim()
+                }
+                className="flex-1 py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
+                style={{ backgroundColor: cor }}
+              >
+                <Send size={15} />
+                {enviandoSolicitacaoTelefone
+                  ? 'Enviando...'
+                  : 'Enviar solicitação'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
