@@ -363,17 +363,21 @@ export default function PacotesClientesPage() {
 
       const nomeServico = pacoteObj?.nome || 'Pacote'
 
-      const { error } = await supabase
-        .from('pacotes_clientes_resumo')
-        .insert({
-          cliente_nome: clienteSelecionado.nome,
-          servico: nomeServico,
-          sessoes_total: totalSessoes,
-          sessoes_restantes: totalSessoes,
-          status: 'ativo',
-          historico_sessoes: [],
-          observacao: null
-        })
+const { error } = await supabase
+  .from('pacotes_clientes_resumo')
+  .insert({
+    cliente_nome: clienteSelecionado.nome,
+    cliente_id: clienteSelecionado.id,
+    salao_id: salao.id,
+    pacote_id: pacoteObj.id,
+    formato: 'individual',
+    servico: nomeServico,
+    sessoes_total: totalSessoes,
+    sessoes_restantes: totalSessoes,
+    status: 'ativo',
+    historico_sessoes: [],
+    observacao: null
+  })
 
       if (error) {
         alert('Erro ao atribuir pacote: ' + error.message)
@@ -409,18 +413,21 @@ export default function PacotesClientesPage() {
     try {
       const totalNum = parseInt(sessoesTotalAntigo) || 1
 
-      const { error } = await supabase
-        .from('pacotes_clientes_resumo')
-        .insert({
-          cliente_nome: clienteSelecionado.nome,
-          servico: nomePacoteAntigo,
-          sessoes_total: totalNum,
-          sessoes_restantes: totalNum,
-          status: 'ativo',
-          historico_sessoes: [],
-          observacao: null
-        })
-
+const { error } = await supabase
+  .from('pacotes_clientes_resumo')
+  .insert({
+    cliente_nome: clienteSelecionado.nome,
+    cliente_id: clienteSelecionado.id,
+    salao_id: salao.id,
+    pacote_id: null,
+    formato: 'individual',
+    servico: nomePacoteAntigo,
+    sessoes_total: totalNum,
+    sessoes_restantes: totalNum,
+    status: 'ativo',
+    historico_sessoes: [],
+    observacao: null
+  })
       if (error) {
         alert('Erro ao cadastrar pacote antigo: ' + error.message)
         return
