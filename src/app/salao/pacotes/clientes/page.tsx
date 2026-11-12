@@ -206,25 +206,60 @@ export default function PacotesClientesPage() {
   async function abrirDetalhesCliente(cliente: any) {
     setClienteSelecionado(cliente)
     setPacoteEditandoObservacao(null)
-    await carregarPacotesDoCliente(cliente.nome)
+await carregarPacotesDoCliente(cliente)
   }
 
-  // PACOTES DA CLIENTE
-  async function carregarPacotesDoCliente(clienteNome: string) {
-    const { data: pacotes, error } = await supabase
+
+// PACOTES DA CLIENTE
+async function carregarPacotesDoCliente(cliente: any) {
+  if (!cliente?.id || !salao?.id) {
+    setPacotesCliente([])
+    return
+  }
+
+  try {
+    // Pacotes vinculados pelo ID da cliente
+    const { data: pacotesVinculados, error: erroVinculados } = await supabase
       .from('pacotes_clientes_resumo')
       .select('*')
-      .eq('cliente_nome', clienteNome)
-      .order('created_at', { ascending: false })
+      .eq('cliente_id', cliente.id)
+      .eq('salao_id', salao.id)
 
-    if (error) {
-      console.error('Erro ao buscar pacotes:', error.message)
-      setPacotesCliente([])
-      return
-    }
+    if (erroVinculados) throw erroVinculados
 
-    setPacotesCliente(pacotes || [])
+    // Registros antigos que ainda não possuem cliente_id
+    const { data: pacotesAntigos, error: erroAntigos } = await supabase
+      .from('pacotes_clientes_resumo')
+      .select('*')
+      .eq('cliente_nome', cliente.nome)
+      .is('cliente_id', null)
+      .or(`salao_id.eq.${salao.id},salao_id.is.null`)
+
+    if (erroAntigos) throw erroAntigos
+
+    // Junta os dois resultados sem duplicar registros
+    const todosPacotes = [
+      ...(pacotesVinculados || []),
+      ...(pacotesAntigos || [])
+    ]
+
+    const pacotesUnicos = Array.from(
+      new Map(todosPacotes.map(pacote => [pacote.id, pacote])).values()
+    )
+
+    // Mais recentes primeiro
+    pacotesUnicos.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+    )
+
+    setPacotesCliente(pacotesUnicos)
+  } catch (error: any) {
+    console.error('Erro ao buscar pacotes:', error.message)
+    setPacotesCliente([])
   }
+}
 
   // OBSERVAÇÕES DOS PACOTES
   function iniciarEdicaoObservacao(pacote: any) {
