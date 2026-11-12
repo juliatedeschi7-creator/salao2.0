@@ -206,60 +206,59 @@ export default function PacotesClientesPage() {
   async function abrirDetalhesCliente(cliente: any) {
     setClienteSelecionado(cliente)
     setPacoteEditandoObservacao(null)
-await carregarPacotesDoCliente(cliente)
+    await carregarPacotesDoCliente(cliente)
   }
 
+  // PACOTES DA CLIENTE
+  async function carregarPacotesDoCliente(cliente: any) {
+    if (!cliente?.id || !salao?.id) {
+      setPacotesCliente([])
+      return
+    }
 
-// PACOTES DA CLIENTE
-async function carregarPacotesDoCliente(cliente: any) {
-  if (!cliente?.id || !salao?.id) {
-    setPacotesCliente([])
-    return
+    try {
+      // Pacotes vinculados pelo ID da cliente
+      const { data: pacotesVinculados, error: erroVinculados } = await supabase
+        .from('pacotes_clientes_resumo')
+        .select('*')
+        .eq('cliente_id', cliente.id)
+        .eq('salao_id', salao.id)
+
+      if (erroVinculados) throw erroVinculados
+
+      // Registros antigos que ainda não possuem cliente_id
+      const { data: pacotesAntigos, error: erroAntigos } = await supabase
+        .from('pacotes_clientes_resumo')
+        .select('*')
+        .eq('cliente_nome', cliente.nome)
+        .is('cliente_id', null)
+        .or(`salao_id.eq.${salao.id},salao_id.is.null`)
+
+      if (erroAntigos) throw erroAntigos
+
+      // Junta os dois resultados sem duplicar registros
+      const todosPacotes = [
+        ...(pacotesVinculados || []),
+        ...(pacotesAntigos || [])
+      ]
+
+      const pacotesUnicos = Array.from(
+        new Map(todosPacotes.map(pacote => [pacote.id, pacote])).values()
+      )
+
+      // Mais recentes primeiro
+      pacotesUnicos.sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+      )
+
+      setPacotesCliente(pacotesUnicos)
+    } catch (error: any) {
+      console.error('Erro ao buscar pacotes:', error.message)
+      setPacotesCliente([])
+    }
   }
-
-  try {
-    // Pacotes vinculados pelo ID da cliente
-    const { data: pacotesVinculados, error: erroVinculados } = await supabase
-      .from('pacotes_clientes_resumo')
-      .select('*')
-      .eq('cliente_id', cliente.id)
-      .eq('salao_id', salao.id)
-
-    if (erroVinculados) throw erroVinculados
-
-    // Registros antigos que ainda não possuem cliente_id
-    const { data: pacotesAntigos, error: erroAntigos } = await supabase
-      .from('pacotes_clientes_resumo')
-      .select('*')
-      .eq('cliente_nome', cliente.nome)
-      .is('cliente_id', null)
-      .or(`salao_id.eq.${salao.id},salao_id.is.null`)
-
-    if (erroAntigos) throw erroAntigos
-
-    // Junta os dois resultados sem duplicar registros
-    const todosPacotes = [
-      ...(pacotesVinculados || []),
-      ...(pacotesAntigos || [])
-    ]
-
-    const pacotesUnicos = Array.from(
-      new Map(todosPacotes.map(pacote => [pacote.id, pacote])).values()
-    )
-
-    // Mais recentes primeiro
-    pacotesUnicos.sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() -
-        new Date(a.created_at).getTime()
-    )
-
-    setPacotesCliente(pacotesUnicos)
-  } catch (error: any) {
-    console.error('Erro ao buscar pacotes:', error.message)
-    setPacotesCliente([])
-  }
-}
 
   // OBSERVAÇÕES DOS PACOTES
   function iniciarEdicaoObservacao(pacote: any) {
@@ -313,7 +312,6 @@ async function carregarPacotesDoCliente(cliente: any) {
       setSalvandoObservacao(false)
     }
   }
-
 
   // WHATSAPP — AVISO DE PACOTE CONCLUÍDO
   function avisarPacoteFinalizado(pacote: any) {
@@ -398,21 +396,21 @@ async function carregarPacotesDoCliente(cliente: any) {
 
       const nomeServico = pacoteObj?.nome || 'Pacote'
 
-const { error } = await supabase
-  .from('pacotes_clientes_resumo')
-  .insert({
-    cliente_nome: clienteSelecionado.nome,
-    cliente_id: clienteSelecionado.id,
-    salao_id: salao.id,
-    pacote_id: pacoteObj.id,
-    formato: 'individual',
-    servico: nomeServico,
-    sessoes_total: totalSessoes,
-    sessoes_restantes: totalSessoes,
-    status: 'ativo',
-    historico_sessoes: [],
-    observacao: null
-  })
+      const { error } = await supabase
+        .from('pacotes_clientes_resumo')
+        .insert({
+          cliente_nome: clienteSelecionado.nome,
+          cliente_id: clienteSelecionado.id,
+          salao_id: salao.id,
+          pacote_id: pacoteObj.id,
+          formato: 'individual',
+          servico: nomeServico,
+          sessoes_total: totalSessoes,
+          sessoes_restantes: totalSessoes,
+          status: 'ativo',
+          historico_sessoes: [],
+          observacao: null
+        })
 
       if (error) {
         alert('Erro ao atribuir pacote: ' + error.message)
@@ -422,7 +420,7 @@ const { error } = await supabase
       setModalVenderAberto(false)
       setPacoteEscolhido('')
 
-      await carregarPacotesDoCliente(clienteSelecionado.nome)
+      await carregarPacotesDoCliente(clienteSelecionado)
     } catch (err: any) {
       alert('Erro inesperado: ' + err.message)
     } finally {
@@ -448,21 +446,22 @@ const { error } = await supabase
     try {
       const totalNum = parseInt(sessoesTotalAntigo) || 1
 
-const { error } = await supabase
-  .from('pacotes_clientes_resumo')
-  .insert({
-    cliente_nome: clienteSelecionado.nome,
-    cliente_id: clienteSelecionado.id,
-    salao_id: salao.id,
-    pacote_id: null,
-    formato: 'individual',
-    servico: nomePacoteAntigo,
-    sessoes_total: totalNum,
-    sessoes_restantes: totalNum,
-    status: 'ativo',
-    historico_sessoes: [],
-    observacao: null
-  })
+      const { error } = await supabase
+        .from('pacotes_clientes_resumo')
+        .insert({
+          cliente_nome: clienteSelecionado.nome,
+          cliente_id: clienteSelecionado.id,
+          salao_id: salao.id,
+          pacote_id: null,
+          formato: 'individual',
+          servico: nomePacoteAntigo,
+          sessoes_total: totalNum,
+          sessoes_restantes: totalNum,
+          status: 'ativo',
+          historico_sessoes: [],
+          observacao: null
+        })
+
       if (error) {
         alert('Erro ao cadastrar pacote antigo: ' + error.message)
         return
@@ -472,7 +471,7 @@ const { error } = await supabase
       setNomePacoteAntigo('')
       setSessoesTotalAntigo('')
 
-      await carregarPacotesDoCliente(clienteSelecionado.nome)
+      await carregarPacotesDoCliente(clienteSelecionado)
     } catch (err: any) {
       alert('Erro inesperado: ' + err.message)
     } finally {
@@ -529,7 +528,7 @@ const { error } = await supabase
       setDataSessao(new Date().toLocaleDateString('en-CA'))
       setPacoteAlvoSessao(null)
 
-      await carregarPacotesDoCliente(clienteSelecionado.nome)
+      await carregarPacotesDoCliente(clienteSelecionado)
     } catch (err: any) {
       alert('Erro ao registrar sessão: ' + err.message)
     } finally {
@@ -672,7 +671,7 @@ const { error } = await supabase
     }
 
     if (clienteSelecionado) {
-      await carregarPacotesDoCliente(clienteSelecionado.nome)
+      await carregarPacotesDoCliente(clienteSelecionado)
     }
   }
 
