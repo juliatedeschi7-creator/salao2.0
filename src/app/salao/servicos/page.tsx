@@ -1757,6 +1757,7 @@ export default function ServicosPage() {
               )}
             </div>
 
+          
             <div>
               <label className="text-sm font-medium text-gray-700 mb-1 block">
                 Descrição
@@ -1774,6 +1775,43 @@ export default function ServicosPage() {
                   }))
                 }
               />
+
+              <div className="mt-2 rounded-xl border border-pink-100 bg-pink-50/70 p-3">
+                <p className="text-xs font-semibold text-gray-700 mb-1">
+                  💡 Dica: explique termos especiais
+                </p>
+
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Quer destacar uma palavra e apresentar uma explicação
+                  quando a cliente tocar nela? Utilize esta estrutura:
+                </p>
+
+                <div className="my-2 rounded-lg bg-white border border-pink-100 px-3 py-2">
+                  <code className="text-xs font-semibold text-pink-600 break-all">
+                    [[termo|explicação]]
+                  </code>
+                </div>
+
+                <p className="text-xs text-gray-600 leading-relaxed">
+                  Exemplo:
+                </p>
+
+                <div className="mt-1 rounded-lg bg-white border border-pink-100 px-3 py-2">
+                  <p className="text-xs text-gray-700 leading-relaxed">
+                    Trabalhamos com{' '}
+                    <span className="font-semibold underline underline-offset-2 text-pink-600">
+                      blindagem
+                    </span>
+                    , uma técnica de proteção das unhas naturais.
+                  </p>
+                </div>
+
+                <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+                  Substitua <strong>termo</strong> pela palavra que deseja
+                  destacar e <strong>explicação</strong> pelo texto que
+                  aparecerá para a cliente.
+                </p>
+              </div>
             </div>
 
             <div>
